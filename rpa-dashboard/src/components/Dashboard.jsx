@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import AuditTrails from './AuditTrails';
+import WorkloadControl from './WorkloadControl';
+import { LayoutDashboard, Activity, CheckCircle2, Clock, TrendingUp, AlertCircle, PlayCircle, X, Zap, ChevronRight, Settings, ShieldAlert, Cpu, SlidersHorizontal, Save, Users, Download, Calendar, LogOut, Lock, Search, ShieldCheck, ListTodo } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
-import { LayoutDashboard, Activity, CheckCircle2, Clock, TrendingUp, AlertCircle, PlayCircle, X, Zap, ChevronRight, Settings, ShieldAlert, Cpu, SlidersHorizontal, Save, Users, Download, Calendar, LogOut } from 'lucide-react';
 
 export default function Dashboard({ token, userRole, userName, onLogout }) {
   // --- حالات الداشبورد الأساسية ---
+  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard", "audit", or "workload"
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedProcess, setSelectedProcess] = useState("All");
   const [dateFilter, setDateFilter] = useState("all_time");
   const [isSwitching, setIsSwitching] = useState(false);
+
+  // --- حالة محرك البحث الجديد ---
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [showExceptions, setShowExceptions] = useState(false);
   const [specificError, setSpecificError] = useState(null);
@@ -124,10 +130,13 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
 
   const { processList, kpis, sidebarStats, analytics, charts, table } = data;
 
-  // -- كود الفلترة --
-  const allowedProcesses = userRole === 'SuperAdmin'
-    ? processList
-    : processList;
+  // -- كود الفلترة والأمان --
+  const allowedProcesses = processList || [];
+
+  // -- محرك البحث الذكي (يتم تطبيقه على العمليات المسموحة فقط) --
+  const filteredProcesses = allowedProcesses.filter(proc =>
+    proc.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const isRunning = kpis.status === 'Running';
 
@@ -271,323 +280,379 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
         </div>
       )}
 
-      {/* Sidebar - FGS Branded (يتم إخفاؤه في الطباعة) */}
+      {/* Sidebar - FGS Branded (معزول ومقسم ببريموم دزاين) */}
       <div className="w-[22rem] bg-white/95 backdrop-blur-xl border-r border-slate-200/60 flex flex-col shrink-0 shadow-xl z-20 print:hidden">
-        <div className="p-8 pb-4">
-          <img src="/fgs-logo.png" alt="FGS Solutions" className="h-10 w-full object-contain mb-10 drop-shadow-sm cursor-pointer hover:scale-105 transition-transform" />
-          <p className="text-[0.7rem] font-bold tracking-[0.15em] text-[#F37920] uppercase mb-4 ml-2">Processes Matrix</p>
-          <ul className="space-y-2 overflow-y-auto max-h-[40vh] pr-2 custom-scrollbar">
-            <li onClick={() => setSelectedProcess("All")} className={`px-4 py-3.5 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${selectedProcess === "All" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
-              <LayoutDashboard size={18} className={selectedProcess === "All" ? 'text-white' : 'text-slate-400'} /> Global View
-            </li>
-            {allowedProcesses.map((proc, idx) => (
-              <li key={idx} onClick={() => setSelectedProcess(proc)} className={`px-4 py-3.5 rounded-2xl text-sm font-bold flex justify-between items-center cursor-pointer transition-all ${selectedProcess === proc ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
-                <div className="flex items-center gap-2 truncate">
-                  <ChevronRight size={14} className={selectedProcess === proc ? 'text-[#F37920]' : 'text-transparent'} />
-                  <span className="truncate">{proc.replace('_', ' ')}</span>
-                </div>
-                {isRunning && kpis.activeProcess === proc && <span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F37920] opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F37920]"></span></span>}
+        <div className="p-8 pb-4 flex-1 flex flex-col">
+          <img src="/fgs-logo.png" alt="FGS Solutions" className="h-10 w-full object-contain mb-8 drop-shadow-sm cursor-pointer hover:scale-105 transition-transform" />
+
+          {/* Section 1: Main Control Center */}
+          <div className="mb-6">
+            <p className="text-[0.65rem] font-bold tracking-[0.2em] text-slate-400 uppercase mb-3 ml-2">Control Center</p>
+            <ul className="space-y-1.5">
+              <li onClick={() => {setActiveTab("dashboard"); setSelectedProcess("All");}} className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${activeTab === "dashboard" && selectedProcess === "All" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
+                <LayoutDashboard size={18} className={activeTab === "dashboard" && selectedProcess === "All" ? 'text-white' : 'text-slate-400'} /> Global Dashboard
               </li>
-            ))}
-          </ul>
-        </div>
 
-        <div className="mt-auto p-8 bg-slate-50/80 border-t border-slate-100 space-y-5">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center hover:-translate-y-1 transition-transform">
-            <div>
-              <p className="text-[0.65rem] text-slate-400 font-extrabold uppercase">Success Rate</p>
-              <p className="text-3xl font-black text-[#4B367C]">{sidebarStats.successRate}%</p>
-            </div>
-            <div className="w-14 h-14 rounded-full border-4 border-slate-50 flex items-center justify-center relative shadow-inner">
-              <svg className="absolute inset-0 w-full h-full transform -rotate-90">
-                 <circle cx="24" cy="24" r="22" fill="none" stroke="#F37920" strokeWidth="4" strokeDasharray={`${(sidebarStats.successRate / 100) * 138} 138`} className="transition-all duration-1000"/>
-              </svg>
-              <CheckCircle2 size={18} className="text-[#F37920]" strokeWidth={3} />
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:-translate-y-1 transition-transform">
-            <p className="text-[0.65rem] text-slate-400 font-extrabold uppercase mb-1">Total Executions</p>
-            <p className="text-2xl font-black text-slate-800">{sidebarStats.bookedRuns.toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
+              <li onClick={() => setActiveTab("workload")} className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${activeTab === "workload" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
+                <ListTodo size={18} className={activeTab === "workload" ? 'text-white' : 'text-slate-400'} /> Workload & SLA
+              </li>
 
-      {/* Main Dashboard Area */}
-      <div className={`flex-1 overflow-y-auto p-10 xl:p-12 print:p-0 print:overflow-visible relative z-10 transition-opacity duration-300 ${isSwitching ? 'opacity-40 pointer-events-none' : 'opacity-100 animate-in fade-in slide-in-from-bottom-4 duration-500'}`}>
-
-        {/* Header */}
-        <div className="flex justify-between items-end mb-10 print:mb-6">
-          <div>
-            <h2 className="text-4xl font-black text-[#4B367C] tracking-tight flex items-center gap-3">
-              Executive Dashboard
-            </h2>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-xs bg-[#4B367C]/10 text-[#4B367C] px-3 py-1 rounded-full font-black uppercase tracking-widest">{userRole}</span>
-              <p className="text-sm text-slate-500 font-bold tracking-wide">Welcome, {userName}</p>
-            </div>
+              {(userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
+                <li onClick={() => setActiveTab("audit")} className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${activeTab === "audit" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
+                  <ShieldCheck size={18} className={activeTab === "audit" ? 'text-white' : 'text-slate-400'} /> Audit Trails
+                </li>
+              )}
+            </ul>
           </div>
 
-          <div className="flex items-center gap-4 print:hidden">
+          {/* خط فاصل أنيق */}
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent mb-6"></div>
 
-            {/* Custom Modern Date Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center gap-3 bg-white border border-slate-200 hover:border-[#4B367C] rounded-full px-5 py-3 shadow-sm text-xs font-black text-slate-700 uppercase tracking-wider transition-all cursor-pointer"
-              >
-                <Calendar size={16} className="text-[#F37920]" />
-                <span>
-                  {dateFilter === 'all_time' && 'All Time'}
-                  {dateFilter === 'today' && 'Today'}
-                  {dateFilter === '7days' && 'Last 7 Days'}
-                  {dateFilter === 'this_month' && 'This Month'}
-                </span>
-                <ChevronRight size={14} className={`transform transition-transform text-slate-400 ${isDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
-              </button>
+          {/* Section 2: Process Matrix (Filters Portfolio) */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex justify-between items-center mb-3 ml-2 pr-2">
+              <p className="text-[0.65rem] font-bold tracking-[0.15em] text-[#F37920] uppercase">Processes Portfolio</p>
+              <span className="bg-[#F37920]/10 text-[#F37920] px-2 py-0.5 rounded-md text-[0.65rem] font-black">{filteredProcesses.length}</span>
+            </div>
 
-              {isDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  {[
-                    { id: 'all_time', label: 'All Time' },
-                    { id: 'today', label: 'Today' },
-                    { id: '7days', label: 'Last 7 Days' },
-                    { id: 'this_month', label: 'This Month' },
-                  ].map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        setDateFilter(item.id);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`px-5 py-2.5 text-xs font-bold cursor-pointer transition-colors ${
-                        dateFilter === item.id 
-                          ? 'bg-[#4B367C] text-white font-black' 
-                          : 'text-slate-600 hover:bg-slate-50 hover:text-[#4B367C]'
-                      }`}
-                    >
-                      {item.label}
-                    </div>
-                  ))}
-                </div>
+            <div className="relative mb-3">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <Search size={14} className="text-slate-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Find a process..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 pl-10 pr-9 py-2.5 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4B367C] focus:bg-white focus:ring-2 focus:ring-[#4B367C]/10 transition-all shadow-sm placeholder:text-slate-400"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-red-500 transition-colors">
+                  <X size={14} strokeWidth={2.5} />
+                </button>
               )}
             </div>
 
-            {/* زر تعديل الـ ROI - محمي */}
-            {selectedProcess !== "All" && (userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
-              <button
-                onClick={openRoiModal}
-                className="flex items-center gap-2 px-5 py-3 rounded-full bg-white border border-[#F37920]/40 text-[#F37920] shadow-sm hover:bg-[#F37920] hover:text-white transition-colors font-black uppercase tracking-wider text-xs"
-              >
-                <SlidersHorizontal size={16} /> Configure ROI
-              </button>
-            )}
-
-            {/* زر تصدير التقرير PDF */}
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-2 px-5 py-3 rounded-full bg-slate-800 text-white shadow-md hover:bg-slate-700 transition-colors font-black uppercase tracking-wider text-xs"
-            >
-              <Download size={16} /> Export PDF
-            </button>
-
-            {/* زر تسجيل الخروج */}
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-3 rounded-full bg-red-50 text-red-600 border border-red-100 shadow-sm hover:bg-red-500 hover:text-white transition-colors font-black uppercase tracking-wider text-xs"
-              title="Logout"
-            >
-              <LogOut size={16} />
-            </button>
+            <ul className="space-y-1 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+              {filteredProcesses.length > 0 ? (
+                filteredProcesses.map((proc, idx) => (
+                  <li key={idx} onClick={() => {setActiveTab("dashboard"); setSelectedProcess(proc);}} className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex justify-between items-center cursor-pointer transition-all ${activeTab === "dashboard" && selectedProcess === proc ? 'bg-[#4B367C]/10 text-[#4B367C] shadow-sm border border-[#4B367C]/20' : 'text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-100 hover:translate-x-1'}`}>
+                    <div className="flex items-center gap-2 truncate">
+                      <ChevronRight size={14} className={activeTab === "dashboard" && selectedProcess === proc ? 'text-[#F37920]' : 'text-transparent'} />
+                      <span className="truncate">{proc.replace('_', ' ')}</span>
+                    </div>
+                    {isRunning && kpis.activeProcess === proc && <span className="flex h-2 w-2 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F37920] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#F37920]"></span></span>}
+                  </li>
+                ))
+              ) : (
+                <li className="text-center text-slate-400 text-xs font-bold py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  No matches found
+                </li>
+              )}
+            </ul>
           </div>
         </div>
 
-        {/* 5 Enterprise KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-5 mb-8 print:grid-cols-5">
-
-          <div className="bg-[#4B367C] p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
-            <Settings size={28} className="mb-4 opacity-80" />
-            <h3 className="text-5xl font-black relative z-10">{kpis.totalProcedures.toLocaleString()}</h3>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4B367C] bg-white w-fit px-3 py-1.5 rounded-lg mt-3 shadow-sm relative z-10">Total Procedures</p>
-          </div>
-
-          <div className="bg-[#10B981] p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
-            <Clock size={28} className="mb-4 opacity-80" />
-            <h3 className="text-5xl font-black relative z-10">{Number(kpis.timeSaved).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})} <span className="text-xl opacity-80">hrs</span></h3>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#10B981] bg-white w-fit px-3 py-1.5 rounded-lg mt-3 shadow-sm relative z-10">Total Time Saved</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group hover:shadow-2xl transition-all">
-            <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-all"></div>
-            <div className="flex justify-between items-start mb-2 relative z-10">
-              <Users size={28} className="text-blue-400 opacity-90" />
-              <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30">Workforce</span>
+        {/* Sidebar Footer Stats */}
+        <div className="mt-auto p-6 bg-slate-50/80 border-t border-slate-100 space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center hover:-translate-y-1 transition-transform">
+            <div>
+              <p className="text-[0.6rem] text-slate-400 font-extrabold uppercase">Global Success</p>
+              <p className="text-2xl font-black text-[#4B367C]">{sidebarStats.successRate}%</p>
             </div>
-            <h3 className="text-5xl font-black relative z-10">
-              {(kpis.timeSaved / 8).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})} <span className="text-xl opacity-70 font-medium">FTEs</span>
-            </h3>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-3 relative z-10">Virtual Employees</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition-shadow">
-             <div className="flex justify-between items-start mb-2">
-              <TrendingUp size={28} className="text-[#F37920]" />
-              <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded">Financial ROI</span>
-            </div>
-            <h3 className="text-4xl font-black text-slate-800 truncate">
-              <span className="text-xl text-[#F37920] mr-1">EGP</span>{formatCurrency(kpis.costSaved)}
-            </h3>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2">Capital Saved</p>
-          </div>
-
-          <div
-            onClick={() => kpis.stopsToday > 0 && openExceptionsModal()}
-            className={`p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 group ${kpis.stopsToday > 0 ? 'bg-red-50 border-red-200 shadow-md cursor-pointer hover:-translate-y-1 hover:shadow-lg hover:border-red-400' : 'bg-white border-slate-200 shadow-sm print:shadow-none'}`}
-          >
-             <div className="flex justify-between items-start mb-2">
-              <ShieldAlert size={28} className={kpis.stopsToday > 0 ? "text-red-500" : "text-slate-400"} />
-              <span className={`text-[10px] font-bold px-2 py-1 rounded ${kpis.stopsToday > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Status</span>
-            </div>
-            <h3 className={`text-5xl font-black ${kpis.stopsToday > 0 ? 'text-red-500' : 'text-slate-800'}`}>{kpis.stopsToday.toLocaleString()}</h3>
-            <p className={`text-[10px] font-bold uppercase tracking-widest mt-2 ${kpis.stopsToday > 0 ? 'text-red-400 group-hover:underline' : 'text-slate-400'}`}>
-              {kpis.stopsToday > 0 ? 'Exceptions (Click)' : 'No Exceptions'}
-            </p>
-          </div>
-        </div>
-
-        {/* Analytics Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 print:break-inside-avoid">
-          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-            <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider mb-6 flex items-center gap-2"><Cpu size={18}/> Total Saved Hours Per Department</h3>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics.departmentSavings} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis dataKey="Department" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 700, fill: '#64748B'}} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
-                  <Tooltip cursor={{fill: '#F8FAFC'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="TimeSavedHours" fill="#4B367C" radius={[6, 6, 0, 0]} barSize={48} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-             <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider mb-6 flex items-center gap-2"><Activity size={18}/> Avg Utilization % Per Bot</h3>
-             <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics.botUtilization} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis dataKey="BotName" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 700, fill: '#64748B'}} dy={10}/>
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
-                  <Tooltip cursor={{fill: '#F8FAFC'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="Utilization" radius={[6, 6, 0, 0]} barSize={48}>
-                    {analytics.botUtilization.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.Color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center relative bg-emerald-50">
+              <CheckCircle2 size={20} className="text-[#10B981]" strokeWidth={2.5} />
             </div>
           </div>
         </div>
-
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 print:break-inside-avoid">
-           <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 lg:col-span-1 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-2 w-full text-left">Processes per Status</h3>
-            <div className="h-52 w-full relative mb-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={analytics.statusDistribution} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                    {analytics.statusDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}/>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex flex-wrap justify-center gap-4 w-full">
-              {analytics.statusDistribution.map((st, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                  <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}></span>
-                  {st.name} ({st.value})
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 lg:col-span-2 hover:shadow-md transition-shadow">
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-6">Total Cost Saved Daily Trend</h3>
-            <div className="h-60 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={charts.savings} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#F37920" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#F37920" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94A3B8'}} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontWeight: 'bold' }} formatter={(value) => [`EGP ${formatCurrency(value)}`]} />
-                  <Area type="monotone" dataKey="bar" stroke="#F37920" strokeWidth={4} fill="url(#orangeGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        {/* Advanced Data Grid */}
-        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-8 hover:shadow-md transition-shadow print:break-inside-avoid">
-          <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-             <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider">Active Process Runs Log</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-white border-b border-slate-100">
-                  <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Process</th>
-                  <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Trace ID</th>
-                  <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Status</th>
-                  <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Runtime</th>
-                  <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider text-right">Value Yield (Dynamic)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {table.map((run, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
-                    <td className="px-8 py-4 font-extrabold text-[#4B367C] text-sm">{run.ProcessName.replace('_', ' ')}</td>
-                    <td className="px-8 py-4"><span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg font-bold border border-slate-200">{run.RequestID}</span></td>
-                    <td className="px-8 py-4">
-                      <span
-                        onClick={() => (run.Status === 'Failed' || run.Status === 'Stopped') && openExceptionsModal(run)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black uppercase transition-all ${
-                          run.Status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 
-                          run.Status === 'Running' ? 'bg-[#F37920]/10 text-[#F37920] border border-[#F37920]/30' : 
-                          'bg-red-50 text-red-600 border border-red-200 cursor-pointer hover:bg-red-100 hover:scale-105 shadow-sm print:shadow-none'
-                        }`}
-                        title={run.Status === 'Failed' || run.Status === 'Stopped' ? 'Click to view error reason' : ''}
-                      >
-                        {run.Status === 'Completed' && <CheckCircle2 size={14} strokeWidth={3}/>}
-                        {run.Status === 'Running' && <Activity size={14} className="animate-spin-slow" strokeWidth={3}/>}
-                        {(run.Status === 'Failed' || run.Status === 'Stopped') && <AlertCircle size={14} strokeWidth={3}/>}
-                        {run.Status}
-                      </span>
-                    </td>
-                    <td className="px-8 py-4 text-sm text-slate-500 font-bold">{run.DurationMinutes ? `${run.DurationMinutes} m` : <span className="text-[#F37920] animate-pulse bg-[#F37920]/10 px-3 py-1 rounded-lg">Running...</span>}</td>
-                    <td className="px-8 py-4 text-sm font-black text-slate-900 text-right">{run.CostSaved > 0 ? `EGP ${formatCurrency(run.CostSaved)}` : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </div>
+
+      {/* Main Content Area (Dashboard, Audit Trails, or Workload) */}
+      {activeTab === "audit" ? (
+         <div className="flex-1 overflow-hidden relative z-10 bg-white">
+           <AuditTrails token={token} />
+         </div>
+      ) : activeTab === "workload" ? (
+         <div className="flex-1 overflow-hidden relative z-10 bg-white">
+           <WorkloadControl token={token} userRole={userRole} />
+         </div>
+      ) : (
+        <div className={`flex-1 overflow-y-auto p-10 xl:p-12 print:p-0 print:overflow-visible relative z-10 transition-opacity duration-300 ${isSwitching ? 'opacity-40 pointer-events-none' : 'opacity-100 animate-in fade-in slide-in-from-bottom-4 duration-500'}`}>
+
+          {/* Header */}
+          <div className="flex justify-between items-end mb-10 print:mb-6">
+            <div>
+              <h2 className="text-4xl font-black text-[#4B367C] tracking-tight flex items-center gap-3">
+                Executive Dashboard
+              </h2>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-xs bg-[#4B367C]/10 text-[#4B367C] px-3 py-1 rounded-full font-black uppercase tracking-widest">{userRole}</span>
+                <p className="text-sm text-slate-500 font-bold tracking-wide">Welcome, {userName}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 print:hidden">
+
+              {/* Custom Modern Date Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="flex items-center gap-3 bg-white border border-slate-200 hover:border-[#4B367C] rounded-full px-5 py-3 shadow-sm text-xs font-black text-slate-700 uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  <Calendar size={16} className="text-[#F37920]" />
+                  <span>
+                    {dateFilter === 'all_time' && 'All Time'}
+                    {dateFilter === 'today' && 'Today'}
+                    {dateFilter === '7days' && 'Last 7 Days'}
+                    {dateFilter === 'this_month' && 'This Month'}
+                  </span>
+                  <ChevronRight size={14} className={`transform transition-transform text-slate-400 ${isDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {[
+                      { id: 'all_time', label: 'All Time' },
+                      { id: 'today', label: 'Today' },
+                      { id: '7days', label: 'Last 7 Days' },
+                      { id: 'this_month', label: 'This Month' },
+                    ].map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          setDateFilter(item.id);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={`px-5 py-2.5 text-xs font-bold cursor-pointer transition-colors ${
+                          dateFilter === item.id 
+                            ? 'bg-[#4B367C] text-white font-black' 
+                            : 'text-slate-600 hover:bg-slate-50 hover:text-[#4B367C]'
+                        }`}
+                      >
+                        {item.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* زر تعديل الـ ROI - محمي */}
+              {selectedProcess !== "All" && (userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
+                <button
+                  onClick={openRoiModal}
+                  className="flex items-center gap-2 px-5 py-3 rounded-full bg-white border border-[#F37920]/40 text-[#F37920] shadow-sm hover:bg-[#F37920] hover:text-white transition-colors font-black uppercase tracking-wider text-xs"
+                >
+                  <SlidersHorizontal size={16} /> Configure ROI
+                </button>
+              )}
+
+              {/* زر تصدير التقرير PDF */}
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-5 py-3 rounded-full bg-slate-800 text-white shadow-md hover:bg-slate-700 transition-colors font-black uppercase tracking-wider text-xs"
+              >
+                <Download size={16} /> Export PDF
+              </button>
+
+              {/* زر تسجيل الخروج */}
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-2 px-4 py-3 rounded-full bg-red-50 text-red-600 border border-red-100 shadow-sm hover:bg-red-500 hover:text-white transition-colors font-black uppercase tracking-wider text-xs"
+                title="Logout"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* 5 Enterprise KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-5 mb-8 print:grid-cols-5">
+
+            <div className="bg-[#4B367C] p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
+              <Settings size={28} className="mb-4 opacity-80" />
+              <h3 className="text-5xl font-black relative z-10">{kpis.totalProcedures.toLocaleString()}</h3>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#4B367C] bg-white w-fit px-3 py-1.5 rounded-lg mt-3 shadow-sm relative z-10">Total Procedures</p>
+            </div>
+
+            <div className="bg-[#10B981] p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
+              <Clock size={28} className="mb-4 opacity-80" />
+              <h3 className="text-5xl font-black relative z-10">{Number(kpis.timeSaved).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})} <span className="text-xl opacity-80">hrs</span></h3>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#10B981] bg-white w-fit px-3 py-1.5 rounded-lg mt-3 shadow-sm relative z-10">Total Time Saved</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group hover:shadow-2xl transition-all">
+              <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-all"></div>
+              <div className="flex justify-between items-start mb-2 relative z-10">
+                <Users size={28} className="text-blue-400 opacity-90" />
+                <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30">Workforce</span>
+              </div>
+              <h3 className="text-5xl font-black relative z-10">
+                {(kpis.timeSaved / 8).toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})} <span className="text-xl opacity-70 font-medium">FTEs</span>
+              </h3>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-3 relative z-10">Virtual Employees</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition-shadow">
+               <div className="flex justify-between items-start mb-2">
+                <TrendingUp size={28} className="text-[#F37920]" />
+                <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded">Financial ROI</span>
+              </div>
+              <h3 className="text-4xl font-black text-slate-800 truncate">
+                <span className="text-xl text-[#F37920] mr-1">EGP</span>{formatCurrency(kpis.costSaved)}
+              </h3>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2">Capital Saved</p>
+            </div>
+
+            <div
+              onClick={() => kpis.stopsToday > 0 && openExceptionsModal()}
+              className={`p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 group ${kpis.stopsToday > 0 ? 'bg-red-50 border-red-200 shadow-md cursor-pointer hover:-translate-y-1 hover:shadow-lg hover:border-red-400' : 'bg-white border-slate-200 shadow-sm print:shadow-none'}`}
+            >
+               <div className="flex justify-between items-start mb-2">
+                <ShieldAlert size={28} className={kpis.stopsToday > 0 ? "text-red-500" : "text-slate-400"} />
+                <span className={`text-[10px] font-bold px-2 py-1 rounded ${kpis.stopsToday > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Status</span>
+              </div>
+              <h3 className={`text-5xl font-black ${kpis.stopsToday > 0 ? 'text-red-500' : 'text-slate-800'}`}>{kpis.stopsToday.toLocaleString()}</h3>
+              <p className={`text-[10px] font-bold uppercase tracking-widest mt-2 ${kpis.stopsToday > 0 ? 'text-red-400 group-hover:underline' : 'text-slate-400'}`}>
+                {kpis.stopsToday > 0 ? 'Exceptions (Click)' : 'No Exceptions'}
+              </p>
+            </div>
+          </div>
+
+          {/* Analytics Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 print:break-inside-avoid">
+            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+              <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider mb-6 flex items-center gap-2"><Cpu size={18}/> Total Saved Hours Per Department</h3>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.departmentSavings} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="Department" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 700, fill: '#64748B'}} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
+                    <Tooltip cursor={{fill: '#F8FAFC'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
+                    <Bar dataKey="TimeSavedHours" fill="#4B367C" radius={[6, 6, 0, 0]} barSize={48} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+               <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider mb-6 flex items-center gap-2"><Activity size={18}/> Avg Utilization % Per Bot</h3>
+               <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.botUtilization} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="BotName" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 700, fill: '#64748B'}} dy={10}/>
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
+                    <Tooltip cursor={{fill: '#F8FAFC'}} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
+                    <Bar dataKey="Utilization" radius={[6, 6, 0, 0]} barSize={48}>
+                      {analytics.botUtilization.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.Color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Charts Row 2 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 print:break-inside-avoid">
+             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 lg:col-span-1 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-2 w-full text-left">Processes per Status</h3>
+              <div className="h-52 w-full relative mb-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={analytics.statusDistribution} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                      {analytics.statusDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-wrap justify-center gap-4 w-full">
+                {analytics.statusDistribution.map((st, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                    <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}></span>
+                    {st.name} ({st.value})
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 lg:col-span-2 hover:shadow-md transition-shadow">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-6">Total Cost Saved Daily Trend</h3>
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={charts.savings} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F37920" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#F37920" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94A3B8'}} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontWeight: 'bold' }} formatter={(value) => [`EGP ${formatCurrency(value)}`]} />
+                    <Area type="monotone" dataKey="bar" stroke="#F37920" strokeWidth={4} fill="url(#orangeGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Advanced Data Grid */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-8 hover:shadow-md transition-shadow print:break-inside-avoid">
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+               <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider">Active Process Runs Log</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b border-slate-100">
+                    <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Process</th>
+                    <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Trace ID</th>
+                    <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Status</th>
+                    <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider">Runtime</th>
+                    <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-wider text-right">Value Yield (Dynamic)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {table.map((run, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-8 py-4 font-extrabold text-[#4B367C] text-sm">{run.ProcessName.replace('_', ' ')}</td>
+                      <td className="px-8 py-4"><span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg font-bold border border-slate-200">{run.RequestID}</span></td>
+                      <td className="px-8 py-4">
+                        <span
+                          onClick={() => (run.Status === 'Failed' || run.Status === 'Stopped') && openExceptionsModal(run)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black uppercase transition-all ${
+                            run.Status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 
+                            run.Status === 'Running' ? 'bg-[#F37920]/10 text-[#F37920] border border-[#F37920]/30' : 
+                            'bg-red-50 text-red-600 border border-red-200 cursor-pointer hover:bg-red-100 hover:scale-105 shadow-sm print:shadow-none'
+                          }`}
+                          title={run.Status === 'Failed' || run.Status === 'Stopped' ? 'Click to view error reason' : ''}
+                        >
+                          {run.Status === 'Completed' && <CheckCircle2 size={14} strokeWidth={3}/>}
+                          {run.Status === 'Running' && <Activity size={14} className="animate-spin-slow" strokeWidth={3}/>}
+                          {(run.Status === 'Failed' || run.Status === 'Stopped') && <AlertCircle size={14} strokeWidth={3}/>}
+                          {run.Status}
+                        </span>
+                      </td>
+                      <td className="px-8 py-4 text-sm text-slate-500 font-bold">{run.DurationMinutes ? `${run.DurationMinutes} m` : <span className="text-[#F37920] animate-pulse bg-[#F37920]/10 px-3 py-1 rounded-lg">Running...</span>}</td>
+                      <td className="px-8 py-4 text-sm font-black text-slate-900 text-right">{run.CostSaved > 0 ? `EGP ${formatCurrency(run.CostSaved)}` : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }

@@ -6,7 +6,7 @@ import numpy as np
 from datetime import date
 from typing import Optional
 import math
-
+import json
 from db_connection import run_query, execute_update
 from routers import auth  # استدعاء راوتر المصادقة
 
@@ -54,7 +54,12 @@ def update_roi(config: ROIConfigUpdate, current_user: auth.User = Depends(auth.g
     # جلب القيم القديمة لغرض التدقيق
     old_values_df = run_query(
         f"SELECT EmpMinutesPerRequest, EmpCostPerRequest, BotCostPerRequest FROM ProcessConfig WHERE ProcessName = '{config.ProcessName}'")
-    old_vals = old_values_df.iloc[0].to_dict() if not old_values_df.empty else "None"
+
+    old_vals = old_values_df.iloc[0].to_dict() if not old_values_df.empty else {}
+
+    # تحويل البيانات إلى JSON آمن للـ SQL
+    old_vals_json = json.dumps(old_vals)
+    new_vals_json = json.dumps(config.dict())
 
     update_query = f"""
     UPDATE ProcessConfig 
@@ -65,9 +70,10 @@ def update_roi(config: ROIConfigUpdate, current_user: auth.User = Depends(auth.g
     WHERE ProcessName = '{config.ProcessName}';
     """
 
+    # استخدام القيم الآمنة (JSON)
     audit_query = f"""
     INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues)
-    VALUES ({current_user.UserID}, 'Update_ROI', '{config.ProcessName}', '{str(old_vals)}', '{str(config.dict())}');
+    VALUES ({current_user.UserID}, 'Update_ROI', '{config.ProcessName}', '{old_vals_json}', '{new_vals_json}');
     """
 
     try:
@@ -210,3 +216,146 @@ def get_dashboard_data(process: Optional[str] = Query(None), current_user: auth.
     }
 
     return clean_json_data(response_data)
+
+
+@app.get("/api/audit-logs")
+def get_audit_logs(current_user: auth.User = Depends(auth.get_current_user)):
+    # السماح للسوبر أدمن أو مديري الأقسام (CoE_Manager) برؤية السجلات
+    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض سجلات التدقيق")
+
+    # بناء شرط الفلترة بناءً على قسم المستخدم
+    dept_filter = ""
+    if current_user.AllowedDepartment != 'ALL':
+        dept_filter = f" WHERE p.Department = '{current_user.AllowedDepartment}'"
+
+    # دمج جدول السجلات مع جدول الإعدادات لمعرفة قسم كل عملية وفلترتها
+    query = f"""
+        SELECT a.LogID, ISNULL(u.Username, 'System') AS Username, a.ActionType, 
+               a.ProcessName, a.OldValues, a.NewValues, a.ActionDate 
+        FROM AuditLogs a
+        LEFT JOIN SystemUsers u ON a.UserID = u.UserID
+        INNER JOIN ProcessConfig p ON a.ProcessName = p.ProcessName
+        {dept_filter}
+        ORDER BY a.ActionDate DESC
+    """
+    df_audit = run_query(query)
+
+    if df_audit.empty:
+        return []
+
+    df_audit['ActionDate'] = pd.to_datetime(df_audit['ActionDate']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    logs = df_audit.to_dict('records')
+    return clean_json_data(logs)
+
+
+# ---------------------------------------------------------
+# الجزء الخاص بـ SLA & Workload Management
+# ---------------------------------------------------------
+
+class SLAConfigUpdate(BaseModel):
+    ProcessName: str
+    SLATargetMinutes: int
+    AvgItemProcessingSeconds: int
+
+
+@app.post("/api/update-sla")
+def update_sla(config: SLAConfigUpdate, current_user: auth.User = Depends(auth.get_current_user)):
+    # 1. الحماية: للسوبر أدمن ومديري الأقسام فقط
+    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتعديل الـ SLA")
+
+    # 2. جلب القيم القديمة من الجدولين لتسجيلها في الـ Audit
+    old_config_df = run_query(f"SELECT SLATargetMinutes FROM ProcessConfig WHERE ProcessName = '{config.ProcessName}'")
+    old_queue_df = run_query(
+        f"SELECT AvgItemProcessingSeconds FROM ProcessQueues WHERE ProcessName = '{config.ProcessName}'")
+
+    old_vals = {}
+
+    # معالجة آمنة للـ NULL (None) لتجنب أخطاء التحويل
+    if not old_config_df.empty:
+        sla_val = old_config_df.iloc[0]['SLATargetMinutes']
+        old_vals['SLATargetMinutes'] = int(sla_val) if pd.notnull(sla_val) else 0
+
+    if not old_queue_df.empty:
+        avg_val = old_queue_df.iloc[0]['AvgItemProcessingSeconds']
+        old_vals['AvgItemProcessingSeconds'] = int(avg_val) if pd.notnull(avg_val) else 0
+
+    old_vals_json = json.dumps(old_vals)
+    new_vals_json = json.dumps(config.dict())
+
+    # 3. تحديث القيم (SLA في جدول الإعدادات، وسرعة البوت في جدول الطوابير)
+    update_config_query = f"""
+    UPDATE ProcessConfig 
+    SET SLATargetMinutes = {config.SLATargetMinutes} 
+    WHERE ProcessName = '{config.ProcessName}';
+    """
+
+    update_queue_query = f"""
+    UPDATE ProcessQueues 
+    SET AvgItemProcessingSeconds = {config.AvgItemProcessingSeconds} 
+    WHERE ProcessName = '{config.ProcessName}';
+    """
+
+    # 4. تسجيل العملية في جدول التدقيق والمراقبة
+    audit_query = f"""
+    INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues)
+    VALUES ({current_user.UserID}, 'Update_SLA', '{config.ProcessName}', '{old_vals_json}', '{new_vals_json}');
+    """
+
+    try:
+        execute_update(update_config_query)
+        execute_update(update_queue_query)
+        execute_update(audit_query)
+        return {"status": "success", "message": "SLA configuration updated successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/sla-workload")
+def get_sla_workload(current_user: auth.User = Depends(auth.get_current_user)):
+    # 1. فلترة الطوابير حسب صلاحية قسم المستخدم
+    dept_filter = ""
+    if current_user.AllowedDepartment != 'ALL':
+        dept_filter = f" AND c.Department = '{current_user.AllowedDepartment}'"
+
+    # 2. جلب بيانات الطابور ودمجها مع إعدادات الـ SLA
+    query = f"""
+        SELECT 
+            q.ProcessName, 
+            q.PendingItems, 
+            q.ActiveItems, 
+            q.AvgItemProcessingSeconds,
+            c.SLATargetMinutes,
+            c.Department
+        FROM ProcessQueues q
+        JOIN ProcessConfig c ON q.ProcessName = c.ProcessName
+        WHERE 1=1 {dept_filter}
+    """
+    df_queue = run_query(query)
+
+    if df_queue.empty:
+        return []
+
+    # 3. الذكاء التنبؤي: حساب الوقت التقديري لإنهاء الطابور (بالدقائق)
+    df_queue['EstimatedCompletionMinutes'] = (df_queue['PendingItems'] * df_queue['AvgItemProcessingSeconds']) / 60.0
+
+    # 4. دالة تحديد مستوى الخطر
+    def determine_status(row):
+        est = row['EstimatedCompletionMinutes']
+        sla = row['SLATargetMinutes']
+        if sla == 0 or pd.isna(sla):
+            return 'Unknown'
+
+        ratio = est / sla
+        if ratio >= 1.0:
+            return 'Breach_Risk'  # سيتجاوز أو تجاوز الوقت المحدد بالفعل
+        elif ratio >= 0.75:
+            return 'Warning'  # استهلك 75% من الوقت المتاح
+        return 'Healthy'  # آمن وفي النطاق الزمني
+
+    df_queue['SLAStatus'] = df_queue.apply(determine_status, axis=1)
+    df_queue['EstimatedCompletionMinutes'] = df_queue['EstimatedCompletionMinutes'].round(1)
+
+    return clean_json_data(df_queue.to_dict('records'))
