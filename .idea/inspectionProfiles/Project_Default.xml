@@ -1,0 +1,94 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="false" level="WARNING" enabled_by_default="false">
+      <option name="ignoredPackages">
+        <list>
+          <option value="opencv-python-headless" />
+          <option value="python-dotenv" />
+          <option value="pdf2image" />
+          <option value="beautifulsoup4" />
+          <option value="lxml" />
+          <option value="adbc_driver_manager" />
+          <option value="adbc_driver_postgresql" />
+          <option value="adbc_driver_sqlite" />
+          <option value="AppKit" />
+          <option value="attr" />
+          <option value="botocore" />
+          <option value="cloudpickle" />
+          <option value="ConfigParser" />
+          <option value="cryptography" />
+          <option value="cycler" />
+          <option value="Cython" />
+          <option value="defusedxml" />
+          <option value="dill" />
+          <option value="dl" />
+          <option value="docutils" />
+          <option value="fastparquet" />
+          <option value="Foundation" />
+          <option value="fsspec" />
+          <option value="future_fstrings" />
+          <option value="HTMLParser" />
+          <option value="hypothesis" />
+          <option value="imageio" />
+          <option value="ipython" />
+          <option value="ipywidgets" />
+          <option value="jnius" />
+          <option value="jsonschema" />
+          <option value="keyring" />
+          <option value="lazy_loader" />
+          <option value="lockfile" />
+          <option value="matplotlib" />
+          <option value="mtrand" />
+          <option value="mypy" />
+          <option value="numarray" />
+          <option value="Numeric" />
+          <option value="numexpr" />
+          <option value="odfpy" />
+          <option value="olefile" />
+          <option value="orderedset" />
+          <option value="poetry" />
+          <option value="protobuf" />
+          <option value="psutil" />
+          <option value="pygraphviz" />
+          <option value="PyInstaller" />
+          <option value="pyOpenSSL" />
+          <option value="PyQt4" />
+          <option value="PyQt5" />
+          <option value="PyQt6" />
+          <option value="PySide6" />
+          <option value="pytest" />
+          <option value="pytest_run_parallel" />
+          <option value="pytz" />
+          <option value="pyxlsb" />
+          <option value="qtpy" />
+          <option value="railroad" />
+          <option value="s3fs" />
+          <option value="scandir" />
+          <option value="scikit_learn" />
+          <option value="scipy_doctest" />
+          <option value="sets" />
+          <option value="Sphinx" />
+          <option value="storage" />
+          <option value="subprocess32" />
+          <option value="tables" />
+          <option value="thread" />
+          <option value="threadpoolctl" />
+          <option value="toml" />
+          <option value="tornado" />
+          <option value="traitlets" />
+          <option value="trove_classifiers" />
+          <option value="truststore" />
+          <option value="urllib3_secure_extra" />
+          <option value="uv_build" />
+          <option value="vmprof" />
+          <option value="xlrd" />
+          <option value="xlsxwriter" />
+          <option value="xmlrpclib" />
+          <option value="zstandard" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
