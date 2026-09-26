@@ -127,7 +127,7 @@ def get_dashboard_data(process: Optional[str] = Query(None), current_user: auth.
     df_runs = pd.merge(df_runs, df_config, on='ProcessName', how='left')
     df_runs['DynamicTimeSaved'] = (df_runs['TransactionsCount'] * df_runs['EmpMinutesPerRequest']) / 60.0
     df_runs['DynamicCostSaved'] = (df_runs['TransactionsCount'] * df_runs['EmpCostPerRequest']) - (
-                df_runs['TransactionsCount'] * df_runs['BotCostPerRequest'])
+            df_runs['TransactionsCount'] * df_runs['BotCostPerRequest'])
 
     df_runs = df_runs.fillna(0).replace([np.inf, -np.inf], 0)
     df_runs['StartTime'] = pd.to_datetime(df_runs['StartTime'])
@@ -359,3 +359,178 @@ def get_sla_workload(current_user: auth.User = Depends(auth.get_current_user)):
     df_queue['EstimatedCompletionMinutes'] = df_queue['EstimatedCompletionMinutes'].round(1)
 
     return clean_json_data(df_queue.to_dict('records'))
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+import asyncio
+
+
+# --- مدير اتصالات WebSockets المؤسسي ---
+class ConnectionManager:
+    def __init__(self):
+        # قاموس لتخزين الاتصالات الحية: { "MachineName": websocket_object }
+        self.active_connections: dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, machine_name: str):
+        await websocket.accept()
+        self.active_connections[machine_name] = websocket
+        # تحديث حالة السيرفر إلى Online فور اتصاله
+        execute_update(
+            f"UPDATE BotInfrastructure SET Status = 'Online', LastPing = GETDATE() WHERE MachineName = '{machine_name}'")
+
+    def disconnect(self, machine_name: str):
+        if machine_name in self.active_connections:
+            del self.active_connections[machine_name]
+        # تحديث حالة السيرفر إلى Offline فور انقطاع الاتصال
+        execute_update(f"UPDATE BotInfrastructure SET Status = 'Offline' WHERE MachineName = '{machine_name}'")
+
+    async def send_command(self, machine_name: str, command: str):
+        if machine_name in self.active_connections:
+            await self.active_connections[machine_name].send_text(command)
+            return True
+        return False
+
+
+manager = ConnectionManager()
+
+
+# --- مسار الـ WebSocket الذي يتصل به الـ Bot Agent ---
+@app.websocket("/ws/agent/{machine_name}")
+async def websocket_endpoint(websocket: WebSocket, machine_name: str):
+    await manager.connect(websocket, machine_name)
+    try:
+        while True:
+            # استقبال النبضات (CPU, RAM, HDD) من السيرفر
+            data = await websocket.receive_json()
+            query = f"""
+            UPDATE BotInfrastructure 
+            SET CPU_Usage = {data.get('CPU_Usage', 0)}, 
+                RAM_Usage = {data.get('RAM_Usage', 0)},
+                HDD_Usage = {data.get('HDD_Usage', 0)},
+                LastPing = GETDATE()
+            WHERE MachineName = '{machine_name}'
+            """
+            execute_update(query)
+    except WebSocketDisconnect:
+        manager.disconnect(machine_name)
+
+
+# --- مسار API جديد لإرسال أمر تشغيل بوت من الداشبورد إلى السيرفر ---
+@app.post("/api/trigger-bot/{machine_name}")
+async def trigger_bot(machine_name: str, bot_name: str, current_user: auth.User = Depends(auth.get_current_user)):
+    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتشغيل العمليات")
+
+    command = f"RUN_BOT:{bot_name}"
+    success = await manager.send_command(machine_name, command)
+
+    if success:
+        return {"status": "success", "message": f"Command '{command}' sent to {machine_name} instantly."}
+    else:
+        return {"status": "error", "message": f"Machine {machine_name} is currently offline."}
+# ---------------------------------------------------------
+# الجزء الخاص بـ Infrastructure & Device Health
+# ---------------------------------------------------------
+
+class MachineRegistration(BaseModel):
+    MachineName: str
+    AssignedBot: str
+    RunnerType: str
+    TotalRAM_GB: int
+    TotalHDD_GB: int
+
+
+class AgentHeartbeat(BaseModel):
+    MachineName: str
+    CPU_Usage: int
+    RAM_Usage: int
+    HDD_Usage: int
+
+
+@app.post("/api/register-machine")
+def register_machine(machine: MachineRegistration, current_user: auth.User = Depends(auth.get_current_user)):
+    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
+        raise HTTPException(status_code=403, detail="Only Admins can register machines.")
+
+    query = f"""
+    INSERT INTO BotInfrastructure (MachineName, AssignedBot, Status, CPU_Usage, RAM_Usage, HDD_Usage, LastPing, TotalRAM_GB, TotalHDD_GB, RunnerType)
+    VALUES ('{machine.MachineName}', '{machine.AssignedBot}', 'Idle', 0, 0, 0, GETDATE(), {machine.TotalRAM_GB}, {machine.TotalHDD_GB}, '{machine.RunnerType}')
+    """
+    try:
+        execute_update(query)
+        return {"status": "success", "message": "Runner Registered Successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+class MachineUpdate(BaseModel):
+    MachineName: str
+    AssignedBot: str
+    RunnerType: str
+    TotalRAM_GB: int
+    TotalHDD_GB: int
+
+
+@app.post("/api/update-machine")
+def update_machine(machine: MachineUpdate, current_user: auth.User = Depends(auth.get_current_user)):
+    # التحقق من الصلاحيات
+    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
+        raise HTTPException(status_code=403, detail="Only Admins can update machines.")
+
+    query = f"""
+    UPDATE BotInfrastructure 
+    SET AssignedBot = '{machine.AssignedBot}',
+        RunnerType = '{machine.RunnerType}',
+        TotalRAM_GB = {machine.TotalRAM_GB},
+        TotalHDD_GB = {machine.TotalHDD_GB}
+    WHERE MachineName = '{machine.MachineName}'
+    """
+    try:
+        execute_update(query)
+        return {"status": "success", "message": "Runner Updated Successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/agent-heartbeat")
+def agent_heartbeat(heartbeat: AgentHeartbeat):
+    query = f"""
+    UPDATE BotInfrastructure 
+    SET CPU_Usage = {heartbeat.CPU_Usage}, 
+        RAM_Usage = {heartbeat.RAM_Usage},
+        HDD_Usage = {heartbeat.HDD_Usage},
+        Status = 'Online',
+        LastPing = GETDATE()
+    WHERE MachineName = '{heartbeat.MachineName}'
+    """
+    execute_update(query)
+    return {"status": "success"}
+
+
+@app.get("/api/infrastructure")
+def get_infrastructure_health(current_user: auth.User = Depends(auth.get_current_user)):
+    query = "SELECT * FROM BotInfrastructure"
+    df_infra = run_query(query)
+
+    if df_infra.empty:
+        return []
+
+    def determine_health(row):
+        last_ping = pd.to_datetime(row['LastPing'])
+        time_diff = (pd.Timestamp.now() - last_ping).total_seconds()
+
+        if time_diff > 180:
+            return 'Critical'
+        if row['CPU_Usage'] >= 90 or row['RAM_Usage'] >= 90 or row['HDD_Usage'] >= 90:
+            return 'Warning'
+        if row['Status'] == 'Idle':
+            return 'Idle'
+        return 'Healthy'
+
+    df_infra['HealthStatus'] = df_infra.apply(determine_health, axis=1)
+
+    offline_machines = df_infra[df_infra['HealthStatus'] == 'Critical']['MachineName'].tolist()
+    for machine in offline_machines:
+        execute_update(f"UPDATE BotInfrastructure SET Status = 'Offline' WHERE MachineName = '{machine}'")
+
+    df_infra['LastPing'] = pd.to_datetime(df_infra['LastPing']).dt.strftime('%Y-%m-%d %H:%M:%S')
+    return clean_json_data(df_infra.to_dict('records'))

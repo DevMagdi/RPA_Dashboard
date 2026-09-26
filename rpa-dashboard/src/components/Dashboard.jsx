@@ -1,20 +1,64 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AuditTrails from './AuditTrails';
 import WorkloadControl from './WorkloadControl';
-import { LayoutDashboard, Activity, CheckCircle2, Clock, TrendingUp, AlertCircle, PlayCircle, X, Zap, ChevronRight, Settings, ShieldAlert, Cpu, SlidersHorizontal, Save, Users, Download, Calendar, LogOut, Lock, Search, ShieldCheck, ListTodo } from 'lucide-react';
+import InfrastructureHealth from './InfrastructureHealth';
+import { LayoutDashboard, Activity, CheckCircle2, Clock, TrendingUp, AlertCircle, PlayCircle, X, Zap, ChevronRight, ChevronDown, Folder, Settings, ShieldAlert, Cpu, SlidersHorizontal, Save, Users, Download, Calendar, LogOut, Lock, Search, ShieldCheck, ListTodo, Server } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 
+// ==========================================
+// محرك الـ Virtualization الخاص بنا (بديل react-window)
+// يعرض ملايين العمليات بدون تجميد المتصفح
+// ==========================================
+const VirtualTreeList = ({ itemCount, itemSize, height, children: RenderComponent }) => {
+  const [scrollTop, setScrollTop] = useState(0);
+
+  // حساب العناصر الظاهرة فقط على الشاشة + مساحة احتياطية صغيرة (Buffer)
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemSize) - 2);
+  const endIndex = Math.min(itemCount - 1, startIndex + Math.ceil(height / itemSize) + 4);
+
+  const items = [];
+  for (let i = startIndex; i <= endIndex; i++) {
+    items.push(
+      <RenderComponent
+        key={i}
+        index={i}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: itemSize,
+          transform: `translateY(${i * itemSize}px)`
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="custom-scrollbar"
+      style={{ height, overflowY: 'auto', position: 'relative' }}
+      onScroll={(e) => setScrollTop(e.target.scrollTop)}
+    >
+      <div style={{ height: itemCount * itemSize, position: 'relative', width: '100%' }}>
+        {items}
+      </div>
+    </div>
+  );
+};
+// ==========================================
+
+
 export default function Dashboard({ token, userRole, userName, onLogout }) {
-  // --- حالات الداشبورد الأساسية ---
-  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard", "audit", or "workload"
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedProcess, setSelectedProcess] = useState("All");
   const [dateFilter, setDateFilter] = useState("all_time");
   const [isSwitching, setIsSwitching] = useState(false);
 
-  // --- حالة محرك البحث الجديد ---
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedDepts, setExpandedDepts] = useState({});
 
   const [showExceptions, setShowExceptions] = useState(false);
   const [specificError, setSpecificError] = useState(null);
@@ -31,7 +75,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
 
   const PIE_COLORS = ['#4B367C', '#F37920', '#10B981', '#EF4444'];
 
-  // --- جلب بيانات الداشبورد ---
   const fetchData = (isAutoRefresh = false) => {
     if (!token) return;
     if (!isAutoRefresh) setIsSwitching(true);
@@ -40,7 +83,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => {
-        if (res.status === 401) onLogout(); // توكن منتهي الصلاحية، قم بتسجيل الخروج
+        if (res.status === 401) onLogout();
         return res.json();
       })
       .then(fetchedData => {
@@ -63,6 +106,42 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     const interval = setInterval(() => fetchData(true), 10000);
     return () => clearInterval(interval);
   }, [selectedProcess, dateFilter, token]);
+
+  const processNodes = useMemo(() => {
+    if (!data || !data.configList) return [];
+
+    let filtered = data.configList;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(c =>
+        c.ProcessName.toLowerCase().includes(q) ||
+        (c.Department && c.Department.toLowerCase().includes(q))
+      );
+    }
+
+    const grouped = {};
+    filtered.forEach(c => {
+      const dept = c.Department || 'General';
+      if (!grouped[dept]) grouped[dept] = [];
+      grouped[dept].push(c.ProcessName);
+    });
+
+    const flatList = [];
+    Object.keys(grouped).forEach(dept => {
+      flatList.push({ type: 'department', id: dept, name: dept, count: grouped[dept].length });
+      if (expandedDepts[dept] || searchQuery) {
+        grouped[dept].forEach(proc => {
+          flatList.push({ type: 'process', id: proc, name: proc, dept: dept });
+        });
+      }
+    });
+
+    return flatList;
+  }, [data, searchQuery, expandedDepts]);
+
+  const toggleDept = (dept) => {
+    setExpandedDepts(prev => ({...prev, [dept]: !prev[dept]}));
+  };
 
   const openExceptionsModal = (errorData = null) => {
     setSpecificError(errorData);
@@ -117,7 +196,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     return Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // --- شاشة التحميل ---
   if (loading && !data) return (
     <div className="flex flex-col items-center justify-center h-screen bg-[#F8FAFC]">
       <div className="relative flex justify-center items-center mb-8">
@@ -129,16 +207,41 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
   );
 
   const { processList, kpis, sidebarStats, analytics, charts, table } = data;
-
-  // -- كود الفلترة والأمان --
-  const allowedProcesses = processList || [];
-
-  // -- محرك البحث الذكي (يتم تطبيقه على العمليات المسموحة فقط) --
-  const filteredProcesses = allowedProcesses.filter(proc =>
-    proc.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   const isRunning = kpis.status === 'Running';
+
+  const RenderTreeRow = ({ index, style }) => {
+    const item = processNodes[index];
+
+    if (item.type === 'department') {
+      const isExpanded = expandedDepts[item.name] || searchQuery;
+      return (
+        <div style={style} className="pr-2 pb-1">
+          <div onClick={() => toggleDept(item.name)} className="flex items-center justify-between px-3 py-2.5 bg-slate-100/70 hover:bg-slate-200 cursor-pointer rounded-xl transition-colors border border-slate-200/50">
+            <div className="flex items-center gap-2">
+              {isExpanded ? <ChevronDown size={16} className="text-[#4B367C]" /> : <ChevronRight size={16} className="text-slate-500" />}
+              <Folder size={14} className={isExpanded ? "text-[#4B367C] fill-[#4B367C]/20" : "text-slate-400"} />
+              <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider">{item.name}</span>
+            </div>
+            <span className="bg-white text-slate-500 text-[10px] px-2 py-0.5 rounded-md font-bold border border-slate-200 shadow-sm">{item.count}</span>
+          </div>
+        </div>
+      );
+    }
+    else {
+      const proc = item.name;
+      const isSelected = activeTab === "dashboard" && selectedProcess === proc;
+      return (
+        <div style={style} className="pr-2 pb-1 pl-6">
+          <div onClick={() => {setActiveTab("dashboard"); setSelectedProcess(proc);}} className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${isSelected ? 'bg-[#4B367C]/10 text-[#4B367C] border border-[#4B367C]/20 shadow-sm' : 'text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-100 hover:translate-x-1'}`}>
+            <div className="flex items-center gap-2 truncate">
+              <span className="truncate">{proc.replace(/_/g, ' ')}</span>
+            </div>
+            {isRunning && kpis.activeProcess === proc && <span className="flex h-2 w-2 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F37920] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#F37920]"></span></span>}
+          </div>
+        </div>
+      );
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#F4F7FC] font-sans overflow-hidden selection:bg-[#4B367C]/20">
@@ -280,12 +383,11 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
         </div>
       )}
 
-      {/* Sidebar - FGS Branded (معزول ومقسم ببريموم دزاين) */}
+      {/* Sidebar - FGS Branded */}
       <div className="w-[22rem] bg-white/95 backdrop-blur-xl border-r border-slate-200/60 flex flex-col shrink-0 shadow-xl z-20 print:hidden">
         <div className="p-8 pb-4 flex-1 flex flex-col">
           <img src="/fgs-logo.png" alt="FGS Solutions" className="h-10 w-full object-contain mb-8 drop-shadow-sm cursor-pointer hover:scale-105 transition-transform" />
 
-          {/* Section 1: Main Control Center */}
           <div className="mb-6">
             <p className="text-[0.65rem] font-bold tracking-[0.2em] text-slate-400 uppercase mb-3 ml-2">Control Center</p>
             <ul className="space-y-1.5">
@@ -296,6 +398,9 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
               <li onClick={() => setActiveTab("workload")} className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${activeTab === "workload" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
                 <ListTodo size={18} className={activeTab === "workload" ? 'text-white' : 'text-slate-400'} /> Workload & SLA
               </li>
+              <li onClick={() => setActiveTab("infrastructure")} className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${activeTab === "infrastructure" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
+                <Server size={18} className={activeTab === "infrastructure" ? 'text-white' : 'text-slate-400'} /> Infrastructure
+              </li>
 
               {(userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
                 <li onClick={() => setActiveTab("audit")} className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${activeTab === "audit" ? 'bg-[#4B367C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'}`}>
@@ -305,14 +410,13 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </ul>
           </div>
 
-          {/* خط فاصل أنيق */}
           <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent mb-6"></div>
 
-          {/* Section 2: Process Matrix (Filters Portfolio) */}
+          {/* Section 2: Enterprise Process Matrix (Virtualized Tree View) */}
           <div className="flex flex-col flex-1 overflow-hidden">
             <div className="flex justify-between items-center mb-3 ml-2 pr-2">
               <p className="text-[0.65rem] font-bold tracking-[0.15em] text-[#F37920] uppercase">Processes Portfolio</p>
-              <span className="bg-[#F37920]/10 text-[#F37920] px-2 py-0.5 rounded-md text-[0.65rem] font-black">{filteredProcesses.length}</span>
+              <span className="bg-[#F37920]/10 text-[#F37920] px-2 py-0.5 rounded-md text-[0.65rem] font-black">{data?.configList?.length || 0}</span>
             </div>
 
             <div className="relative mb-3">
@@ -321,7 +425,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
               </div>
               <input
                 type="text"
-                placeholder="Find a process..."
+                placeholder="Search processes or departments..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 pl-10 pr-9 py-2.5 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4B367C] focus:bg-white focus:ring-2 focus:ring-[#4B367C]/10 transition-all shadow-sm placeholder:text-slate-400"
@@ -333,27 +437,25 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
               )}
             </div>
 
-            <ul className="space-y-1 overflow-y-auto flex-1 pr-1 custom-scrollbar">
-              {filteredProcesses.length > 0 ? (
-                filteredProcesses.map((proc, idx) => (
-                  <li key={idx} onClick={() => {setActiveTab("dashboard"); setSelectedProcess(proc);}} className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex justify-between items-center cursor-pointer transition-all ${activeTab === "dashboard" && selectedProcess === proc ? 'bg-[#4B367C]/10 text-[#4B367C] shadow-sm border border-[#4B367C]/20' : 'text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-100 hover:translate-x-1'}`}>
-                    <div className="flex items-center gap-2 truncate">
-                      <ChevronRight size={14} className={activeTab === "dashboard" && selectedProcess === proc ? 'text-[#F37920]' : 'text-transparent'} />
-                      <span className="truncate">{proc.replace('_', ' ')}</span>
-                    </div>
-                    {isRunning && kpis.activeProcess === proc && <span className="flex h-2 w-2 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F37920] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#F37920]"></span></span>}
-                  </li>
-                ))
+            {/* استخدام المحرك الخاص بنا بدون مكاتب خارجية */}
+            <div className="flex-1 overflow-hidden relative">
+              {processNodes.length > 0 ? (
+                <VirtualTreeList
+                  height={380}
+                  itemCount={processNodes.length}
+                  itemSize={42}
+                >
+                  {RenderTreeRow}
+                </VirtualTreeList>
               ) : (
-                <li className="text-center text-slate-400 text-xs font-bold py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <div className="text-center text-slate-400 text-xs font-bold py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   No matches found
-                </li>
+                </div>
               )}
-            </ul>
+            </div>
           </div>
         </div>
 
-        {/* Sidebar Footer Stats */}
         <div className="mt-auto p-6 bg-slate-50/80 border-t border-slate-100 space-y-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center hover:-translate-y-1 transition-transform">
             <div>
@@ -367,7 +469,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
         </div>
       </div>
 
-      {/* Main Content Area (Dashboard, Audit Trails, or Workload) */}
+     {/* Main Content Area */}
       {activeTab === "audit" ? (
          <div className="flex-1 overflow-hidden relative z-10 bg-white">
            <AuditTrails token={token} />
@@ -376,10 +478,12 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
          <div className="flex-1 overflow-hidden relative z-10 bg-white">
            <WorkloadControl token={token} userRole={userRole} />
          </div>
+      ) : activeTab === "infrastructure" ? (
+         <div className="flex-1 overflow-hidden relative z-10 bg-white">
+           <InfrastructureHealth token={token} userRole={userRole} />
+         </div>
       ) : (
         <div className={`flex-1 overflow-y-auto p-10 xl:p-12 print:p-0 print:overflow-visible relative z-10 transition-opacity duration-300 ${isSwitching ? 'opacity-40 pointer-events-none' : 'opacity-100 animate-in fade-in slide-in-from-bottom-4 duration-500'}`}>
-
-          {/* Header */}
           <div className="flex justify-between items-end mb-10 print:mb-6">
             <div>
               <h2 className="text-4xl font-black text-[#4B367C] tracking-tight flex items-center gap-3">
@@ -392,8 +496,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
 
             <div className="flex items-center gap-4 print:hidden">
-
-              {/* Custom Modern Date Dropdown */}
               <div className="relative">
                 <button
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -436,7 +538,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 )}
               </div>
 
-              {/* زر تعديل الـ ROI - محمي */}
               {selectedProcess !== "All" && (userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
                 <button
                   onClick={openRoiModal}
@@ -446,7 +547,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 </button>
               )}
 
-              {/* زر تصدير التقرير PDF */}
               <button
                 onClick={() => window.print()}
                 className="flex items-center gap-2 px-5 py-3 rounded-full bg-slate-800 text-white shadow-md hover:bg-slate-700 transition-colors font-black uppercase tracking-wider text-xs"
@@ -454,7 +554,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 <Download size={16} /> Export PDF
               </button>
 
-              {/* زر تسجيل الخروج */}
               <button
                 onClick={onLogout}
                 className="flex items-center gap-2 px-4 py-3 rounded-full bg-red-50 text-red-600 border border-red-100 shadow-sm hover:bg-red-500 hover:text-white transition-colors font-black uppercase tracking-wider text-xs"
@@ -465,9 +564,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
           </div>
 
-          {/* 5 Enterprise KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-5 mb-8 print:grid-cols-5">
-
             <div className="bg-[#4B367C] p-6 rounded-[2rem] shadow-lg text-white flex flex-col justify-between relative overflow-hidden group">
               <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
               <Settings size={28} className="mb-4 opacity-80" />
@@ -520,7 +617,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
           </div>
 
-          {/* Analytics Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 print:break-inside-avoid">
             <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
               <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider mb-6 flex items-center gap-2"><Cpu size={18}/> Total Saved Hours Per Department</h3>
@@ -557,7 +653,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
           </div>
 
-          {/* Charts Row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 print:break-inside-avoid">
              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 lg:col-span-1 flex flex-col items-center justify-center hover:shadow-md transition-shadow">
               <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-2 w-full text-left">Processes per Status</h3>
@@ -605,7 +700,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
           </div>
 
-          {/* Advanced Data Grid */}
           <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-8 hover:shadow-md transition-shadow print:break-inside-avoid">
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider">Active Process Runs Log</h3>
