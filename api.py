@@ -1,392 +1,669 @@
-from fastapi import FastAPI, Query, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import pandas as pd
-import numpy as np
-from datetime import date
-from typing import Optional
+from __future__ import annotations
+
+import os
+import logging
+import secrets
 import math
 import json
-from db_connection import run_query, execute_update
-from routers import auth  # استدعاء راوتر المصادقة
+import hashlib
+from datetime import datetime, timedelta, date
+from typing import Optional, Any
 
-app = FastAPI()
+import pandas as pd
+import numpy as np
+
+from fastapi import (
+    FastAPI,
+    Query,
+    Depends,
+    HTTPException,
+    Header,
+    WebSocket,
+    WebSocketDisconnect,
+    Request,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
+
+from db_connection import run_query, execute_update, execute_transaction
+from routers import auth
+
+# ============================================================
+# Logging
+# ============================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.FileHandler("api.log"), logging.StreamHandler()],
+)
+logger = logging.getLogger("RPA_API")
+
+app = FastAPI(title="RPA CoE Control Room API", version="2.1.1")
+
+# GZip (مهم مع Responses كبيرة)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# ============================================================
+# CORS
+# ============================================================
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in ALLOWED_ORIGINS if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# تضمين مسارات المصادقة
 app.include_router(auth.router)
 
+ENROLLMENT_TTL_MINUTES = int(os.environ.get("ENROLLMENT_TTL_MINUTES", "15"))
 
-# دالة تنظيف تمنع نهائياً أي خطأ NaN أو Infinity في الـ JSON
-def clean_json_data(data):
+# (Enterprise) Pepper اختياري لتخزين AgentToken بشكل HASH بدل plaintext
+AGENT_TOKEN_PEPPER = os.environ.get("AGENT_TOKEN_PEPPER", "")
+
+
+# ============================================================
+# Helpers
+# ============================================================
+def clean_json_data(data: Any):
     if isinstance(data, dict):
         return {k: clean_json_data(v) for k, v in data.items()}
-    elif isinstance(data, list):
+
+    if isinstance(data, list):
         return [clean_json_data(v) for v in data]
-    elif isinstance(data, float):
-        if math.isnan(data) or math.isinf(data):
+
+    try:
+        if pd.isna(data):
+            return 0
+    except Exception:
+        pass
+
+    if isinstance(data, (datetime, date, pd.Timestamp)):
+        try:
+            return data.isoformat()
+        except Exception:
+            return str(data)
+
+    if isinstance(data, (np.integer,)):
+        return int(data)
+
+    if isinstance(data, (np.floating, float)):
+        v = float(data)
+        if math.isnan(v) or math.isinf(v):
             return 0.0
-        return data
+        return v
+
+    if isinstance(data, (np.bool_,)):
+        return bool(data)
+
     return data
 
 
+def raise_safe_error(action: str, exc: Exception):
+    logger.error(f"{action} failed: {exc}", exc_info=True)
+    raise HTTPException(status_code=500, detail=f"حدث خطأ أثناء {action}، برجاء المحاولة لاحقاً")
+
+
+def _token_hash(token: str) -> str:
+    """
+    لو AGENT_TOKEN_PEPPER متظبط => نخزن SHA256(token+pepper)
+    لو مش متظبط => هنخزن plaintext (غير مفضل enterprise)
+    """
+    if not AGENT_TOKEN_PEPPER:
+        return token
+    return hashlib.sha256((token + AGENT_TOKEN_PEPPER).encode("utf-8")).hexdigest()
+
+
+def _looks_like_sha256_hex(s: str) -> bool:
+    if not isinstance(s, str) or len(s) != 64:
+        return False
+    try:
+        int(s, 16)
+        return True
+    except Exception:
+        return False
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+# ============================================================
+# ROI Configuration
+# ============================================================
 class ROIConfigUpdate(BaseModel):
-    ProcessName: str
-    EmpMinutesPerRequest: float
-    EmpCostPerRequest: float
-    BotCostPerRequest: float
-    ExpectedRunsPerDay: int
+    ProcessName: str = Field(..., min_length=1, max_length=100)
+    EmpMinutesPerRequest: float = Field(..., ge=0)
+    EmpCostPerRequest: float = Field(..., ge=0)
+    BotCostPerRequest: float = Field(..., ge=0)
+    ExpectedRunsPerDay: int = Field(..., ge=0)
 
 
 @app.post("/api/update-roi")
-def update_roi(config: ROIConfigUpdate, current_user: auth.User = Depends(auth.get_current_user)):
-    # حماية: منع الموظف العادي من التعديل
-    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتعديل الـ ROI")
-
-    # جلب القيم القديمة لغرض التدقيق
+def update_roi(
+    config: ROIConfigUpdate,
+    request: Request,
+    current_user: auth.User = Depends(auth.require_roles("SuperAdmin", "CoE_Manager")),
+):
     old_values_df = run_query(
-        f"SELECT EmpMinutesPerRequest, EmpCostPerRequest, BotCostPerRequest FROM ProcessConfig WHERE ProcessName = '{config.ProcessName}'")
+        """
+        SELECT EmpMinutesPerRequest, EmpCostPerRequest, BotCostPerRequest, ExpectedRunsPerDay
+        FROM ProcessConfig
+        WHERE ProcessName = :name
+        """,
+        {"name": config.ProcessName},
+    )
+    if old_values_df.empty:
+        raise HTTPException(status_code=404, detail="العملية غير موجودة")
 
-    old_vals = old_values_df.iloc[0].to_dict() if not old_values_df.empty else {}
+    old_vals = old_values_df.iloc[0].to_dict()
+    old_vals_json = json.dumps(old_vals, default=str)
+    new_vals_json = json.dumps(config.dict(), default=str)
 
-    # تحويل البيانات إلى JSON آمن للـ SQL
-    old_vals_json = json.dumps(old_vals)
-    new_vals_json = json.dumps(config.dict())
-
-    update_query = f"""
-    UPDATE ProcessConfig 
-    SET EmpMinutesPerRequest = {config.EmpMinutesPerRequest},
-        EmpCostPerRequest = {config.EmpCostPerRequest},
-        BotCostPerRequest = {config.BotCostPerRequest},
-        ExpectedRunsPerDay = {config.ExpectedRunsPerDay}
-    WHERE ProcessName = '{config.ProcessName}';
+    update_query = """
+        UPDATE ProcessConfig
+        SET EmpMinutesPerRequest = :emp_minutes,
+            EmpCostPerRequest = :emp_cost,
+            BotCostPerRequest = :bot_cost,
+            ExpectedRunsPerDay = :expected_runs
+        WHERE ProcessName = :name
     """
+    update_params = {
+        "emp_minutes": config.EmpMinutesPerRequest,
+        "emp_cost": config.EmpCostPerRequest,
+        "bot_cost": config.BotCostPerRequest,
+        "expected_runs": config.ExpectedRunsPerDay,
+        "name": config.ProcessName,
+    }
 
-    # استخدام القيم الآمنة (JSON)
-    audit_query = f"""
-    INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues)
-    VALUES ({current_user.UserID}, 'Update_ROI', '{config.ProcessName}', '{old_vals_json}', '{new_vals_json}');
+    audit_query = """
+        INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues, IPAddress, IsSuccess)
+        VALUES (:user_id, 'Update_ROI', :name, :old_vals, :new_vals, :ip, 1)
     """
+    audit_params = {
+        "user_id": current_user.UserID,
+        "name": config.ProcessName,
+        "old_vals": old_vals_json,
+        "new_vals": new_vals_json,
+        "ip": (request.client.host if request.client else None),
+    }
 
     try:
-        execute_update(update_query)
-        execute_update(audit_query)  # تسجيل التعديل واسم المستخدم
+        execute_transaction([(update_query, update_params), (audit_query, audit_params)])
         return {"status": "success", "message": "ROI configuration updated successfully"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise_safe_error("تحديث بيانات الـ ROI", e)
 
 
+# ============================================================
+# ✅ Processes (Keyset Pagination + Prefix Search)
+# ============================================================
+@app.get("/api/processes")
+def list_processes(
+    search: Optional[str] = Query(None, description="Prefix search (مثال: Inv)"),
+    department: Optional[str] = Query(None),
+    after: Optional[str] = Query(None, description="Cursor: آخر ProcessName رجع لك"),
+    page_size: int = Query(100, ge=1, le=1000),
+    include_total: bool = Query(False, description="خليها False في الإنتاج لتقليل الضغط"),
+    current_user: auth.User = Depends(auth.get_current_user),
+):
+    where = ["1=1"]
+    params: dict[str, Any] = {"ps": page_size}
+
+    if current_user.AllowedDepartment != "ALL":
+        where.append("Department = :dept_scope")
+        params["dept_scope"] = current_user.AllowedDepartment
+
+    if department and current_user.AllowedDepartment == "ALL":
+        where.append("Department = :dept")
+        params["dept"] = department
+
+    if search:
+        where.append("ProcessName LIKE :search")
+        params["search"] = f"{search}%"
+
+    if after:
+        where.append("ProcessName > :after")
+        params["after"] = after
+
+    where_sql = " AND ".join(where)
+
+    total = None
+    if include_total:
+        count_params = {k: v for k, v in params.items() if k != "ps"}
+        count_df = run_query(f"SELECT COUNT(1) AS total FROM ProcessConfig WHERE {where_sql}", count_params)
+        total = int(count_df.iloc[0]["total"]) if not count_df.empty else 0
+
+    data_df = run_query(
+        f"""
+        SELECT TOP (:ps)
+            ProcessName, Department, BotName, ExpectedRunsPerDay, SLATargetMinutes, Criticality, IsActive
+        FROM ProcessConfig
+        WHERE {where_sql}
+        ORDER BY ProcessName
+        """,
+        params,
+    )
+
+    items = clean_json_data(data_df.to_dict("records")) if not data_df.empty else []
+    next_cursor = items[-1]["ProcessName"] if items else None
+
+    return {"page_size": page_size, "total": total, "next_cursor": next_cursor, "items": items}
+
+
+# ============================================================
+# ✅ Dashboard Data (Enterprise/Scalable - SQL Aggregations)
+# ============================================================
 @app.get("/api/dashboard-data")
-def get_dashboard_data(process: Optional[str] = Query(None), current_user: auth.User = Depends(auth.get_current_user)):
-    # فلترة العمليات بناءً على القسم (Department) الموجود في الداتابيز مباشرة
-    dept_filter = ""
-    if current_user.AllowedDepartment != 'ALL':
-        dept_filter = f" WHERE Department = '{current_user.AllowedDepartment}'"
+def get_dashboard_data(
+    process: Optional[str] = Query(None, description="ProcessName أو None"),
+    days: int = Query(90, ge=1, le=730),
+    include_process_list: bool = Query(False),
+    process_list_limit: int = Query(200, ge=1, le=2000),
+    current_user: auth.User = Depends(auth.get_current_user),
+):
+    cfg_filters = []
+    runs_filters = ["r.StartTime >= DATEADD(day, -:days, GETDATE())"]
+    params: dict[str, Any] = {"days": days}
 
-    # جلب الإعدادات للقسم الخاص بالمستخدم فقط
-    config_query = f"SELECT ProcessName, ExpectedRunsPerDay, Department, BotName, EmpMinutesPerRequest, EmpCostPerRequest, BotCostPerRequest FROM ProcessConfig {dept_filter}"
-    df_config = run_query(config_query)
+    if current_user.AllowedDepartment != "ALL":
+        cfg_filters.append("Department = :dept")
+        runs_filters.append("c.Department = :dept")
+        params["dept"] = current_user.AllowedDepartment
 
-    if df_config.empty:
-        return {"error": "لا توجد عمليات متاحة لهذا القسم"}
+    if process and process != "All":
+        p_df = run_query(
+            f"SELECT 1 AS X FROM ProcessConfig WHERE ProcessName = :p {'AND Department = :dept' if current_user.AllowedDepartment != 'ALL' else ''}",
+            {"p": process, **({"dept": current_user.AllowedDepartment} if current_user.AllowedDepartment != "ALL" else {})},
+        )
+        if p_df.empty:
+            raise HTTPException(status_code=403, detail="غير مصرح لك برؤية هذه العملية")
 
-    allowed_processes = df_config['ProcessName'].tolist()
+        cfg_filters.append("ProcessName = :p")
+        runs_filters.append("r.ProcessName = :p")
+        params["p"] = process
 
-    # فلترة حركات التشغيل (Runs) لتشمل عمليات هذا القسم فقط
-    if current_user.AllowedDepartment == 'ALL':
-        runs_filter = ""
-    else:
-        if len(allowed_processes) == 1:
-            runs_filter = f"WHERE ProcessName = '{allowed_processes[0]}'"
-        else:
-            runs_filter = f"WHERE ProcessName IN {tuple(allowed_processes)}"
+    cfg_where = ("WHERE " + " AND ".join(cfg_filters)) if cfg_filters else ""
+    runs_where = " AND ".join(runs_filters)
 
-    runs_query = f"SELECT * FROM ProcessRuns {runs_filter} ORDER BY StartTime DESC"
-    df_runs = run_query(runs_query)
+    cfg_kpis_df = run_query(
+        f"""
+        SELECT
+            COUNT(1) AS totalProcedures,
+            ISNULL(SUM(ISNULL(ExpectedRunsPerDay,0)),0) AS targetRuns
+        FROM ProcessConfig
+        {cfg_where}
+        """,
+        params,
+    )
+    total_procedures = int(cfg_kpis_df.iloc[0]["totalProcedures"]) if not cfg_kpis_df.empty else 0
+    target_runs = int(cfg_kpis_df.iloc[0]["targetRuns"]) if not cfg_kpis_df.empty else 0
 
-    if df_runs.empty:
-        return {"error": "لا توجد بيانات تشغيل مسجلة لعملياتك"}
+    runs_kpis_df = run_query(
+        f"""
+        SELECT
+            COUNT(1) AS bookedRuns,
+            SUM(CASE WHEN r.Status = 'Completed' THEN 1 ELSE 0 END) AS successRuns,
+            ISNULL(SUM(ISNULL(r.TransactionsCount,0)),0) AS totalTransactions,
+            ISNULL(SUM(
+                CAST(ISNULL(r.TransactionsCount,0) AS float) * CAST(ISNULL(c.EmpMinutesPerRequest,0) AS float) / 60.0
+            ),0) AS timeSavedHours,
+            ISNULL(SUM(
+                CAST(ISNULL(r.TransactionsCount,0) AS float) *
+                (CAST(ISNULL(c.EmpCostPerRequest,0) AS float) - CAST(ISNULL(c.BotCostPerRequest,0) AS float))
+            ),0) AS costSaved
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE {runs_where}
+        """,
+        params,
+    )
 
-    # -- بقية الكود كما هو تماماً لعمل الحسابات --
-    config_list = df_config.to_dict('records')
+    booked_runs = int(runs_kpis_df.iloc[0]["bookedRuns"]) if not runs_kpis_df.empty else 0
+    success_runs = int(runs_kpis_df.iloc[0]["successRuns"] or 0) if not runs_kpis_df.empty else 0
+    total_transactions = int(runs_kpis_df.iloc[0]["totalTransactions"] or 0) if not runs_kpis_df.empty else 0
+    time_saved = float(runs_kpis_df.iloc[0]["timeSavedHours"] or 0) if not runs_kpis_df.empty else 0.0
+    cost_saved = float(runs_kpis_df.iloc[0]["costSaved"] or 0) if not runs_kpis_df.empty else 0.0
 
-    if process and process != "All" and process in allowed_processes:
-        df_runs = df_runs[df_runs['ProcessName'] == process]
-
-    if 'TransactionsCount' in df_runs.columns:
-        df_runs['TransactionsCount'] = pd.to_numeric(df_runs['TransactionsCount'], errors='coerce').fillna(0)
-
-    df_runs = pd.merge(df_runs, df_config, on='ProcessName', how='left')
-    df_runs['DynamicTimeSaved'] = (df_runs['TransactionsCount'] * df_runs['EmpMinutesPerRequest']) / 60.0
-    df_runs['DynamicCostSaved'] = (df_runs['TransactionsCount'] * df_runs['EmpCostPerRequest']) - (
-            df_runs['TransactionsCount'] * df_runs['BotCostPerRequest'])
-
-    df_runs = df_runs.fillna(0).replace([np.inf, -np.inf], 0)
-    df_runs['StartTime'] = pd.to_datetime(df_runs['StartTime'])
-    df_runs['RunDate'] = df_runs['StartTime'].dt.date
-    latest_date = df_runs['RunDate'].max()
-    df_today = df_runs[df_runs['RunDate'] == latest_date]
-
-    target_runs = int(df_config['ExpectedRunsPerDay'].sum())
-    running_now = df_today[df_today['Status'] == 'Running']
-    active_req = running_now.iloc[0]['RequestID'] if not running_now.empty else "-"
-    active_proc = running_now.iloc[0]['ProcessName'] if not running_now.empty else "Idle"
-    current_status = "Running" if not running_now.empty else "Standby"
-
-    total_procedures = len(df_config)
-    total_transactions = int(df_runs['TransactionsCount'].sum())
-    success_rate = int((len(df_runs[df_runs['Status'] == 'Completed']) / len(df_runs)) * 100) if len(df_runs) > 0 else 0
+    success_rate = int((success_runs / booked_runs) * 100) if booked_runs > 0 else 0
     error_rate = 100 - success_rate
 
-    dept_savings = []
-    bot_utilization = []
-    if 'Department' in df_runs.columns:
-        dept_df = df_runs.groupby('Department')['DynamicTimeSaved'].sum().reset_index()
-        dept_df.rename(columns={'DynamicTimeSaved': 'TimeSavedHours'}, inplace=True)
-        dept_savings = dept_df.to_dict('records')
+    today_df = run_query(
+        f"""
+        SELECT
+            COUNT(1) AS runsToday,
+            SUM(CASE WHEN r.Status IN ('Failed','Stopped') THEN 1 ELSE 0 END) AS stopsToday
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE r.StartTime >= CONVERT(date, GETDATE())
+          AND r.StartTime < DATEADD(day, 1, CONVERT(date, GETDATE()))
+          AND ({'1=1' if current_user.AllowedDepartment == 'ALL' else 'c.Department = :dept'})
+          {'' if not (process and process != 'All') else 'AND r.ProcessName = :p'}
+        """,
+        params,
+    )
+    runs_today = int(today_df.iloc[0]["runsToday"]) if not today_df.empty else 0
+    stops_today = int(today_df.iloc[0]["stopsToday"] or 0) if not today_df.empty else 0
 
-        bot_df = df_runs.groupby(['BotName', 'ExpectedRunsPerDay']).size().reset_index(name='ActualRuns')
-        bot_df['ExpectedRunsPerDay'] = bot_df['ExpectedRunsPerDay'].replace(0, 1)
-        bot_df['Utilization'] = ((bot_df['ActualRuns'] / bot_df['ExpectedRunsPerDay']) * 100).fillna(0).round(1)
-        bot_df['Color'] = bot_df['Utilization'].apply(lambda x: '#EF4444' if x > 70 else '#10B981')
-        bot_utilization = bot_df[['BotName', 'Utilization', 'Color']].to_dict('records')
+    running_df = run_query(
+        f"""
+        SELECT TOP 1 r.ProcessName, r.RequestID
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE r.Status = 'Running'
+          AND ({'1=1' if current_user.AllowedDepartment == 'ALL' else 'c.Department = :dept'})
+          {'' if not (process and process != 'All') else 'AND r.ProcessName = :p'}
+        ORDER BY r.StartTime DESC
+        """,
+        params,
+    )
+    active_req = str(running_df.iloc[0]["RequestID"]) if not running_df.empty else "-"
+    active_proc = str(running_df.iloc[0]["ProcessName"]) if not running_df.empty else "Idle"
+    current_status = "Running" if not running_df.empty else "Standby"
 
-    status_counts = df_runs['Status'].value_counts().reset_index()
-    status_counts.columns = ['name', 'value']
-    status_distribution = status_counts.to_dict('records')
+    fail_df = run_query(
+        f"""
+        SELECT TOP 50 r.ProcessName, r.RequestID,
+               ISNULL(NULLIF(r.FailureReason,''), 'Unknown Error') AS FailureReason,
+               r.Status
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE r.StartTime >= CONVERT(date, GETDATE())
+          AND r.StartTime < DATEADD(day, 1, CONVERT(date, GETDATE()))
+          AND r.Status IN ('Failed','Stopped')
+          AND ({'1=1' if current_user.AllowedDepartment == 'ALL' else 'c.Department = :dept'})
+          {'' if not (process and process != 'All') else 'AND r.ProcessName = :p'}
+        ORDER BY r.StartTime DESC
+        """,
+        params,
+    )
+    failure_details = fail_df.to_dict("records") if not fail_df.empty else []
 
-    failed_today_df = df_today[df_today['Status'].isin(['Failed', 'Stopped'])]
-    failure_details = failed_today_df[['ProcessName', 'RequestID', 'FailureReason', 'Status']].fillna(
-        "Unknown Error").to_dict('records')
+    status_df = run_query(
+        f"""
+        SELECT r.Status AS name, COUNT(1) AS value
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE {runs_where}
+        GROUP BY r.Status
+        """,
+        params,
+    )
+    status_distribution = status_df.to_dict("records") if not status_df.empty else []
 
-    vol_df = df_runs.groupby('RunDate').size().reset_index(name='volume')
-    vol_df['date'] = pd.to_datetime(vol_df['RunDate']).dt.strftime('%d %b')
-    volume_data = vol_df[['date', 'volume']].tail(14).to_dict('records')
+    vol_df = run_query(
+        f"""
+        SELECT TOP 14 CONVERT(date, r.StartTime) AS RunDate, COUNT(1) AS volume
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE r.StartTime >= DATEADD(day, -14, GETDATE())
+          AND ({'1=1' if current_user.AllowedDepartment == 'ALL' else 'c.Department = :dept'})
+          {'' if not (process and process != 'All') else 'AND r.ProcessName = :p'}
+        GROUP BY CONVERT(date, r.StartTime)
+        ORDER BY RunDate
+        """,
+        params,
+    )
+    volume_data = []
+    if not vol_df.empty:
+        vol_df["date"] = pd.to_datetime(vol_df["RunDate"], errors="coerce").dt.strftime("%d %b")
+        volume_data = vol_df[["date", "volume"]].to_dict("records")
 
-    sav_df = df_runs.groupby('RunDate').agg({'DynamicCostSaved': 'sum'}).reset_index()
-    sav_df['date'] = pd.to_datetime(sav_df['RunDate']).dt.strftime('%d %b')
-    sav_df['bar'] = (sav_df['DynamicCostSaved']).round(2)
-    sav_df['line'] = sav_df['bar'] + (sav_df['bar'] * 0.1)
-    savings_data = sav_df[['date', 'bar', 'line']].tail(14).to_dict('records')
+    sav_df = run_query(
+        f"""
+        SELECT TOP 14 CONVERT(date, r.StartTime) AS RunDate,
+               ISNULL(SUM(
+                CAST(ISNULL(r.TransactionsCount,0) AS float) *
+                (CAST(ISNULL(c.EmpCostPerRequest,0) AS float) - CAST(ISNULL(c.BotCostPerRequest,0) AS float))
+               ),0) AS costSaved
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE r.StartTime >= DATEADD(day, -14, GETDATE())
+          AND ({'1=1' if current_user.AllowedDepartment == 'ALL' else 'c.Department = :dept'})
+          {'' if not (process and process != 'All') else 'AND r.ProcessName = :p'}
+        GROUP BY CONVERT(date, r.StartTime)
+        ORDER BY RunDate
+        """,
+        params,
+    )
+    savings_data = []
+    if not sav_df.empty:
+        sav_df["date"] = pd.to_datetime(sav_df["RunDate"], errors="coerce").dt.strftime("%d %b")
+        sav_df["bar"] = pd.to_numeric(sav_df["costSaved"], errors="coerce").fillna(0).round(2)
+        sav_df["line"] = sav_df["bar"] + (sav_df["bar"] * 0.1)
+        savings_data = sav_df[["date", "bar", "line"]].to_dict("records")
 
-    df_runs['CostSavedForTable'] = df_runs['DynamicCostSaved'].round(2)
-    recent_runs = df_runs.head(8).fillna("-").to_dict('records')
-    for run in recent_runs:
-        run['CostSaved'] = run['CostSavedForTable']
+    recent_df = run_query(
+        f"""
+        SELECT TOP 8 r.RunID, r.ProcessName, r.RequestID, r.Status, r.StartTime, r.EndTime,
+               r.DurationMinutes, r.FailureReason, r.TransactionsCount
+        FROM ProcessRuns r
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+        WHERE {runs_where}
+        ORDER BY r.StartTime DESC
+        """,
+        params,
+    )
+    table = recent_df.to_dict("records") if not recent_df.empty else []
+
+    process_list: list[str] = []
+    if include_process_list:
+        pl_df = run_query(
+            f"""
+            SELECT TOP (:lim) ProcessName
+            FROM ProcessConfig
+            {cfg_where}
+            ORDER BY ProcessName
+            """,
+            {**params, "lim": process_list_limit},
+        )
+        process_list = pl_df["ProcessName"].astype(str).tolist() if not pl_df.empty else []
 
     response_data = {
-        "processList": allowed_processes,  # يرسل العمليات المسموحة فقط للفرونت إند
-        "configList": config_list,
+        "processList": process_list,
+        "processListTruncated": bool(include_process_list and total_procedures > len(process_list)),
+        "processListTotal": total_procedures,
+        "configList": [],
         "kpis": {
             "totalProcedures": total_procedures,
             "totalTransactions": total_transactions,
-            "runsToday": len(df_today),
+            "runsToday": runs_today,
             "targetRuns": target_runs,
-            "stopsToday": len(failure_details),
-            "timeSaved": float(np.nan_to_num(round(float(df_runs['DynamicTimeSaved'].sum()), 1))),
-            "costSaved": int(np.nan_to_num(df_runs['DynamicCostSaved'].sum())),
+            "stopsToday": stops_today,
+            "timeSaved": round(time_saved, 1),
+            "costSaved": int(round(cost_saved, 0)),
             "activeRequest": active_req,
             "activeProcess": active_proc,
             "status": current_status,
-            "failureDetails": failure_details
+            "failureDetails": failure_details,
         },
-        "sidebarStats": {
-            "bookedRuns": len(df_runs),
-            "successRate": success_rate,
-            "errorRate": error_rate,
-        },
-        "analytics": {
-            "departmentSavings": dept_savings,
-            "botUtilization": bot_utilization,
-            "statusDistribution": status_distribution
-        },
-        "charts": {
-            "volume": volume_data,
-            "savings": savings_data
-        },
-        "table": recent_runs
+        "sidebarStats": {"bookedRuns": booked_runs, "successRate": success_rate, "errorRate": error_rate},
+        "analytics": {"statusDistribution": status_distribution},
+        "charts": {"volume": volume_data, "savings": savings_data},
+        "table": table,
     }
 
     return clean_json_data(response_data)
 
 
+# ============================================================
+# Audit Logs
+# ============================================================
 @app.get("/api/audit-logs")
-def get_audit_logs(current_user: auth.User = Depends(auth.get_current_user)):
-    # السماح للسوبر أدمن أو مديري الأقسام (CoE_Manager) برؤية السجلات
-    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض سجلات التدقيق")
-
-    # بناء شرط الفلترة بناءً على قسم المستخدم
+def get_audit_logs(
+    limit: int = Query(500, ge=1, le=5000),
+    current_user: auth.User = Depends(auth.require_roles("SuperAdmin", "CoE_Manager")),
+):
+    top_n = int(limit)
     dept_filter = ""
-    if current_user.AllowedDepartment != 'ALL':
-        dept_filter = f" WHERE p.Department = '{current_user.AllowedDepartment}'"
+    params: dict[str, Any] = {}
 
-    # دمج جدول السجلات مع جدول الإعدادات لمعرفة قسم كل عملية وفلترتها
+    if current_user.AllowedDepartment != "ALL":
+        dept_filter = " WHERE p.Department = :dept"
+        params["dept"] = current_user.AllowedDepartment
+
     query = f"""
-        SELECT a.LogID, ISNULL(u.Username, 'System') AS Username, a.ActionType, 
-               a.ProcessName, a.OldValues, a.NewValues, a.ActionDate 
+        SELECT TOP {top_n}
+               a.LogID, ISNULL(u.Username, 'System') AS Username, a.ActionType,
+               a.ProcessName, a.OldValues, a.NewValues, a.ActionDate, a.IPAddress, a.IsSuccess
         FROM AuditLogs a
         LEFT JOIN SystemUsers u ON a.UserID = u.UserID
-        INNER JOIN ProcessConfig p ON a.ProcessName = p.ProcessName
+        LEFT JOIN ProcessConfig p ON a.ProcessName = p.ProcessName
         {dept_filter}
         ORDER BY a.ActionDate DESC
     """
-    df_audit = run_query(query)
-
+    df_audit = run_query(query, params)
     if df_audit.empty:
         return []
-
-    df_audit['ActionDate'] = pd.to_datetime(df_audit['ActionDate']).dt.strftime('%Y-%m-%d %H:%M:%S')
-
-    logs = df_audit.to_dict('records')
-    return clean_json_data(logs)
+    df_audit["ActionDate"] = pd.to_datetime(df_audit["ActionDate"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M:%S")
+    return clean_json_data(df_audit.to_dict("records"))
 
 
-# ---------------------------------------------------------
-# الجزء الخاص بـ SLA & Workload Management
-# ---------------------------------------------------------
-
+# ============================================================
+# SLA & Workload Management
+# ============================================================
 class SLAConfigUpdate(BaseModel):
-    ProcessName: str
-    SLATargetMinutes: int
-    AvgItemProcessingSeconds: int
+    ProcessName: str = Field(..., min_length=1, max_length=100)
+    SLATargetMinutes: int = Field(..., gt=0)
+    AvgItemProcessingSeconds: int = Field(..., gt=0)
 
 
 @app.post("/api/update-sla")
-def update_sla(config: SLAConfigUpdate, current_user: auth.User = Depends(auth.get_current_user)):
-    # 1. الحماية: للسوبر أدمن ومديري الأقسام فقط
-    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتعديل الـ SLA")
-
-    # 2. جلب القيم القديمة من الجدولين لتسجيلها في الـ Audit
-    old_config_df = run_query(f"SELECT SLATargetMinutes FROM ProcessConfig WHERE ProcessName = '{config.ProcessName}'")
+def update_sla(
+    config: SLAConfigUpdate,
+    request: Request,
+    current_user: auth.User = Depends(auth.require_roles("SuperAdmin", "CoE_Manager")),
+):
+    old_config_df = run_query(
+        "SELECT SLATargetMinutes FROM ProcessConfig WHERE ProcessName = :name",
+        {"name": config.ProcessName},
+    )
     old_queue_df = run_query(
-        f"SELECT AvgItemProcessingSeconds FROM ProcessQueues WHERE ProcessName = '{config.ProcessName}'")
+        "SELECT AvgItemProcessingSeconds FROM ProcessQueues WHERE ProcessName = :name",
+        {"name": config.ProcessName},
+    )
+    if old_config_df.empty:
+        raise HTTPException(status_code=404, detail="العملية غير موجودة في الإعدادات")
 
-    old_vals = {}
-
-    # معالجة آمنة للـ NULL (None) لتجنب أخطاء التحويل
-    if not old_config_df.empty:
-        sla_val = old_config_df.iloc[0]['SLATargetMinutes']
-        old_vals['SLATargetMinutes'] = int(sla_val) if pd.notnull(sla_val) else 0
+    old_vals: dict[str, Any] = {}
+    sla_val = old_config_df.iloc[0]["SLATargetMinutes"]
+    old_vals["SLATargetMinutes"] = int(sla_val) if pd.notnull(sla_val) else 0
 
     if not old_queue_df.empty:
-        avg_val = old_queue_df.iloc[0]['AvgItemProcessingSeconds']
-        old_vals['AvgItemProcessingSeconds'] = int(avg_val) if pd.notnull(avg_val) else 0
+        avg_val = old_queue_df.iloc[0]["AvgItemProcessingSeconds"]
+        old_vals["AvgItemProcessingSeconds"] = int(avg_val) if pd.notnull(avg_val) else 0
+    else:
+        old_vals["AvgItemProcessingSeconds"] = 0
 
-    old_vals_json = json.dumps(old_vals)
-    new_vals_json = json.dumps(config.dict())
+    old_vals_json = json.dumps(old_vals, default=str)
+    new_vals_json = json.dumps(config.dict(), default=str)
 
-    # 3. تحديث القيم (SLA في جدول الإعدادات، وسرعة البوت في جدول الطوابير)
-    update_config_query = f"""
-    UPDATE ProcessConfig 
-    SET SLATargetMinutes = {config.SLATargetMinutes} 
-    WHERE ProcessName = '{config.ProcessName}';
-    """
-
-    update_queue_query = f"""
-    UPDATE ProcessQueues 
-    SET AvgItemProcessingSeconds = {config.AvgItemProcessingSeconds} 
-    WHERE ProcessName = '{config.ProcessName}';
-    """
-
-    # 4. تسجيل العملية في جدول التدقيق والمراقبة
-    audit_query = f"""
-    INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues)
-    VALUES ({current_user.UserID}, 'Update_SLA', '{config.ProcessName}', '{old_vals_json}', '{new_vals_json}');
+    update_config_query = "UPDATE ProcessConfig SET SLATargetMinutes = :sla WHERE ProcessName = :name"
+    update_queue_query = "UPDATE ProcessQueues SET AvgItemProcessingSeconds = :avg_sec WHERE ProcessName = :name"
+    audit_query = """
+        INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues, IPAddress, IsSuccess)
+        VALUES (:user_id, 'Update_SLA', :name, :old_vals, :new_vals, :ip, 1)
     """
 
     try:
-        execute_update(update_config_query)
-        execute_update(update_queue_query)
-        execute_update(audit_query)
+        execute_transaction(
+            [
+                (update_config_query, {"sla": config.SLATargetMinutes, "name": config.ProcessName}),
+                (update_queue_query, {"avg_sec": config.AvgItemProcessingSeconds, "name": config.ProcessName}),
+                (
+                    audit_query,
+                    {
+                        "user_id": current_user.UserID,
+                        "name": config.ProcessName,
+                        "old_vals": old_vals_json,
+                        "new_vals": new_vals_json,
+                        "ip": (request.client.host if request.client else None),
+                    },
+                ),
+            ]
+        )
         return {"status": "success", "message": "SLA configuration updated successfully"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise_safe_error("تحديث إعدادات الـ SLA", e)
 
 
 @app.get("/api/sla-workload")
 def get_sla_workload(current_user: auth.User = Depends(auth.get_current_user)):
-    # 1. فلترة الطوابير حسب صلاحية قسم المستخدم
     dept_filter = ""
-    if current_user.AllowedDepartment != 'ALL':
-        dept_filter = f" AND c.Department = '{current_user.AllowedDepartment}'"
+    params: dict[str, Any] = {}
 
-    # 2. جلب بيانات الطابور ودمجها مع إعدادات الـ SLA
+    if current_user.AllowedDepartment != "ALL":
+        dept_filter = " AND c.Department = :dept"
+        params["dept"] = current_user.AllowedDepartment
+
     query = f"""
-        SELECT 
-            q.ProcessName, 
-            q.PendingItems, 
-            q.ActiveItems, 
-            q.AvgItemProcessingSeconds,
-            c.SLATargetMinutes,
-            c.Department
+        SELECT q.ProcessName, q.PendingItems, q.ActiveItems, q.AvgItemProcessingSeconds,
+               c.SLATargetMinutes, c.Department
         FROM ProcessQueues q
         JOIN ProcessConfig c ON q.ProcessName = c.ProcessName
         WHERE 1=1 {dept_filter}
     """
-    df_queue = run_query(query)
-
+    df_queue = run_query(query, params)
     if df_queue.empty:
         return []
 
-    # 3. الذكاء التنبؤي: حساب الوقت التقديري لإنهاء الطابور (بالدقائق)
-    df_queue['EstimatedCompletionMinutes'] = (df_queue['PendingItems'] * df_queue['AvgItemProcessingSeconds']) / 60.0
+    df_queue["EstimatedCompletionMinutes"] = (
+        pd.to_numeric(df_queue["PendingItems"], errors="coerce").fillna(0)
+        * pd.to_numeric(df_queue["AvgItemProcessingSeconds"], errors="coerce").fillna(0)
+    ) / 60.0
 
-    # 4. دالة تحديد مستوى الخطر
     def determine_status(row):
-        est = row['EstimatedCompletionMinutes']
-        sla = row['SLATargetMinutes']
+        est = row.get("EstimatedCompletionMinutes", 0)
+        sla = row.get("SLATargetMinutes", 0)
         if sla == 0 or pd.isna(sla):
-            return 'Unknown'
-
+            return "Unknown"
         ratio = est / sla
         if ratio >= 1.0:
-            return 'Breach_Risk'  # سيتجاوز أو تجاوز الوقت المحدد بالفعل
-        elif ratio >= 0.75:
-            return 'Warning'  # استهلك 75% من الوقت المتاح
-        return 'Healthy'  # آمن وفي النطاق الزمني
+            return "Breach_Risk"
+        if ratio >= 0.75:
+            return "Warning"
+        return "Healthy"
 
-    df_queue['SLAStatus'] = df_queue.apply(determine_status, axis=1)
-    df_queue['EstimatedCompletionMinutes'] = df_queue['EstimatedCompletionMinutes'].round(1)
-
-    return clean_json_data(df_queue.to_dict('records'))
-
-
-from fastapi import WebSocket, WebSocketDisconnect
-import asyncio
+    df_queue["SLAStatus"] = df_queue.apply(determine_status, axis=1)
+    df_queue["EstimatedCompletionMinutes"] = (
+        pd.to_numeric(df_queue["EstimatedCompletionMinutes"], errors="coerce").fillna(0).round(1)
+    )
+    return clean_json_data(df_queue.to_dict("records"))
 
 
-# --- مدير اتصالات WebSockets المؤسسي ---
+# ============================================================
+# WebSocket Manager + Agent Authentication
+# ============================================================
 class ConnectionManager:
     def __init__(self):
-        # قاموس لتخزين الاتصالات الحية: { "MachineName": websocket_object }
         self.active_connections: dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, machine_name: str):
         await websocket.accept()
         self.active_connections[machine_name] = websocket
-        # تحديث حالة السيرفر إلى Online فور اتصاله
-        execute_update(
-            f"UPDATE BotInfrastructure SET Status = 'Online', LastPing = GETDATE() WHERE MachineName = '{machine_name}'")
+        await run_in_threadpool(
+            execute_update,
+            "UPDATE BotInfrastructure SET Status = 'Online', LastPing = GETDATE() WHERE MachineName = :name",
+            {"name": machine_name},
+        )
 
-    def disconnect(self, machine_name: str):
-        if machine_name in self.active_connections:
-            del self.active_connections[machine_name]
-        # تحديث حالة السيرفر إلى Offline فور انقطاع الاتصال
-        execute_update(f"UPDATE BotInfrastructure SET Status = 'Offline' WHERE MachineName = '{machine_name}'")
+    async def disconnect(self, machine_name: str):
+        self.active_connections.pop(machine_name, None)
+        await run_in_threadpool(
+            execute_update,
+            "UPDATE BotInfrastructure SET Status = 'Offline', LastPing = GETDATE() WHERE MachineName = :name",
+            {"name": machine_name},
+        )
 
-    async def send_command(self, machine_name: str, command: str):
-        if machine_name in self.active_connections:
-            await self.active_connections[machine_name].send_text(command)
+    async def send_command(self, machine_name: str, command: str) -> bool:
+        ws = self.active_connections.get(machine_name)
+        if ws:
+            await ws.send_text(command)
             return True
         return False
 
@@ -394,143 +671,344 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-# --- مسار الـ WebSocket الذي يتصل به الـ Bot Agent ---
+async def verify_agent_token(machine_name: str, token: str) -> bool:
+    if not token:
+        return False
+
+    df = await run_in_threadpool(
+        run_query,
+        "SELECT AgentToken FROM BotInfrastructure WHERE MachineName = :name",
+        {"name": machine_name},
+    )
+    if df.empty or pd.isna(df.iloc[0]["AgentToken"]):
+        return False
+
+    stored = str(df.iloc[0]["AgentToken"])
+
+    if AGENT_TOKEN_PEPPER and _looks_like_sha256_hex(stored):
+        return secrets.compare_digest(stored, _token_hash(token))
+
+    return secrets.compare_digest(stored, token)
+
+
+# ============================================================
+# Agent Enrollment Endpoint
+# ============================================================
+class AgentEnrollRequest(BaseModel):
+    MachineName: str = Field(..., min_length=1, max_length=100)
+    EnrollmentCode: str = Field(..., min_length=4, max_length=20)
+
+
+@app.post("/api/agent/enroll")
+def agent_enroll(payload: AgentEnrollRequest, request: Request):
+    m_df = run_query("SELECT MachineName FROM BotInfrastructure WHERE MachineName = :m", {"m": payload.MachineName})
+    if m_df.empty:
+        raise HTTPException(status_code=404, detail="الجهاز غير مسجل في النظام")
+
+    code_df = run_query(
+        """
+        SELECT TOP 1 CodeID
+        FROM AgentEnrollmentCodes
+        WHERE MachineName = :m
+          AND EnrollmentCode = :c
+          AND IsUsed = 0
+          AND ExpiresAt >= GETDATE()
+        ORDER BY CreatedAt DESC
+        """,
+        {"m": payload.MachineName, "c": payload.EnrollmentCode},
+    )
+    if code_df.empty:
+        raise HTTPException(status_code=400, detail="كود الإقران غير صالح أو منتهي أو تم استخدامه")
+
+    code_id = int(code_df.iloc[0]["CodeID"])
+    raw_token = secrets.token_urlsafe(48)
+    stored_token = _token_hash(raw_token)
+
+    try:
+        execute_transaction(
+            [
+                ("UPDATE BotInfrastructure SET AgentToken = :t WHERE MachineName = :m", {"t": stored_token, "m": payload.MachineName}),
+                ("UPDATE AgentEnrollmentCodes SET IsUsed = 1 WHERE CodeID = :id", {"id": code_id}),
+                (
+                    """
+                    INSERT INTO AuditLogs (UserID, ActionType, ProcessName, OldValues, NewValues, IPAddress, IsSuccess)
+                    VALUES (NULL, 'Agent_Enroll', :m, NULL, :newv, :ip, 1)
+                    """,
+                    {
+                        "m": payload.MachineName,
+                        "newv": json.dumps({"CodeID": code_id}, default=str),
+                        "ip": (request.client.host if request.client else None),
+                    },
+                ),
+            ]
+        )
+        return {"status": "success", "agent_token": raw_token}
+    except Exception as e:
+        raise_safe_error("تفعيل الجهاز", e)
+
+
 @app.websocket("/ws/agent/{machine_name}")
-async def websocket_endpoint(websocket: WebSocket, machine_name: str):
+async def websocket_endpoint(websocket: WebSocket, machine_name: str, token: str = Query(...)):
+    is_valid = await verify_agent_token(machine_name, token)
+    if not is_valid:
+        logger.warning(f"Rejected WebSocket connection - invalid token for machine: {machine_name}")
+        await websocket.close(code=1008)
+        return
+
     await manager.connect(websocket, machine_name)
+    logger.info(f"Agent connected: {machine_name}")
     try:
         while True:
-            # استقبال النبضات (CPU, RAM, HDD) من السيرفر
-            data = await websocket.receive_json()
-            query = f"""
-            UPDATE BotInfrastructure 
-            SET CPU_Usage = {data.get('CPU_Usage', 0)}, 
-                RAM_Usage = {data.get('RAM_Usage', 0)},
-                HDD_Usage = {data.get('HDD_Usage', 0)},
-                LastPing = GETDATE()
-            WHERE MachineName = '{machine_name}'
-            """
-            execute_update(query)
+            try:
+                raw = await websocket.receive_text()
+            except WebSocketDisconnect:
+                raise
+            except Exception as e:
+                logger.warning(f"Receive error from {machine_name}: {e}")
+                continue
+
+            if not raw:
+                logger.warning(f"Empty message received from {machine_name}")
+                continue
+
+            try:
+                data = json.loads(raw)
+                if not isinstance(data, dict):
+                    logger.warning(f"Non-object JSON from {machine_name}: {type(data)} | raw={raw[:200]}")
+                    continue
+            except json.JSONDecodeError as e:
+                logger.warning(f"Malformed JSON from {machine_name}: {e} | raw={raw[:200]}")
+                continue
+
+            cpu = int(data.get("CPU_Usage", 0)) if isinstance(data.get("CPU_Usage"), (int, float)) else 0
+            ram = int(data.get("RAM_Usage", 0)) if isinstance(data.get("RAM_Usage"), (int, float)) else 0
+            hdd = int(data.get("HDD_Usage", 0)) if isinstance(data.get("HDD_Usage"), (int, float)) else 0
+
+            await run_in_threadpool(
+                execute_update,
+                """
+                UPDATE BotInfrastructure
+                SET CPU_Usage = :cpu,
+                    RAM_Usage = :ram,
+                    HDD_Usage = :hdd,
+                    LastPing  = GETDATE(),
+                    Status    = 'Online'
+                WHERE MachineName = :name
+                """,
+                {"cpu": cpu, "ram": ram, "hdd": hdd, "name": machine_name},
+            )
     except WebSocketDisconnect:
-        manager.disconnect(machine_name)
+        await manager.disconnect(machine_name)
+        logger.info(f"Agent disconnected: {machine_name}")
 
 
-# --- مسار API جديد لإرسال أمر تشغيل بوت من الداشبورد إلى السيرفر ---
 @app.post("/api/trigger-bot/{machine_name}")
-async def trigger_bot(machine_name: str, bot_name: str, current_user: auth.User = Depends(auth.get_current_user)):
-    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتشغيل العمليات")
+async def trigger_bot(
+    machine_name: str,
+    bot_name: str,
+    current_user: auth.User = Depends(auth.require_roles("SuperAdmin", "CoE_Manager")),
+):
+    machine_df = await run_in_threadpool(
+        run_query, "SELECT MachineName FROM BotInfrastructure WHERE MachineName = :name", {"name": machine_name}
+    )
+    if machine_df.empty:
+        raise HTTPException(status_code=404, detail="الجهاز غير مسجل في النظام")
+
+    bot_df = await run_in_threadpool(
+        run_query, "SELECT BotName FROM ProcessConfig WHERE BotName = :bot", {"bot": bot_name}
+    )
+    if bot_df.empty:
+        raise HTTPException(status_code=400, detail="اسم البوت غير معروف أو غير مصرح به")
 
     command = f"RUN_BOT:{bot_name}"
     success = await manager.send_command(machine_name, command)
 
     if success:
+        logger.info(f"Command sent by {current_user.Username} to {machine_name}: {command}")
         return {"status": "success", "message": f"Command '{command}' sent to {machine_name} instantly."}
-    else:
-        return {"status": "error", "message": f"Machine {machine_name} is currently offline."}
-# ---------------------------------------------------------
-# الجزء الخاص بـ Infrastructure & Device Health
-# ---------------------------------------------------------
+
+    return {"status": "error", "message": f"Machine {machine_name} is currently offline."}
+
+
+# ============================================================
+# Infrastructure & Enrollment
+# ============================================================
+def generate_enrollment_code(length: int = 8) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    code = "".join(secrets.choice(alphabet) for _ in range(length))
+    return f"{code[:4]}-{code[4:]}"
+
 
 class MachineRegistration(BaseModel):
-    MachineName: str
-    AssignedBot: str
-    RunnerType: str
-    TotalRAM_GB: int
-    TotalHDD_GB: int
-
-
-class AgentHeartbeat(BaseModel):
-    MachineName: str
-    CPU_Usage: int
-    RAM_Usage: int
-    HDD_Usage: int
+    MachineName: str = Field(..., min_length=1, max_length=100)
+    AssignedBot: str = Field(..., min_length=1, max_length=100)
+    RunnerType: str = Field(..., min_length=1, max_length=50)
+    TotalRAM_GB: int = Field(..., gt=0)
+    TotalHDD_GB: int = Field(..., gt=0)
 
 
 @app.post("/api/register-machine")
-def register_machine(machine: MachineRegistration, current_user: auth.User = Depends(auth.get_current_user)):
-    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
-        raise HTTPException(status_code=403, detail="Only Admins can register machines.")
+def register_machine(
+    machine: MachineRegistration,
+    current_user: auth.User = Depends(auth.require_roles("SuperAdmin", "CoE_Manager")),
+):
+    existing = run_query("SELECT MachineName FROM BotInfrastructure WHERE MachineName = :name", {"name": machine.MachineName})
+    if not existing.empty:
+        raise HTTPException(status_code=400, detail="هذا الجهاز مسجل بالفعل")
 
-    query = f"""
-    INSERT INTO BotInfrastructure (MachineName, AssignedBot, Status, CPU_Usage, RAM_Usage, HDD_Usage, LastPing, TotalRAM_GB, TotalHDD_GB, RunnerType)
-    VALUES ('{machine.MachineName}', '{machine.AssignedBot}', 'Idle', 0, 0, 0, GETDATE(), {machine.TotalRAM_GB}, {machine.TotalHDD_GB}, '{machine.RunnerType}')
+    bot_exists = run_query("SELECT 1 AS X FROM ProcessConfig WHERE BotName = :b", {"b": machine.AssignedBot})
+    if bot_exists.empty:
+        raise HTTPException(status_code=400, detail="AssignedBot غير موجود في ProcessConfig")
+
+    insert_query = """
+        INSERT INTO BotInfrastructure
+            (MachineName, AssignedBot, Status, CPU_Usage, RAM_Usage, HDD_Usage, LastPing,
+             TotalRAM_GB, TotalHDD_GB, RunnerType, AgentToken)
+        VALUES
+            (:name, :bot, 'Pending', 0, 0, 0, GETDATE(), :ram, :hdd, :runner_type, NULL)
     """
-    try:
-        execute_update(query)
-        return {"status": "success", "message": "Runner Registered Successfully"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
+    enrollment_code = generate_enrollment_code()
 
-class MachineUpdate(BaseModel):
-    MachineName: str
-    AssignedBot: str
-    RunnerType: str
-    TotalRAM_GB: int
-    TotalHDD_GB: int
-
-
-@app.post("/api/update-machine")
-def update_machine(machine: MachineUpdate, current_user: auth.User = Depends(auth.get_current_user)):
-    # التحقق من الصلاحيات
-    if current_user.Role not in ["SuperAdmin", "CoE_Manager"]:
-        raise HTTPException(status_code=403, detail="Only Admins can update machines.")
-
-    query = f"""
-    UPDATE BotInfrastructure 
-    SET AssignedBot = '{machine.AssignedBot}',
-        RunnerType = '{machine.RunnerType}',
-        TotalRAM_GB = {machine.TotalRAM_GB},
-        TotalHDD_GB = {machine.TotalHDD_GB}
-    WHERE MachineName = '{machine.MachineName}'
+    # ✅ مهم: خلي SQL Server هو اللي يحسب ExpiresAt بـ GETDATE() لتفادي مشاكل الـ timezone
+    enrollment_query = """
+        INSERT INTO AgentEnrollmentCodes (MachineName, EnrollmentCode, ExpiresAt)
+        VALUES (:name, :code, DATEADD(minute, :ttl, GETDATE()))
     """
+
     try:
-        execute_update(query)
-        return {"status": "success", "message": "Runner Updated Successfully"}
+        execute_transaction(
+            [
+                (
+                    insert_query,
+                    {
+                        "name": machine.MachineName,
+                        "bot": machine.AssignedBot,
+                        "ram": machine.TotalRAM_GB,
+                        "hdd": machine.TotalHDD_GB,
+                        "runner_type": machine.RunnerType,
+                    },
+                ),
+                ("DELETE FROM AgentEnrollmentCodes WHERE MachineName = :name", {"name": machine.MachineName}),
+                (enrollment_query, {"name": machine.MachineName, "code": enrollment_code, "ttl": ENROLLMENT_TTL_MINUTES}),
+            ]
+        )
+
+        expires_at_preview = datetime.now() + timedelta(minutes=ENROLLMENT_TTL_MINUTES)
+        return {
+            "status": "success",
+            "message": "Runner Registered Successfully",
+            "enrollment_code": enrollment_code,
+            "expires_at": expires_at_preview.isoformat(),
+            "expires_in_minutes": ENROLLMENT_TTL_MINUTES,
+        }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise_safe_error("تسجيل الجهاز", e)
+
+
+@app.post("/api/regenerate-enrollment-code/{machine_name}")
+def regenerate_enrollment_code(
+    machine_name: str,
+    current_user: auth.User = Depends(auth.require_roles("SuperAdmin", "CoE_Manager")),
+):
+    existing = run_query("SELECT MachineName FROM BotInfrastructure WHERE MachineName = :name", {"name": machine_name})
+    if existing.empty:
+        raise HTTPException(status_code=404, detail="الجهاز غير مسجل في النظام")
+
+    enrollment_code = generate_enrollment_code()
+
+    insert_code_query = """
+        INSERT INTO AgentEnrollmentCodes (MachineName, EnrollmentCode, ExpiresAt)
+        VALUES (:name, :code, DATEADD(minute, :ttl, GETDATE()))
+    """
+
+    try:
+        execute_transaction(
+            [
+                ("DELETE FROM AgentEnrollmentCodes WHERE MachineName = :name", {"name": machine_name}),
+                (insert_code_query, {"name": machine_name, "code": enrollment_code, "ttl": ENROLLMENT_TTL_MINUTES}),
+            ]
+        )
+
+        expires_at_preview = datetime.now() + timedelta(minutes=ENROLLMENT_TTL_MINUTES)
+        return {
+            "status": "success",
+            "enrollment_code": enrollment_code,
+            "expires_at": expires_at_preview.isoformat(),
+            "expires_in_minutes": ENROLLMENT_TTL_MINUTES,
+        }
+    except Exception as e:
+        raise_safe_error("إعادة توليد كود الإقران", e)
+
+
+# ============================================================
+# Agent Heartbeat (HTTP) - Optional
+# ============================================================
+class AgentHeartbeat(BaseModel):
+    MachineName: str = Field(..., min_length=1, max_length=100)
+    CPU_Usage: int = Field(..., ge=0, le=100)
+    RAM_Usage: int = Field(..., ge=0, le=100)
+    HDD_Usage: int = Field(..., ge=0, le=100)
+
 
 @app.post("/api/agent-heartbeat")
-def agent_heartbeat(heartbeat: AgentHeartbeat):
-    query = f"""
-    UPDATE BotInfrastructure 
-    SET CPU_Usage = {heartbeat.CPU_Usage}, 
-        RAM_Usage = {heartbeat.RAM_Usage},
-        HDD_Usage = {heartbeat.HDD_Usage},
-        Status = 'Online',
-        LastPing = GETDATE()
-    WHERE MachineName = '{heartbeat.MachineName}'
+async def agent_heartbeat(
+    heartbeat: AgentHeartbeat,
+    x_agent_token: str = Header(..., alias="X-Agent-Token"),
+):
+    is_valid = await verify_agent_token(heartbeat.MachineName, x_agent_token)
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="توكن الجهاز غير صحيح")
+
+    query = """
+        UPDATE BotInfrastructure
+        SET CPU_Usage = :cpu, RAM_Usage = :ram, HDD_Usage = :hdd, Status = 'Online', LastPing = GETDATE()
+        WHERE MachineName = :name
     """
-    execute_update(query)
+    await run_in_threadpool(
+        execute_update,
+        query,
+        {"cpu": heartbeat.CPU_Usage, "ram": heartbeat.RAM_Usage, "hdd": heartbeat.HDD_Usage, "name": heartbeat.MachineName},
+    )
     return {"status": "success"}
 
 
 @app.get("/api/infrastructure")
 def get_infrastructure_health(current_user: auth.User = Depends(auth.get_current_user)):
-    query = "SELECT * FROM BotInfrastructure"
-    df_infra = run_query(query)
-
+    df_infra = run_query(
+        """
+        SELECT MachineName, AssignedBot, Status, CPU_Usage, RAM_Usage, HDD_Usage,
+               LastPing, TotalRAM_GB, TotalHDD_GB, RunnerType
+        FROM BotInfrastructure
+        """
+    )
     if df_infra.empty:
         return []
 
+    df_infra["LastPing"] = pd.to_datetime(df_infra["LastPing"], errors="coerce")
+
     def determine_health(row):
-        last_ping = pd.to_datetime(row['LastPing'])
+        last_ping = row["LastPing"]
+        if pd.isna(last_ping):
+            return "Critical"
         time_diff = (pd.Timestamp.now() - last_ping).total_seconds()
 
+        cpu = int(row.get("CPU_Usage", 0) or 0)
+        ram = int(row.get("RAM_Usage", 0) or 0)
+        hdd = int(row.get("HDD_Usage", 0) or 0)
+
         if time_diff > 180:
-            return 'Critical'
-        if row['CPU_Usage'] >= 90 or row['RAM_Usage'] >= 90 or row['HDD_Usage'] >= 90:
-            return 'Warning'
-        if row['Status'] == 'Idle':
-            return 'Idle'
-        return 'Healthy'
+            return "Critical"
+        if cpu >= 90 or ram >= 90 or hdd >= 90:
+            return "Warning"
+        if str(row.get("Status", "")) == "Idle":
+            return "Idle"
+        return "Healthy"
 
-    df_infra['HealthStatus'] = df_infra.apply(determine_health, axis=1)
+    df_infra["HealthStatus"] = df_infra.apply(determine_health, axis=1)
 
-    offline_machines = df_infra[df_infra['HealthStatus'] == 'Critical']['MachineName'].tolist()
-    for machine in offline_machines:
-        execute_update(f"UPDATE BotInfrastructure SET Status = 'Offline' WHERE MachineName = '{machine}'")
+    # Update offline in one shot
+    execute_update("UPDATE BotInfrastructure SET Status = 'Offline' WHERE LastPing < DATEADD(second, -180, GETDATE())", {})
 
-    df_infra['LastPing'] = pd.to_datetime(df_infra['LastPing']).dt.strftime('%Y-%m-%d %H:%M:%S')
-    return clean_json_data(df_infra.to_dict('records'))
+    df_infra["LastPing"] = df_infra["LastPing"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    return clean_json_data(df_infra.to_dict("records"))
