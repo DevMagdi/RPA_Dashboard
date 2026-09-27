@@ -1,7 +1,6 @@
 import os
 from datetime import datetime, timedelta
 from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -9,6 +8,9 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, Field
 
 from db_connection import run_query, execute_update
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+limiter = Limiter(key_func=get_remote_address)
 
 SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 ALGORITHM = "HS256"
@@ -139,6 +141,7 @@ def require_roles(*roles):
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None):
     ip = request.client.host if request and request.client else None
 

@@ -106,7 +106,7 @@ export default function AuditTrails({ token }) {
                   </td>
                   <td className="px-8 py-4">
                     <span className="text-sm font-bold text-slate-800 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
-                      {log.ProcessName.replace('_', ' ')}
+                      {String(log.ProcessName ?? 'غير محدد').replace(/_/g, ' ')}
                     </span>
                   </td>
                   <td className="px-8 py-4">

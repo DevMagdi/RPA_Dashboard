@@ -6,7 +6,9 @@ import {
   LayoutDashboard, Activity, CheckCircle2, Clock, TrendingUp, AlertCircle,
   X, Zap, ChevronRight, ChevronDown, Folder, Settings, ShieldAlert, Cpu,
   SlidersHorizontal, Save, Users, Download, Calendar, LogOut, Search,
-  ShieldCheck, ListTodo, Server
+  ShieldCheck, ListTodo, Server, GitBranch, KeyRound, Plus, ArrowUpRight,
+  Shield, Check, RefreshCw, Lock, Sparkles, Terminal, FileCode2, RotateCcw,
+  Eye, EyeOff, Calculator, MessageSquare, ArrowRight, CornerDownLeft, Layers
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -51,7 +53,6 @@ const VirtualTreeList = ({
     const st = e.currentTarget.scrollTop;
     setScrollTop(st);
 
-    // Infinite scroll trigger
     const remaining = e.currentTarget.scrollHeight - (st + e.currentTarget.clientHeight);
     if (remaining < itemSize * 8) {
       onEndReached?.();
@@ -81,7 +82,7 @@ const dateFilterToDays = (dateFilter) => {
     case 'this_month': return 30;
     case 'all_time':
     default:
-      return 730; // max allowed in backend
+      return 730;
   }
 };
 
@@ -92,6 +93,970 @@ const statusPillClass = (status) => {
   return 'bg-slate-50 text-slate-600 border border-slate-200';
 };
 
+const getEnvBadge = (env) => {
+  switch (env) {
+    case 'Production':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-sm">
+          <Shield size={12} className="text-emerald-600" />
+          Production
+        </span>
+      );
+    case 'UAT':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase bg-[#F37920]/10 text-[#F37920] border border-[#F37920]/20 shadow-sm">
+          <Activity size={12} className="text-[#F37920]" />
+          UAT Staging
+        </span>
+      );
+    case 'Development':
+    default:
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase bg-blue-50 text-blue-600 border border-blue-200 shadow-sm">
+          <FileCode2 size={12} className="text-blue-500" />
+          Development
+        </span>
+      );
+  }
+};
+
+// ============================================================
+// Bot Lifecycle & Vault View Component
+// ============================================================
+function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onSyncRequested }) {
+  const [selectedProcess, setSelectedProcess] = useState(
+    initialProcess && initialProcess !== 'All' ? initialProcess : (processConfigs[0]?.ProcessName || '')
+  );
+  const [liveData, setLiveData] = useState({ counts: {}, recent_promotions: [] });
+  const [versions, setVersions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Modals state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showVaultModal, setShowVaultModal] = useState(false);
+  const [showTransitionModal, setShowTransitionModal] = useState(false);
+  const [selectedVersionForAction, setSelectedVersionForAction] = useState(null);
+  const [showSecretValue, setShowSecretValue] = useState(false);
+
+  // Modal Mode: "new_process" أو "new_version"
+  const [creationMode, setCreationMode] = useState("new_process");
+
+  // Forms
+  const [createForm, setCreateForm] = useState({
+    ProcessName: '',
+    Department: 'Operations',
+    BotName: '',
+    VersionTag: 'v1.0.0',
+    TargetMachineName: '',
+    Description: '',
+    // ROI Forecasting fields
+    ExpectedRunsPerDay: 50,
+    EmpMinutesPerRequest: 15,
+    EmpCostPerRequest: 25.0,
+    BotCostPerRequest: 2.0
+  });
+
+  const [transitionForm, setTransitionForm] = useState({
+    TargetEnvironment: 'UAT',
+    Comment: ''
+  });
+
+  const [vaultForm, setVaultForm] = useState({
+    CredentialName: '',
+    Environment: 'Production',
+    Value: ''
+  });
+
+  const isCoEOrAdmin = userRole === 'SuperAdmin' || userRole === 'CoE_Manager';
+
+  const triggerToast = (msg, isError = false) => {
+    setToastMessage({ text: msg, isError });
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Live status
+  const fetchLiveStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/bot-versions/live-status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setLiveData(d);
+      }
+    } catch (e) {
+      console.error("Failed to load lifecycle live status:", e);
+    }
+  };
+
+  // Version History
+  const fetchHistory = async (procName) => {
+    if (!procName) return;
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/bot-versions/${encodeURIComponent(procName)}/history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const list = await res.json();
+        setVersions(Array.isArray(list) ? list : []);
+      }
+    } catch (e) {
+      console.error("Failed to load version history:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveStatus();
+  }, []);
+
+  useEffect(() => {
+    if (selectedProcess) {
+      fetchHistory(selectedProcess);
+    }
+  }, [selectedProcess]);
+
+  useEffect(() => {
+    if (initialProcess && initialProcess !== 'All') {
+      setSelectedProcess(initialProcess);
+    }
+  }, [initialProcess]);
+
+  // Handle Create Process OR Version
+  const handleCreateVersion = async (e) => {
+    e.preventDefault();
+    setActionLoading(true);
+
+    const targetProc = creationMode === "new_process"
+      ? createForm.ProcessName.trim().replace(/\s+/g, '_')
+      : selectedProcess;
+
+    if (!targetProc) {
+      triggerToast("يرجى تحديد أو إدخال اسم العملية", true);
+      setActionLoading(false);
+      return;
+    }
+
+    try {
+      // 1. إذا كانت عملية جديدة كلياً نقوم بإنشائها أولاً وضبط إعداداتها
+      const roiPayload = {
+        ProcessName: targetProc,
+        EmpMinutesPerRequest: parseFloat(createForm.EmpMinutesPerRequest) || 15,
+        EmpCostPerRequest: parseFloat(createForm.EmpCostPerRequest) || 25,
+        BotCostPerRequest: parseFloat(createForm.BotCostPerRequest) || 2,
+        ExpectedRunsPerDay: parseInt(createForm.ExpectedRunsPerDay) || 50
+      };
+
+      // محاولة تحديث أو تسجيل الـ ROI
+      await fetch(`${API_BASE}/api/update-roi`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(roiPayload)
+      });
+
+      // 2. تسجيل النسخة في جدول BotVersions
+      const res = await fetch(`${API_BASE}/api/bot-versions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ProcessName: targetProc,
+          VersionTag: createForm.VersionTag || 'v1.0.0',
+          TargetMachineName: createForm.TargetMachineName || null,
+          Description: createForm.Description || (creationMode === "new_process" ? "Initial system build" : null)
+        })
+      });
+
+      const resData = await res.json();
+      if (!res.ok || resData.status !== 'success') {
+        throw new Error(resData.detail || resData.message || "فشل تسجيل النسخة");
+      }
+
+      setShowCreateModal(false);
+      triggerToast(`تم بنجاح حفظ العملية [${targetProc}] وإصدار نسختها الأولى وتحديث معايير الـ ROI`);
+
+      setSelectedProcess(targetProc);
+      await fetchHistory(targetProc);
+      await fetchLiveStatus();
+      if (onSyncRequested) onSyncRequested();
+
+    } catch (err) {
+      triggerToast(err.message || "حدث خطأ أثناء الاتصال بالسيرفر", true);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Open Transition Modal
+  const openTransitionModal = (version) => {
+    setSelectedVersionForAction(version);
+    const nextEnv = version.CurrentStatus === 'Development' ? 'UAT' : (version.CurrentStatus === 'UAT' ? 'Production' : 'Development');
+    setTransitionForm({
+      TargetEnvironment: nextEnv,
+      Comment: ''
+    });
+    setShowTransitionModal(true);
+  };
+
+  // Execute Stage Transition / Rollback
+  const handleExecuteTransition = async (e) => {
+    e.preventDefault();
+    if (!selectedVersionForAction) return;
+    setActionLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/bot-versions/${selectedVersionForAction.VersionID}/promote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          TargetEnvironment: transitionForm.TargetEnvironment,
+          Comment: transitionForm.Comment || 'Status updated via Control Hub'
+        })
+      });
+
+      const resData = await res.json();
+      if (res.ok && resData.status === 'success') {
+        setShowTransitionModal(false);
+        triggerToast(`تم تحويل النسخة بنجاح إلى بيئة [${transitionForm.TargetEnvironment}]`);
+        await fetchHistory(selectedProcess);
+        await fetchLiveStatus();
+        if (onSyncRequested) onSyncRequested();
+      } else {
+        triggerToast(resData.detail || resData.message || "تعذر تغيير حالة النسخة", true);
+      }
+    } catch (err) {
+      triggerToast("خطأ بالاتصال أثناء تحديث بيئة النسخة", true);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Add Credential to Vault
+  const handleAddVaultCredential = async (e) => {
+    e.preventDefault();
+    if (!selectedVersionForAction) return;
+    setActionLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/bot-versions/${selectedVersionForAction.VersionID}/credentials`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(vaultForm)
+      });
+
+      const resData = await res.json();
+      if (res.ok && resData.status === 'success') {
+        setShowVaultModal(false);
+        setVaultForm({ CredentialName: '', Environment: 'Production', Value: '' });
+        await fetchHistory(selectedProcess);
+        triggerToast("تم تشفير السر وتخزينه في الخزنة BotVault بنجاح!");
+      } else {
+        triggerToast(resData.detail || resData.message || "تعذر حفظ السر", true);
+      }
+    } catch (err) {
+      triggerToast("خطأ أثناء تشفير وحفظ البيانات", true);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Computed ROI preview inside create modal
+  const forecastedDailySavings = useMemo(() => {
+    const runs = Number(createForm.ExpectedRunsPerDay) || 0;
+    const netSavingsPerRequest = (Number(createForm.EmpCostPerRequest) || 0) - (Number(createForm.BotCostPerRequest) || 0);
+    return Math.max(0, runs * netSavingsPerRequest);
+  }, [createForm]);
+
+  const forecastedMonthlyHours = useMemo(() => {
+    const runs = Number(createForm.ExpectedRunsPerDay) || 0;
+    const minutes = Number(createForm.EmpMinutesPerRequest) || 0;
+    return Math.round(((runs * minutes) / 60) * 22);
+  }, [createForm]);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-10 xl:p-12 space-y-8 animate-in fade-in duration-300 relative">
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-sm font-black transition-all animate-in slide-in-from-bottom-5 duration-300 ${
+          toastMessage.isError ? 'bg-red-600 text-white shadow-red-500/20' : 'bg-[#4B367C] text-white shadow-[#4B367C]/30 border border-white/20'
+        }`}>
+          {toastMessage.isError ? <ShieldAlert size={20} /> : <CheckCircle2 size={20} className="text-emerald-400" />}
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-black text-[#4B367C] tracking-tight flex items-center gap-3">
+            <GitBranch className="text-[#F37920]" size={34} />
+            Enterprise Bot Lifecycle & Vault Hub
+          </h2>
+          <p className="text-sm text-slate-500 font-bold mt-1">
+            إدارة دورة حياة البوتات، العزل الأمني بين البيئات (Dev, UAT, Prod) وتشفير بيانات الخزنة
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { fetchLiveStatus(); fetchHistory(selectedProcess); if (onSyncRequested) onSyncRequested(); }}
+            className="p-3.5 bg-white border border-slate-200 hover:border-[#4B367C] rounded-2xl text-slate-600 shadow-sm transition-all hover:bg-slate-50"
+            title="تحديث ومزامنة البيانات الحية"
+          >
+            <RefreshCw size={18} className={actionLoading ? "animate-spin text-[#4B367C]" : ""} />
+          </button>
+
+          {isCoEOrAdmin && (
+            <button
+              onClick={() => {
+                setCreationMode("new_process");
+                setShowCreateModal(true);
+              }}
+              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#4B367C] via-[#5c4096] to-[#F37920] text-white shadow-lg hover:shadow-xl hover:scale-[1.01] transition-all font-black text-xs uppercase tracking-wider"
+            >
+              <Plus size={18} /> New Process / Release & ROI
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Live Pipeline Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-7 rounded-[2.2rem] border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-300 transition-all">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-blue-50 text-blue-600 p-3.5 rounded-2xl">
+              <FileCode2 size={24} />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 bg-blue-100/60 text-blue-700 rounded-lg">Sandbox Stage</span>
+          </div>
+          <h3 className="text-5xl font-black text-slate-800">{liveData.counts?.DevCount ?? 0}</h3>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mt-1">Development Builds</p>
+          <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-500 font-bold">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+            Internal Engineering & Sandbox
+          </div>
+        </div>
+
+        <div className="bg-white p-7 rounded-[2.2rem] border border-slate-200 shadow-sm relative overflow-hidden group hover:border-[#F37920]/40 transition-all">
+          <div className="flex justify-between items-start mb-4">
+            <div className="bg-[#F37920]/10 text-[#F37920] p-3.5 rounded-2xl">
+              <Activity size={24} />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 bg-[#F37920]/10 text-[#F37920] rounded-lg">Verification Stage</span>
+          </div>
+          <h3 className="text-5xl font-black text-slate-800">{liveData.counts?.UATCount ?? 0}</h3>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mt-1">UAT / Pre-Flight Staging</p>
+          <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-500 font-bold">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F37920]"></span>
+            Pre-flight User Acceptance & Testing
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-[#4B367C] via-[#3d2b63] to-[#251940] text-white p-7 rounded-[2.2rem] shadow-xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-emerald-500/10 rounded-bl-full blur-2xl pointer-events-none"></div>
+          <div className="flex justify-between items-start mb-4 relative z-10">
+            <div className="bg-white/10 text-emerald-400 p-3.5 rounded-2xl backdrop-blur-md border border-white/10">
+              <Shield size={24} />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-lg">Live Production</span>
+          </div>
+          <h3 className="text-5xl font-black text-white relative z-10">{liveData.counts?.ProductionCount ?? 0}</h3>
+          <p className="text-xs font-bold text-slate-300 uppercase tracking-widest mt-1 relative z-10">Production Certified</p>
+          <div className="mt-4 pt-3.5 border-t border-white/10 flex items-center gap-2 text-xs text-emerald-300 font-bold relative z-10">
+            <CheckCircle2 size={16} />
+            Active Real-time Business Runners
+          </div>
+        </div>
+      </div>
+
+      {/* Main Release Track & Versions History */}
+      <div className="bg-white rounded-[2.5rem] border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="p-7 border-b border-slate-100 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-base font-black text-[#4B367C] uppercase tracking-wider flex items-center gap-2.5">
+              <Terminal size={20} className="text-[#F37920]" />
+              Release Track & Deployment Versions
+            </h3>
+            <p className="text-xs text-slate-500 font-bold mt-1">
+              متابعة نسخ البوتات، تعديل البيئات، وتشفير مفاتيح الخزنة لكل مرحلة
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Active Process:</label>
+            <select
+              value={selectedProcess}
+              onChange={(e) => setSelectedProcess(e.target.value)}
+              className="bg-white border-2 border-slate-200 hover:border-[#4B367C] text-xs font-black text-slate-800 py-3 px-5 rounded-2xl focus:outline-none focus:border-[#4B367C] shadow-sm transition-colors cursor-pointer"
+            >
+              {processConfigs.map((p, i) => (
+                <option key={i} value={p.ProcessName}>
+                  {p.ProcessName.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Table of Versions */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-white border-b border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                <th className="px-8 py-5">Release Tag</th>
+                <th className="px-8 py-5">Active Stage</th>
+                <th className="px-8 py-5">Assigned Runner</th>
+                <th className="px-8 py-5">Vault Credentials</th>
+                <th className="px-8 py-5">Release Owner</th>
+                <th className="px-8 py-5 text-right">Stage Controls</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {versions.map((ver) => (
+                <tr key={ver.VersionID} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-2.5 font-mono font-black text-sm text-[#4B367C]">
+                      <span className="p-2 bg-[#4B367C]/10 text-[#4B367C] rounded-xl">
+                        <GitBranch size={16} />
+                      </span>
+                      {ver.VersionTag}
+                    </div>
+                    {ver.Notes && (
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm truncate">{ver.Notes}</p>
+                    )}
+                  </td>
+
+                  <td className="px-8 py-5">
+                    {getEnvBadge(ver.CurrentStatus)}
+                  </td>
+
+                  <td className="px-8 py-5">
+                    <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-3.5 py-1.5 rounded-xl border border-slate-200/80">
+                      {ver.TargetMachineName || 'Dynamic Pool'}
+                    </span>
+                  </td>
+
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        {ver.CredentialsCount || 0} Key(s)
+                      </span>
+                      {isCoEOrAdmin && (
+                        <button
+                          onClick={() => {
+                            setSelectedVersionForAction(ver);
+                            setShowVaultModal(true);
+                          }}
+                          className="p-2 text-slate-400 hover:text-[#4B367C] hover:bg-slate-100 rounded-xl transition-all"
+                          title="إضافة وتشفير كلمة مرور في BotVault"
+                        >
+                          <KeyRound size={17} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="px-8 py-5">
+                    <div className="text-xs font-black text-slate-700">{ver.CreatorName || 'Admin'}</div>
+                    <div className="text-[10px] text-slate-400 font-bold mt-0.5">
+                      {ver.CreatedAt ? new Date(ver.CreatedAt).toLocaleDateString() : '-'}
+                    </div>
+                  </td>
+
+                  <td className="px-8 py-5 text-right">
+                    {isCoEOrAdmin ? (
+                      <button
+                        onClick={() => openTransitionModal(ver)}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-[#4B367C] text-white text-xs font-black shadow-md hover:shadow-lg transition-all"
+                      >
+                        <SlidersHorizontal size={14} /> Promote / Rollback
+                      </button>
+                    ) : (
+                      <span className="text-xs font-bold text-slate-400">View Only</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+
+              {versions.length === 0 && !isLoading && (
+                <tr>
+                  <td colSpan={6} className="text-center py-14 text-slate-400 font-bold text-sm bg-slate-50/30">
+                    لا توجد نسخ مسجلة لهذه العملية حالياً. اضغط "New Process / Release & ROI" لتسجيل نسخة جديدة.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Promotion Audit Log */}
+      <div className="bg-white rounded-[2.5rem] border border-slate-200/80 shadow-sm p-7">
+        <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider mb-5 flex items-center gap-2.5">
+          <ShieldCheck size={20} className="text-emerald-500" />
+          Recent Stage Movements & Audit Trail
+        </h3>
+
+        <div className="divide-y divide-slate-100">
+          {(liveData.recent_promotions || []).map((p, idx) => (
+            <div key={idx} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <span className="font-black text-slate-800">{p.ProcessName}</span>
+                <span className="font-mono bg-slate-100 px-2.5 py-1 rounded-lg text-slate-700 font-bold">{p.VersionTag}</span>
+                <span className="text-slate-400">moved from</span>
+                <span className="font-bold text-slate-600">{p.PreviousStatus}</span>
+                <span className="text-slate-400">➔</span>
+                <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{p.NewStatus}</span>
+              </div>
+              <div className="text-slate-400 font-medium">
+                Authorized by <strong className="text-slate-700">{p.Username || 'System Admin'}</strong> at {new Date(p.PromotedAt).toLocaleString()}
+              </div>
+            </div>
+          ))}
+
+          {(liveData.recent_promotions || []).length === 0 && (
+            <div className="py-6 text-center text-slate-400 font-bold text-xs">
+              No promotions recorded yet.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* Sleek Modal: Create New Process OR Version + ROI Projection */}
+      {/* ============================================================ */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full flex flex-col border border-slate-100 overflow-hidden my-8 animate-in zoom-in-95 duration-200">
+
+            {/* Header */}
+            <div className="p-7 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="p-3.5 bg-[#4B367C]/10 text-[#4B367C] rounded-2xl shadow-inner">
+                  <GitBranch size={26} />
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-slate-900">
+                    {creationMode === "new_process" ? "Register New Process & ROI Projection" : "New Release for Existing Process"}
+                  </h4>
+                  <p className="text-xs font-bold text-[#F37920] mt-0.5">
+                    Enterprise CoE Control Room
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-slate-400 hover:text-red-500 p-2.5 bg-white hover:bg-red-50 rounded-full border border-slate-200 transition-all"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            {/* Mode Switcher */}
+            <div className="p-7 pb-0">
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setCreationMode("new_process")}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${
+                    creationMode === "new_process" ? "bg-white text-[#4B367C] shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  Create Brand New Process (تسجيل عملية جديدة)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationMode("new_version")}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${
+                    creationMode === "new_version" ? "bg-white text-[#4B367C] shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  New Version for Existing Process (إصدار لعملية قائمة)
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateVersion} className="p-7 space-y-6">
+
+              {/* Section 1: Process & Release Metadata */}
+              <div className="space-y-4">
+                <h5 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <Terminal size={14} /> Process & Release Information
+                </h5>
+
+                {creationMode === "new_process" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-600 mb-1.5 uppercase">New Process Name</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Invoice_Reconciliation"
+                        value={createForm.ProcessName}
+                        onChange={(e) => setCreateForm({ ...createForm, ProcessName: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-slate-600 mb-1.5 uppercase">Department</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Finance or Operations"
+                        value={createForm.Department}
+                        onChange={(e) => setCreateForm({ ...createForm, Department: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5 uppercase">Select Target Process</label>
+                    <select
+                      value={selectedProcess}
+                      onChange={(e) => setSelectedProcess(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white cursor-pointer"
+                    >
+                      {processConfigs.map((p, i) => (
+                        <option key={i} value={p.ProcessName}>{p.ProcessName.replace(/_/g, ' ')}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5 uppercase">Version Tag</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. v1.0.0"
+                      value={createForm.VersionTag}
+                      onChange={(e) => setCreateForm({ ...createForm, VersionTag: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5 uppercase">Target Runner Machine (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. BOT-VM-01 (or empty)"
+                      value={createForm.TargetMachineName}
+                      onChange={(e) => setCreateForm({ ...createForm, TargetMachineName: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5 uppercase">Release Notes & Changes</label>
+                  <textarea
+                    rows={2}
+                    value={createForm.Description}
+                    onChange={(e) => setCreateForm({ ...createForm, Description: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                    placeholder="Brief description of bot logic, triggers or fixes in this build..."
+                  />
+                </div>
+              </div>
+
+              {/* Section 2: Expected ROI Parameters */}
+              <div className="space-y-4 pt-2 border-t border-slate-100">
+                <h5 className="text-xs font-black uppercase tracking-wider text-[#F37920] flex items-center gap-2">
+                  <Calculator size={14} /> Expected ROI Parameters (Live Forecast)
+                </h5>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Target Runs / Day</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={createForm.ExpectedRunsPerDay}
+                      onChange={(e) => setCreateForm({ ...createForm, ExpectedRunsPerDay: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-800 text-xs focus:outline-none focus:border-[#4B367C]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Emp Time / Req (Min)</label>
+                    <input
+                      type="number"
+                      required
+                      step="0.1"
+                      min={0}
+                      value={createForm.EmpMinutesPerRequest}
+                      onChange={(e) => setCreateForm({ ...createForm, EmpMinutesPerRequest: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-800 text-xs focus:outline-none focus:border-[#4B367C]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Emp Cost / Req (EGP)</label>
+                    <input
+                      type="number"
+                      required
+                      step="0.1"
+                      min={0}
+                      value={createForm.EmpCostPerRequest}
+                      onChange={(e) => setCreateForm({ ...createForm, EmpCostPerRequest: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-800 text-xs focus:outline-none focus:border-[#4B367C]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Bot Cost / Req (EGP)</label>
+                    <input
+                      type="number"
+                      required
+                      step="0.1"
+                      min={0}
+                      value={createForm.BotCostPerRequest}
+                      onChange={(e) => setCreateForm({ ...createForm, BotCostPerRequest: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-800 text-xs focus:outline-none focus:border-[#4B367C]"
+                    />
+                  </div>
+                </div>
+
+                {/* Real-time ROI Projection Card */}
+                <div className="bg-gradient-to-r from-[#4B367C]/10 via-[#F37920]/10 to-emerald-500/10 p-4 rounded-2xl border border-slate-200 flex justify-between items-center">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-slate-400">Forecasted Monthly Savings</span>
+                    <p className="text-xl font-black text-slate-900">
+                      EGP {(forecastedDailySavings * 22).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-black uppercase text-slate-400">Saved Time / Month</span>
+                    <p className="text-xl font-black text-[#10B981]">
+                      {forecastedMonthlyHours.toLocaleString()} hrs
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="w-full mt-2 bg-gradient-to-r from-[#4B367C] via-[#5c4096] to-[#F37920] hover:opacity-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Activity size={18} className="animate-spin" /> : <Save size={18} />}
+                {actionLoading ? "Registering & Publishing..." : "Publish Version (Init in Development)"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* Sleek Modal: Change Stage (Promote / Rollback to ANY State) */}
+      {/* ============================================================ */}
+      {showTransitionModal && selectedVersionForAction && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-lg w-full flex flex-col border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+
+            <div className="p-7 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="p-3.5 bg-slate-900 text-white rounded-2xl">
+                  <SlidersHorizontal size={24} />
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-slate-900">Stage Transition Control</h4>
+                  <p className="text-xs font-bold text-slate-400 mt-0.5">
+                    {selectedVersionForAction.VersionTag} ({selectedProcess.replace(/_/g, ' ')})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowTransitionModal(false)}
+                className="text-slate-400 hover:text-red-500 p-2.5 bg-white hover:bg-red-50 rounded-full border border-slate-200 transition-all"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteTransition} className="p-7 space-y-6">
+
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-3">Choose Target Environment</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: 'Development', label: 'Dev Sandbox', icon: RotateCcw, color: 'blue' },
+                    { id: 'UAT', label: 'UAT Staging', icon: Activity, color: 'orange' },
+                    { id: 'Production', label: 'Live Prod', icon: Shield, color: 'emerald' },
+                  ].map((env) => {
+                    const isSelected = transitionForm.TargetEnvironment === env.id;
+                    const IconComp = env.icon;
+                    return (
+                      <div
+                        key={env.id}
+                        onClick={() => setTransitionForm({ ...transitionForm, TargetEnvironment: env.id })}
+                        className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col items-center text-center gap-2 ${
+                          isSelected
+                            ? 'border-[#4B367C] bg-[#4B367C]/5 shadow-sm scale-102'
+                            : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 opacity-70'
+                        }`}
+                      >
+                        <IconComp size={20} className={isSelected ? 'text-[#4B367C]' : 'text-slate-400'} />
+                        <span className={`text-xs font-black ${isSelected ? 'text-[#4B367C]' : 'text-slate-600'}`}>{env.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Direction Indicator */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs font-black text-slate-700">
+                <span className="flex items-center gap-1.5 text-slate-500">
+                  Current: <strong className="text-slate-800">{selectedVersionForAction.CurrentStatus}</strong>
+                </span>
+                <ArrowRight size={16} className="text-[#F37920]" />
+                <span className="flex items-center gap-1.5 text-emerald-600 font-black">
+                  Target: <strong>{transitionForm.TargetEnvironment}</strong>
+                </span>
+              </div>
+
+              {/* Justification Comment */}
+              <div>
+                <label className="block text-xs font-black text-slate-600 uppercase mb-2 flex items-center gap-1.5">
+                  <MessageSquare size={14} className="text-slate-400" />
+                  Audit Comment / Reason for Transition
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="e.g. Rolling back due to schema change / Promoting after successful UAT signoff..."
+                  value={transitionForm.Comment}
+                  onChange={(e) => setTransitionForm({ ...transitionForm, Comment: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-xs focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="w-full bg-slate-900 hover:bg-[#4B367C] text-white font-black py-4 rounded-2xl shadow-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Activity size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                {actionLoading ? "Processing Transition..." : `Authorize & Apply State Change`}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* Sleek Modal: Add Encrypted BotVault Secret */}
+      {/* ============================================================ */}
+      {showVaultModal && selectedVersionForAction && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-lg w-full flex flex-col border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+
+            <div className="p-7 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-white flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="p-3.5 bg-[#F37920]/10 text-[#F37920] rounded-2xl shadow-inner">
+                  <Lock size={24} />
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-slate-900">Add Encrypted Vault Secret</h4>
+                  <p className="text-xs font-bold text-slate-400 mt-0.5">
+                    Version: {selectedVersionForAction.VersionTag} ({selectedProcess.replace(/_/g, ' ')})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowVaultModal(false)}
+                className="text-slate-400 hover:text-red-500 p-2.5 bg-white hover:bg-red-50 rounded-full border border-slate-200 transition-all"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddVaultCredential} className="p-7 space-y-5">
+              <div>
+                <label className="block text-xs font-black text-slate-600 uppercase mb-2">Credential Key Identifier</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. SAP_PROD_USER_PASS or ORACLE_DB_KEY"
+                  value={vaultForm.CredentialName}
+                  onChange={(e) => setVaultForm({ ...vaultForm, CredentialName: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-600 uppercase mb-2">Vault Stage Environment</label>
+                <select
+                  value={vaultForm.Environment}
+                  onChange={(e) => setVaultForm({ ...vaultForm, Environment: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl font-bold text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                >
+                  <option value="Production">Production (Live Sensitive)</option>
+                  <option value="UAT">UAT (Staging)</option>
+                  <option value="Development">Development (Sandbox)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-600 uppercase mb-2">Secret Plaintext Value</label>
+                <div className="relative">
+                  <input
+                    type={showSecretValue ? "text" : "password"}
+                    required
+                    placeholder="Enter password to encrypt..."
+                    value={vaultForm.Value}
+                    onChange={(e) => setVaultForm({ ...vaultForm, Value: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 p-3.5 pr-12 rounded-2xl font-mono text-slate-800 text-sm focus:outline-none focus:border-[#4B367C] focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecretValue(!showSecretValue)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                  >
+                    {showSecretValue ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <span className="text-[11px] text-emerald-600 font-bold mt-2 flex items-center gap-1.5">
+                  <Shield size={13} /> Hardware AES-256 Symmetric Fernet Encryption at rest
+                </span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="w-full mt-2 bg-gradient-to-r from-[#F37920] to-[#e46a10] hover:opacity-95 text-white font-black py-4 rounded-2xl shadow-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <Activity size={18} className="animate-spin" /> : <Lock size={18} />}
+                {actionLoading ? "Encrypting..." : "Encrypt & Store in BotVault"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ============================================================
+// Main Dashboard Component
+// ============================================================
 export default function Dashboard({ token, userRole, userName, onLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [data, setData] = useState(null);
@@ -110,7 +1075,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
   const [roiSaving, setRoiSaving] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // ROI form (prefill best-effort)
+  // ROI form
   const [roiForm, setRoiForm] = useState({
     EmpMinutesPerRequest: 15,
     EmpCostPerRequest: 10,
@@ -118,8 +1083,8 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     ExpectedRunsPerDay: 50
   });
 
-  // Enterprise processes (server pagination)
-  const [processConfigs, setProcessConfigs] = useState([]);  // loaded items only (not all)
+  // Enterprise processes
+  const [processConfigs, setProcessConfigs] = useState([]);
   const [processCursor, setProcessCursor] = useState(null);
   const [isLoadingProcesses, setIsLoadingProcesses] = useState(false);
   const [hasMoreProcesses, setHasMoreProcesses] = useState(true);
@@ -130,9 +1095,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
 
   const PIE_COLORS = ['#4B367C', '#F37920', '#10B981', '#EF4444'];
 
-  // ------------------------------------------
-  // Dashboard data (KPIs + Charts)
-  // ------------------------------------------
+  // Dashboard data
   const fetchData = (isAutoRefresh = false) => {
     if (!token) return;
     if (!isAutoRefresh) setIsSwitching(true);
@@ -160,10 +1123,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
       });
   };
 
-  // ------------------------------------------
-  // Processes list (Keyset pagination)
-  // Backend search is prefix search.
-  // ------------------------------------------
+  // Keyset pagination processes
   const fetchProcessesPage = ({ reset = false } = {}) => {
     if (!token) return;
     if (isLoadingProcesses) return;
@@ -199,20 +1159,15 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
       });
   };
 
-  // initial load dashboard
   useEffect(() => {
     fetchData(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProcess, dateFilter, token]);
 
-  // auto refresh dashboard
   useEffect(() => {
     const interval = setInterval(() => fetchData(true), 15000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProcess, dateFilter, token]);
 
-  // processes load on token/search change (debounced)
   useEffect(() => {
     if (!token) return;
 
@@ -228,25 +1183,18 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, token]);
 
-  // first processes load
   useEffect(() => {
     if (!token) return;
     if (processConfigs.length === 0) {
       fetchProcessesPage({ reset: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // ------------------------------------------
-  // Tree nodes (from LOADED processes only)
-  // ------------------------------------------
+  // Tree nodes
   const processNodes = useMemo(() => {
-    // group loaded processes by department
     const filtered = processConfigs;
-
     const grouped = {};
     filtered.forEach(c => {
       const dept = c.Department || 'General';
@@ -279,11 +1227,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     setShowExceptions(true);
   };
 
-  // Best-effort prefill ROI:
-  // - new enterprise backend doesn't ship full configList
-  // - if /api/processes later includes ROI fields, this will auto-prefill
   const openRoiModal = async () => {
-    // default values
     let prefill = {
       EmpMinutesPerRequest: roiForm.EmpMinutesPerRequest ?? 0,
       EmpCostPerRequest: roiForm.EmpCostPerRequest ?? 0,
@@ -291,7 +1235,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
       ExpectedRunsPerDay: roiForm.ExpectedRunsPerDay ?? 0,
     };
 
-    // try from loaded cache first
     const cached = processConfigs.find(c => c.ProcessName === selectedProcess);
     if (cached) {
       prefill = {
@@ -301,11 +1244,10 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
         ExpectedRunsPerDay: cached.ExpectedRunsPerDay ?? prefill.ExpectedRunsPerDay,
       };
     } else {
-      // try fetch a small page that should include the exact process (prefix search)
       try {
         const url = new URL(`${API_BASE}/api/processes`);
         url.searchParams.set('page_size', '50');
-        url.searchParams.set('search', selectedProcess); // prefix
+        url.searchParams.set('search', selectedProcess);
         const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` } });
         const js = await res.json();
         const found = (js?.items || []).find(i => i.ProcessName === selectedProcess);
@@ -317,9 +1259,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             ExpectedRunsPerDay: found.ExpectedRunsPerDay ?? prefill.ExpectedRunsPerDay,
           };
         }
-      } catch (_) {
-        // ignore
-      }
+      } catch (_) {}
     }
 
     setRoiForm(prefill);
@@ -345,6 +1285,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
         if (resData.status === "success") {
           setShowRoiModal(false);
           fetchData(false);
+          fetchProcessesPage({ reset: true });
         } else {
           alert(resData.message || "عفواً، لا تملك صلاحية التعديل");
         }
@@ -371,7 +1312,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     </div>
   );
 
-  // Safe defaults (enterprise API may omit some analytics fields)
   const safe = data || {};
   const kpis = safe.kpis || {};
   const sidebarStats = safe.sidebarStats || { successRate: 0, errorRate: 0, bookedRuns: 0 };
@@ -409,11 +1349,11 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     }
 
     const proc = item.name;
-    const isSelected = activeTab === "dashboard" && selectedProcess === proc;
+    const isSelected = selectedProcess === proc;
     return (
       <div style={style} className="pr-2 pb-1 pl-6">
         <div
-          onClick={() => { setActiveTab("dashboard"); setSelectedProcess(proc); }}
+          onClick={() => { setSelectedProcess(proc); }}
           className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${
             isSelected
               ? 'bg-[#4B367C]/10 text-[#4B367C] border border-[#4B367C]/20 shadow-sm'
@@ -607,6 +1547,18 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
               </li>
 
               <li
+                onClick={() => setActiveTab("lifecycle")}
+                className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${
+                  activeTab === "lifecycle"
+                    ? 'bg-[#4B367C] text-white shadow-md'
+                    : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'
+                }`}
+              >
+                <GitBranch size={18} className={activeTab === "lifecycle" ? 'text-white' : 'text-slate-400'} />
+                Lifecycle & Vault
+              </li>
+
+              <li
                 onClick={() => setActiveTab("workload")}
                 className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${
                   activeTab === "workload"
@@ -648,7 +1600,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
 
           <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent mb-6"></div>
 
-          {/* Processes Portfolio (Enterprise: paged from /api/processes) */}
+          {/* Processes Portfolio */}
           <div className="flex flex-col flex-1 overflow-hidden">
             <div className="flex justify-between items-center mb-3 ml-2 pr-2">
               <p className="text-[0.65rem] font-bold tracking-[0.15em] text-[#F37920] uppercase">Processes Portfolio</p>
@@ -731,6 +1683,17 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
         <div className="flex-1 overflow-hidden relative z-10 bg-white">
           <InfrastructureHealth token={token} userRole={userRole} />
         </div>
+      ) : activeTab === "lifecycle" ? (
+        <BotLifecycleView
+          token={token}
+          userRole={userRole}
+          initialProcess={selectedProcess}
+          processConfigs={processConfigs}
+          onSyncRequested={() => {
+            fetchData(true);
+            fetchProcessesPage({ reset: true });
+          }}
+        />
       ) : (
         <div className={`flex-1 overflow-y-auto p-10 xl:p-12 print:p-0 print:overflow-visible relative z-10 transition-opacity duration-300 ${isSwitching ? 'opacity-40 pointer-events-none' : 'opacity-100 animate-in fade-in slide-in-from-bottom-4 duration-500'}`}>
 
@@ -942,7 +1905,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
           </div>
 
-          {/* Recent Runs Table (Enterprise colored status) */}
+          {/* Recent Runs Table */}
           <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-8 hover:shadow-md transition-shadow print:break-inside-avoid">
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
               <h3 className="text-sm font-black text-[#4B367C] uppercase tracking-wider">Active Process Runs Log</h3>
