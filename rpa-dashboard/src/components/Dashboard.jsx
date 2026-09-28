@@ -1546,17 +1546,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 Global Dashboard
               </li>
 
-              <li
-                onClick={() => setActiveTab("lifecycle")}
-                className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${
-                  activeTab === "lifecycle"
-                    ? 'bg-[#4B367C] text-white shadow-md'
-                    : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'
-                }`}
-              >
-                <GitBranch size={18} className={activeTab === "lifecycle" ? 'text-white' : 'text-slate-400'} />
-                Lifecycle & Vault
-              </li>
 
               <li
                 onClick={() => setActiveTab("workload")}

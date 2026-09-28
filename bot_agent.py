@@ -24,8 +24,8 @@ AGENT_VERSION = "2.1.1"
 MACHINE_NAME = socket.gethostname()
 BASE_DIR = os.path.dirname(__file__)
 
-CREDENTIALS_PATH = os.path.join(BASE_DIR, "agent_credentials.json")
-ENROLL_CONFIG_PATH = os.path.join(BASE_DIR, "enroll_config.json")
+CREDENTIALS_PATH = os.path.join(BASE_DIR, "agent_credentials.json")  # ملف التوكن الدائم
+ENROLL_CONFIG_PATH = os.path.join(BASE_DIR, "enroll_config.json")    # ملف كود الإقران المؤقت
 
 
 def get_system_drive() -> str:
