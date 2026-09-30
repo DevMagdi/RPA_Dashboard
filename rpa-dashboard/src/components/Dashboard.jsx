@@ -24,7 +24,7 @@ const VirtualTreeList = ({
   itemSize,
   height,
   onEndReached,
-  children: RenderComponent
+  children: renderItem
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
 
@@ -34,18 +34,14 @@ const VirtualTreeList = ({
   const items = [];
   for (let i = startIndex; i <= endIndex; i++) {
     items.push(
-      <RenderComponent
-        key={i}
-        index={i}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: itemSize,
-          transform: `translateY(${i * itemSize}px)`
-        }}
-      />
+      renderItem(i, {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: itemSize,
+        transform: `translateY(${i * itemSize}px)`
+      })
     );
   }
 
@@ -151,7 +147,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     VersionTag: 'v1.0.0',
     TargetMachineName: '',
     Description: '',
-    // ROI Forecasting fields
     ExpectedRunsPerDay: 50,
     EmpMinutesPerRequest: 15,
     EmpCostPerRequest: 25.0,
@@ -176,7 +171,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Live status
   const fetchLiveStatus = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/bot-versions/live-status`, {
@@ -191,7 +185,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     }
   };
 
-  // Version History
   const fetchHistory = async (procName) => {
     if (!procName) return;
     setIsLoading(true);
@@ -212,13 +205,13 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
 
   useEffect(() => {
     fetchLiveStatus();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (selectedProcess) {
       fetchHistory(selectedProcess);
     }
-  }, [selectedProcess]);
+  }, [selectedProcess, token]);
 
   useEffect(() => {
     if (initialProcess && initialProcess !== 'All') {
@@ -226,7 +219,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     }
   }, [initialProcess]);
 
-  // Handle Create Process OR Version
   const handleCreateVersion = async (e) => {
     e.preventDefault();
     setActionLoading(true);
@@ -242,7 +234,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     }
 
     try {
-      // 1. إذا كانت عملية جديدة كلياً نقوم بإنشائها أولاً وضبط إعداداتها
       const roiPayload = {
         ProcessName: targetProc,
         EmpMinutesPerRequest: parseFloat(createForm.EmpMinutesPerRequest) || 15,
@@ -251,7 +242,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
         ExpectedRunsPerDay: parseInt(createForm.ExpectedRunsPerDay) || 50
       };
 
-      // محاولة تحديث أو تسجيل الـ ROI
       await fetch(`${API_BASE}/api/update-roi`, {
         method: 'POST',
         headers: {
@@ -261,7 +251,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
         body: JSON.stringify(roiPayload)
       });
 
-      // 2. تسجيل النسخة في جدول BotVersions
       const res = await fetch(`${API_BASE}/api/bot-versions`, {
         method: 'POST',
         headers: {
@@ -296,7 +285,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     }
   };
 
-  // Open Transition Modal
   const openTransitionModal = (version) => {
     setSelectedVersionForAction(version);
     const nextEnv = version.CurrentStatus === 'Development' ? 'UAT' : (version.CurrentStatus === 'UAT' ? 'Production' : 'Development');
@@ -307,7 +295,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     setShowTransitionModal(true);
   };
 
-  // Execute Stage Transition / Rollback
   const handleExecuteTransition = async (e) => {
     e.preventDefault();
     if (!selectedVersionForAction) return;
@@ -343,7 +330,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     }
   };
 
-  // Add Credential to Vault
   const handleAddVaultCredential = async (e) => {
     e.preventDefault();
     if (!selectedVersionForAction) return;
@@ -375,7 +361,6 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
     }
   };
 
-  // Computed ROI preview inside create modal
   const forecastedDailySavings = useMemo(() => {
     const runs = Number(createForm.ExpectedRunsPerDay) || 0;
     const netSavingsPerRequest = (Number(createForm.EmpCostPerRequest) || 0) - (Number(createForm.BotCostPerRequest) || 0);
@@ -808,7 +793,7 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Emp Cost / Req (EGP)</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Emp Cost / Req ($)</label>
                     <input
                       type="number"
                       required
@@ -820,7 +805,7 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Bot Cost / Req (EGP)</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Bot Cost / Req ($)</label>
                     <input
                       type="number"
                       required
@@ -838,7 +823,7 @@ function BotLifecycleView({ token, userRole, initialProcess, processConfigs, onS
                   <div>
                     <span className="text-[10px] font-black uppercase text-slate-400">Forecasted Monthly Savings</span>
                     <p className="text-xl font-black text-slate-900">
-                      EGP {(forecastedDailySavings * 22).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      $ {(forecastedDailySavings * 22).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div className="text-right">
@@ -1314,20 +1299,42 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
 
   const safe = data || {};
   const kpis = safe.kpis || {};
+  const stopsTodayAll = Number(kpis.stopsTodayAll ?? kpis.stopsToday ?? 0);
+  const failureDetailsAll = Array.isArray(kpis.failureDetailsAll)
+    ? kpis.failureDetailsAll
+    : (Array.isArray(kpis.failureDetails) ? kpis.failureDetails : []);
   const sidebarStats = safe.sidebarStats || { successRate: 0, errorRate: 0, bookedRuns: 0 };
   const analytics = safe.analytics || {};
   const charts = safe.charts || { volume: [], savings: [] };
   const table = Array.isArray(safe.table) ? safe.table : [];
   const isRunning = kpis.status === 'Running';
 
-  const RenderTreeRow = ({ index, style }) => {
+  const selectProcessFromPortfolio = (proc, dept = null) => {
+    if (!proc) return;
+
+    if (dept) {
+      setExpandedDepts(prev => ({ ...prev, [dept]: true }));
+    }
+
+    setSelectedProcess(proc);
+
+    if (activeTab !== "dashboard") {
+      setActiveTab("dashboard");
+    }
+
+    setShowExceptions(false);
+    setSpecificError(null);
+  };
+
+  // دالة عادية للرندرة بدلاً من تعريفه كمكون داخلي (حل مشكلة الـ Performance/Flicker)
+  const renderTreeRow = (index, style) => {
     const item = processNodes[index];
     if (!item) return null;
 
     if (item.type === 'department') {
       const isExpanded = expandedDepts[item.name] || searchQuery;
       return (
-        <div style={style} className="pr-2 pb-1">
+        <div key={`dept-${item.name}`} style={style} className="pr-2 pb-1">
           <div
             onClick={() => toggleDept(item.name)}
             className="flex items-center justify-between px-3 py-2.5 bg-slate-100/70 hover:bg-slate-200 cursor-pointer rounded-xl transition-colors border border-slate-200/50"
@@ -1351,9 +1358,9 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
     const proc = item.name;
     const isSelected = selectedProcess === proc;
     return (
-      <div style={style} className="pr-2 pb-1 pl-6">
+      <div key={`proc-${proc}`} style={style} className="pr-2 pb-1 pl-6">
         <div
-          onClick={() => { setSelectedProcess(proc); }}
+          onClick={() => selectProcessFromPortfolio(proc, item.dept)}
           className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${
             isSelected
               ? 'bg-[#4B367C]/10 text-[#4B367C] border border-[#4B367C]/20 shadow-sm'
@@ -1410,7 +1417,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Emp Cost Per Request (EGP)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Emp Cost Per Request ($)</label>
                 <input
                   type="number"
                   value={roiForm.EmpCostPerRequest}
@@ -1419,7 +1426,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Bot Cost Per Request (EGP)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Bot Cost Per Request ($)</label>
                 <input
                   type="number"
                   value={roiForm.BotCostPerRequest}
@@ -1464,7 +1471,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                     {specificError ? "Transaction Error Details" : "System Exceptions"}
                   </h3>
                   <p className="text-sm text-red-500 font-bold">
-                    {specificError ? "Detailed view of the failed request." : `${kpis.stopsToday || 0} critical incidents detected.`}
+                    {specificError ? "Detailed view of the failed request." : `${stopsTodayAll || 0} critical incidents detected.`}
                   </p>
                 </div>
               </div>
@@ -1494,15 +1501,17 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                     <span className="leading-relaxed text-base">{specificError.FailureReason || "Unknown Error Occurred"}</span>
                   </div>
                 </div>
-              ) : (Array.isArray(kpis.failureDetails) && kpis.failureDetails.length > 0) ? (
-                kpis.failureDetails.map((fail, i) => (
+              ) : (Array.isArray(failureDetailsAll) && failureDetailsAll.length > 0) ? (
+                failureDetailsAll.map((fail, i) => (
                   <div key={i} className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm hover:border-red-200 hover:shadow-md transition-all">
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-bold text-slate-800 flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                        {(fail.ProcessName || '').replace('_', ' ')}
+                        {(fail.ProcessName || '').replace(/_/g, ' ')}
                       </span>
-                      <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded-md border border-slate-200 text-slate-600">{fail.RequestID}</span>
+                      <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded-md border border-slate-200 text-slate-600">
+                        {fail.RequestID}
+                      </span>
                     </div>
                     <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm flex items-start gap-2 border border-red-100/50">
                       <Zap size={16} className="mt-0.5 shrink-0" />
@@ -1546,7 +1555,6 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 Global Dashboard
               </li>
 
-
               <li
                 onClick={() => setActiveTab("workload")}
                 className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${
@@ -1570,6 +1578,19 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 <Server size={18} className={activeTab === "infrastructure" ? 'text-white' : 'text-slate-400'} />
                 Infrastructure
               </li>
+
+              {/* حل المشكلة 3: تم إضافة زر التنقل لصفحة دورة حياة البوتات */}
+              {/*<li
+                onClick={() => setActiveTab("lifecycle")}
+                className={`px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 cursor-pointer transition-all ${
+                  activeTab === "lifecycle"
+                    ? 'bg-[#4B367C] text-white shadow-md'
+                    : 'text-slate-500 hover:bg-slate-50 hover:translate-x-1'
+                }`}
+              >
+                <GitBranch size={18} className={activeTab === "lifecycle" ? 'text-white' : 'text-slate-400'} />
+                Bot Lifecycle
+              </li>*/}
 
               {(userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
                 <li
@@ -1627,7 +1648,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                   itemSize={42}
                   onEndReached={() => fetchProcessesPage({ reset: false })}
                 >
-                  {RenderTreeRow}
+                  {(index, style) => renderTreeRow(index, style)}
                 </VirtualTreeList>
               ) : (
                 <div className="text-center text-slate-400 text-xs font-bold py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
@@ -1673,16 +1694,18 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
           <InfrastructureHealth token={token} userRole={userRole} />
         </div>
       ) : activeTab === "lifecycle" ? (
-        <BotLifecycleView
-          token={token}
-          userRole={userRole}
-          initialProcess={selectedProcess}
-          processConfigs={processConfigs}
-          onSyncRequested={() => {
-            fetchData(true);
-            fetchProcessesPage({ reset: true });
-          }}
-        />
+        <div className="flex-1 overflow-hidden relative z-10 bg-white">
+          <BotLifecycleView
+            token={token}
+            userRole={userRole}
+            initialProcess={selectedProcess}
+            processConfigs={processConfigs}
+            onSyncRequested={() => {
+              fetchData(true);
+              fetchProcessesPage({ reset: true });
+            }}
+          />
+        </div>
       ) : (
         <div className={`flex-1 overflow-y-auto p-10 xl:p-12 print:p-0 print:overflow-visible relative z-10 transition-opacity duration-300 ${isSwitching ? 'opacity-40 pointer-events-none' : 'opacity-100 animate-in fade-in slide-in-from-bottom-4 duration-500'}`}>
 
@@ -1699,47 +1722,125 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
             </div>
 
             <div className="flex items-center gap-4 print:hidden">
-              <div className="relative">
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center gap-3 bg-white border border-slate-200 hover:border-[#4B367C] rounded-full px-5 py-3 shadow-sm text-xs font-black text-slate-700 uppercase tracking-wider transition-all cursor-pointer"
-                >
-                  <Calendar size={16} className="text-[#F37920]" />
-                  <span>
-                    {dateFilter === 'all_time' && 'All Time'}
-                    {dateFilter === 'today' && 'Today'}
-                    {dateFilter === '7days' && 'Last 7 Days'}
-                    {dateFilter === 'this_month' && 'This Month'}
-                  </span>
-                  <ChevronRight size={14} className={`transform transition-transform text-slate-400 ${isDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
-                </button>
+              {/* ===== Premium Date Filter Dropdown ===== */}
+<div className="relative">
+  <button
+    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+    className={`flex items-center gap-3 bg-white border-2 rounded-full pl-4 pr-3 py-2.5 shadow-sm text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer group ${
+      isDropdownOpen
+        ? 'border-[#4B367C] shadow-md shadow-[#4B367C]/10'
+        : 'border-slate-200 hover:border-[#4B367C]/60 hover:shadow-md'
+    }`}
+  >
+    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-[#F37920]/15 to-[#F37920]/5">
+      <Calendar size={14} className="text-[#F37920]" />
+    </div>
+    <span className="text-slate-700">
+      {dateFilter === 'all_time' && 'All Time'}
+      {dateFilter === 'today' && 'Today'}
+      {dateFilter === '7days' && 'Last 7 Days'}
+      {dateFilter === 'this_month' && 'This Month'}
+    </span>
+    <div className={`flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180 bg-[#4B367C]/10' : 'group-hover:bg-slate-200'}`}>
+      <ChevronDown size={14} className={isDropdownOpen ? 'text-[#4B367C]' : 'text-slate-400'} />
+    </div>
+  </button>
 
-                {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                    {[
-                      { id: 'all_time', label: 'All Time' },
-                      { id: 'today', label: 'Today' },
-                      { id: '7days', label: 'Last 7 Days' },
-                      { id: 'this_month', label: 'This Month' },
-                    ].map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          setDateFilter(item.id);
-                          setIsDropdownOpen(false);
-                        }}
-                        className={`px-5 py-2.5 text-xs font-bold cursor-pointer transition-colors ${
-                          dateFilter === item.id
-                            ? 'bg-[#4B367C] text-white font-black'
-                            : 'text-slate-600 hover:bg-slate-50 hover:text-[#4B367C]'
-                        }`}
-                      >
-                        {item.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
+  {isDropdownOpen && (
+    <>
+      {/* Backdrop خفيف عشان يقفل لما تضغط بره */}
+      <div
+        className="fixed inset-0 z-40"
+        onClick={() => setIsDropdownOpen(false)}
+      />
+
+      <div className="absolute right-0 mt-3 w-64 bg-white rounded-2xl shadow-2xl shadow-slate-300/40 border border-slate-100/80 py-2 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200">
+        {/* Header صغير جوه المنيو */}
+        <div className="px-4 pt-2 pb-3 border-b border-slate-100 mb-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
+            Reporting Period
+          </p>
+        </div>
+
+        {[
+          {
+            id: 'all_time',
+            label: 'All Time',
+            desc: 'Full historical data',
+            icon: '∞'
+          },
+          {
+            id: 'today',
+            label: 'Today',
+            desc: 'Last 24 hours only',
+            icon: '◉'
+          },
+          {
+            id: '7days',
+            label: 'Last 7 Days',
+            desc: 'Rolling weekly view',
+            icon: '7'
+          },
+          {
+            id: 'this_month',
+            label: 'This Month',
+            desc: 'Current calendar month',
+            icon: 'M'
+          },
+        ].map((item) => {
+          const isActive = dateFilter === item.id;
+          return (
+            <div
+              key={item.id}
+              onClick={() => {
+                setDateFilter(item.id);
+                setIsDropdownOpen(false);
+              }}
+              className={`mx-2 my-0.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 flex items-center gap-3 group/item ${
+                isActive
+                  ? 'bg-gradient-to-r from-[#4B367C] to-[#5c4096] text-white shadow-md shadow-[#4B367C]/25'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#4B367C]'
+              }`}
+            >
+              {/* أيقونة دائرية */}
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black shrink-0 transition-all ${
+                  isActive
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-100 text-slate-500 group-hover/item:bg-[#4B367C]/10 group-hover/item:text-[#4B367C]'
+                }`}
+              >
+                {item.icon}
               </div>
+
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-black leading-tight ${isActive ? 'text-white' : ''}`}>
+                  {item.label}
+                </p>
+                <p className={`text-[10px] mt-0.5 truncate ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
+                  {item.desc}
+                </p>
+              </div>
+
+              {/* Check mark للخيار النشط */}
+              {isActive && (
+                <Check size={16} className="text-emerald-300 shrink-0" strokeWidth={3} />
+              )}
+            </div>
+          );
+        })}
+
+        {/* Footer بسيط */}
+        <div className="mx-2 mt-1 mb-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100">
+          <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#F37920] animate-pulse"></span>
+            Live data auto-refreshes every 15s
+          </p>
+        </div>
+      </div>
+    </>
+  )}
+</div>
 
               {selectedProcess !== "All" && (userRole === 'SuperAdmin' || userRole === 'CoE_Manager') && (
                 <button
@@ -1805,34 +1906,37 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded">Financial ROI</span>
               </div>
               <h3 className="text-4xl font-black text-slate-800 truncate">
-                <span className="text-xl text-[#F37920] mr-1">EGP</span>{formatCurrency(kpis.costSaved)}
+                <span className="text-xl text-[#F37920] mr-1">$</span>{formatCurrency(kpis.costSaved)}
               </h3>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2">Capital Saved</p>
             </div>
 
+            {/* حل المشكلة 1: تم تصحيح الكارت الخامس (الاستثناءات) ليكون نظيفاً وغير متداخل */}
             <div
-              onClick={() => Number(kpis.stopsToday || 0) > 0 && openExceptionsModal()}
+              onClick={() => Number(stopsTodayAll) > 0 && openExceptionsModal()}
               className={`p-6 rounded-[2rem] border flex flex-col justify-between transition-all duration-300 group ${
-                Number(kpis.stopsToday || 0) > 0
+                Number(stopsTodayAll) > 0
                   ? 'bg-red-50 border-red-200 shadow-md cursor-pointer hover:-translate-y-1 hover:shadow-lg hover:border-red-400'
                   : 'bg-white border-slate-200 shadow-sm print:shadow-none'
               }`}
             >
               <div className="flex justify-between items-start mb-2">
-                <ShieldAlert size={28} className={Number(kpis.stopsToday || 0) > 0 ? "text-red-500" : "text-slate-400"} />
+                <ShieldAlert size={28} className={Number(stopsTodayAll) > 0 ? "text-red-500" : "text-slate-400"} />
                 <span className={`text-[10px] font-bold px-2 py-1 rounded ${
-                  Number(kpis.stopsToday || 0) > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'
+                  Number(stopsTodayAll) > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'
                 }`}>
                   Status
                 </span>
               </div>
-              <h3 className={`text-5xl font-black ${Number(kpis.stopsToday || 0) > 0 ? 'text-red-500' : 'text-slate-800'}`}>
-                {Number(kpis.stopsToday || 0).toLocaleString()}
+
+              <h3 className={`text-5xl font-black ${Number(stopsTodayAll) > 0 ? 'text-red-500' : 'text-slate-800'}`}>
+                {Number(stopsTodayAll).toLocaleString()}
               </h3>
+
               <p className={`text-[10px] font-bold uppercase tracking-widest mt-2 ${
-                Number(kpis.stopsToday || 0) > 0 ? 'text-red-400 group-hover:underline' : 'text-slate-400'
+                Number(stopsTodayAll) > 0 ? 'text-red-400 group-hover:underline' : 'text-slate-400'
               }`}>
-                {Number(kpis.stopsToday || 0) > 0 ? 'Exceptions (Click)' : 'No Exceptions'}
+                {Number(stopsTodayAll) > 0 ? 'Exceptions (Click)' : 'No Exceptions'}
               </p>
             </div>
           </div>
@@ -1885,7 +1989,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
                     <Tooltip
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontWeight: 'bold' }}
-                      formatter={(value) => [`EGP ${formatCurrency(value)}`]}
+                      formatter={(value) => [`$ ${formatCurrency(value)}`]}
                     />
                     <Area type="monotone" dataKey="bar" stroke="#F37920" strokeWidth={4} fill="url(#orangeGrad)" />
                   </AreaChart>
@@ -1940,7 +2044,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                           {run.DurationMinutes ? `${run.DurationMinutes} m` : <span className="text-[#F37920] animate-pulse bg-[#F37920]/10 px-3 py-1 rounded-lg">Running...</span>}
                         </td>
                         <td className="px-8 py-4 text-sm font-black text-slate-900 text-right">
-                          {Number(costSaved) > 0 ? `EGP ${formatCurrency(costSaved)}` : '-'}
+                          {Number(costSaved) > 0 ? `$ ${formatCurrency(costSaved)}` : '-'}
                         </td>
                       </tr>
                     );

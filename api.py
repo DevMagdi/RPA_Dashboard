@@ -9,7 +9,7 @@ import secrets
 import hashlib
 import hmac
 from datetime import datetime, timedelta, date
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 
 import pandas as pd
 import numpy as np
@@ -265,7 +265,7 @@ class AgentEnrollRequest(BaseModel):
 class MachineRegistration(BaseModel):
     MachineName: str = Field(..., min_length=1, max_length=100)
     AssignedBot: str = Field(..., min_length=1, max_length=100)
-    RunnerType: str = Field(..., min_length=1, max_length=50)
+    RunnerType: Literal["Unattended", "Attended", "TestBot"]
     TotalRAM_GB: int = Field(..., gt=0)
     TotalHDD_GB: int = Field(..., gt=0)
 
@@ -273,7 +273,7 @@ class MachineRegistration(BaseModel):
 class MachineUpdate(BaseModel):
     MachineName: str = Field(..., min_length=1, max_length=100)
     AssignedBot: str = Field(..., min_length=1, max_length=100)
-    RunnerType: str = Field(..., min_length=1, max_length=50)
+    RunnerType: Literal["Unattended", "Attended", "TestBot"]
     TotalRAM_GB: int = Field(..., gt=0)
     TotalHDD_GB: int = Field(..., gt=0)
 
@@ -469,6 +469,8 @@ def list_processes(
 # ============================================================
 # Dashboard Data
 # ============================================================
+
+
 @app.get("/api/dashboard-data")
 def get_dashboard_data(
     process: Optional[str] = Query(None),
@@ -664,6 +666,44 @@ def get_dashboard_data(
         )
         table = recent_df.to_dict("records") if not recent_df.empty else []
 
+        # ============================================================
+        # TODAY EXCEPTIONS (GLOBAL across processes) - department scoped
+        # ============================================================
+        dept_cond = "1=1" if current_user.AllowedDepartment == "ALL" else "c.Department = :dept"
+
+        today_ex_df = run_query(
+            f"""
+            SELECT
+                COUNT(1) AS stopsTodayAll
+            FROM ProcessRuns r
+            JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+            WHERE r.StartTime >= CONVERT(date, GETDATE())
+              AND r.StartTime < DATEADD(day, 1, CONVERT(date, GETDATE()))
+              AND r.Status IN ('Failed','Stopped')
+              AND ({dept_cond})
+            """,
+            params,
+        )
+        stops_today_all = int(today_ex_df.iloc[0]["stopsTodayAll"] or 0) if not today_ex_df.empty else 0
+
+        today_fail_all_df = run_query(
+            f"""
+            SELECT TOP 200
+                r.ProcessName,
+                r.RequestID,
+                r.Status,
+                ISNULL(NULLIF(r.FailureReason,''), 'Unknown Error') AS FailureReason
+            FROM ProcessRuns r
+            JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
+            WHERE r.StartTime >= CONVERT(date, GETDATE())
+              AND r.StartTime < DATEADD(day, 1, CONVERT(date, GETDATE()))
+              AND r.Status IN ('Failed','Stopped')
+              AND ({dept_cond})
+            ORDER BY r.StartTime DESC
+            """,
+            params,
+        )
+        failure_details_all = today_fail_all_df.to_dict("records") if not today_fail_all_df.empty else []
         response_data = {
             "kpis": {
                 "totalProcedures": total_procedures,
@@ -676,7 +716,8 @@ def get_dashboard_data(
                 "activeRequest": active_req,
                 "activeProcess": active_proc,
                 "status": current_status,
-                "failureDetails": failure_details,
+                "stopsTodayAll": stops_today_all,
+                "failureDetailsAll": failure_details_all,
             },
             "sidebarStats": {"bookedRuns": booked_runs, "successRate": success_rate, "errorRate": error_rate},
             "analytics": {"statusDistribution": status_distribution},
@@ -1162,15 +1203,18 @@ def register_machine(
         if not existing.empty:
             raise HTTPException(status_code=400, detail="هذا الجهاز مسجل بالفعل")
 
-        bot_exists = run_query("SELECT 1 AS X FROM ProcessConfig WHERE BotName = :b", {"b": machine.AssignedBot})
-        if bot_exists.empty:
-            raise HTTPException(status_code=400, detail="AssignedBot غير موجود في ProcessConfig")
+        proc_exists = run_query(
+            "SELECT 1 AS X FROM ProcessConfig WHERE ProcessName = :p",
+            {"p": machine.AssignedBot},
+        )
+        if proc_exists.empty:
+            raise HTTPException(status_code=400, detail="العملية المحددة غير موجودة في قاعدة البيانات")
 
         insert_query = """
             INSERT INTO BotInfrastructure
-            (MachineName, AssignedBot, Status, CPU_Usage, RAM_Usage, HDD_Usage, LastPing,
+            (MachineName, AssignedProcess, Status, CPU_Usage, RAM_Usage, HDD_Usage, LastPing,
              TotalRAM_GB, TotalHDD_GB, RunnerType, AgentToken)
-            VALUES (:name, :bot, 'Pending', 0, 0, 0, GETDATE(), :ram, :hdd, :runner_type, NULL)
+            VALUES (:name, :bot, 'Offline', 0, 0, 0, GETDATE(), :ram, :hdd, :runner_type, NULL)
         """
 
         enrollment_code = generate_enrollment_code()
@@ -1181,32 +1225,19 @@ def register_machine(
 
         execute_transaction(
             [
-                (
-                    insert_query,
-                    {
-                        "name": machine.MachineName,
-                        "bot": machine.AssignedBot,
-                        "ram": machine.TotalRAM_GB,
-                        "hdd": machine.TotalHDD_GB,
-                        "runner_type": machine.RunnerType,
-                    },
-                ),
+                (insert_query, {
+                    "name": machine.MachineName,
+                    "bot": machine.AssignedBot,
+                    "ram": machine.TotalRAM_GB,
+                    "hdd": machine.TotalHDD_GB,
+                    "runner_type": machine.RunnerType,
+                }),
                 ("DELETE FROM AgentEnrollmentCodes WHERE MachineName = :name", {"name": machine.MachineName}),
-                (
-                    enrollment_query,
-                    {"name": machine.MachineName, "code": enrollment_code, "ttl": ENROLLMENT_TTL_MINUTES},
-                ),
+                (enrollment_query, {"name": machine.MachineName, "code": enrollment_code, "ttl": ENROLLMENT_TTL_MINUTES}),
             ]
         )
 
-        expires_at_preview = datetime.now() + timedelta(minutes=ENROLLMENT_TTL_MINUTES)
-        return {
-            "status": "success",
-            "message": "Runner Registered Successfully",
-            "enrollment_code": enrollment_code,
-            "expires_at": expires_at_preview.isoformat(),
-            "expires_in_minutes": ENROLLMENT_TTL_MINUTES,
-        }
+        return {"status": "success", "enrollment_code": enrollment_code}
 
     except HTTPException:
         raise
@@ -1260,7 +1291,7 @@ def update_machine(
         execute_update(
             """
             UPDATE BotInfrastructure
-            SET AssignedBot = :bot,
+            SET AssignedProcess = :bot,
                 RunnerType  = :runner_type,
                 TotalRAM_GB = :ram,
                 TotalHDD_GB = :hdd
@@ -1285,7 +1316,7 @@ def get_infrastructure_health(current_user: auth.User = Depends(auth.get_current
         df_infra = run_query(
             """
             SELECT MachineName,
-                   AssignedBot,
+                   AssignedProcess AS AssignedBot,
                    Status,
                    CPU_Usage,
                    RAM_Usage,

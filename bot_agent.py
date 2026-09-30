@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler("agent.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("agent.log", encoding="utf-8"), logging.StreamHandler()],
 )
 logger = logging.getLogger("BotAgent")
 
