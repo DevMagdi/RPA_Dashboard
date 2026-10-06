@@ -71,6 +71,12 @@ const VirtualTreeList = ({
 
 const API_BASE = 'http://127.0.0.1:8000';
 
+const safeNumber = (value, fallback = 0) => {
+  if (value === '' || value === null || value === undefined) return '';
+  const num = parseFloat(value);
+  return isNaN(num) ? fallback : num;
+};
+
 const dateFilterToDays = (dateFilter) => {
   switch (dateFilter) {
     case 'today': return 1;
@@ -1252,18 +1258,21 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
   };
 
   const handleSaveROI = () => {
-    setRoiSaving(true);
-    fetch(`${API_BASE}/api/update-roi`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        ProcessName: selectedProcess,
-        ...roiForm
-      })
+  setRoiSaving(true);
+  fetch(`${API_BASE}/api/update-roi`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      ProcessName: selectedProcess,
+      EmpMinutesPerRequest: Number(roiForm.EmpMinutesPerRequest) || 0,
+      EmpCostPerRequest: Number(roiForm.EmpCostPerRequest) || 0,
+      BotCostPerRequest: Number(roiForm.BotCostPerRequest) || 0,
+      ExpectedRunsPerDay: Number(roiForm.ExpectedRunsPerDay) || 0,
     })
+  })
       .then(res => res.json())
       .then(resData => {
         setRoiSaving(false);
@@ -1406,13 +1415,13 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
               </button>
             </div>
 
-            <div className="p-6 bg-slate-50 space-y-5 rounded-b-[2rem]">
+                        <div className="p-6 bg-slate-50 space-y-5 rounded-b-[2rem]">
               <div>
                 <label className="block text-xs font-black text-slate-500 uppercase mb-2">Emp Minutes Per Request</label>
                 <input
                   type="number"
                   value={roiForm.EmpMinutesPerRequest}
-                  onChange={(e) => setRoiForm({ ...roiForm, EmpMinutesPerRequest: parseFloat(e.target.value) })}
+                  onChange={(e) => setRoiForm({ ...roiForm, EmpMinutesPerRequest: safeNumber(e.target.value, roiForm.EmpMinutesPerRequest) })}
                   className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-[#4B367C] focus:ring-1 focus:ring-[#4B367C]"
                 />
               </div>
@@ -1421,7 +1430,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 <input
                   type="number"
                   value={roiForm.EmpCostPerRequest}
-                  onChange={(e) => setRoiForm({ ...roiForm, EmpCostPerRequest: parseFloat(e.target.value) })}
+                  onChange={(e) => setRoiForm({ ...roiForm, EmpCostPerRequest: safeNumber(e.target.value, roiForm.EmpCostPerRequest) })}
                   className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-[#4B367C] focus:ring-1 focus:ring-[#4B367C]"
                 />
               </div>
@@ -1430,7 +1439,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 <input
                   type="number"
                   value={roiForm.BotCostPerRequest}
-                  onChange={(e) => setRoiForm({ ...roiForm, BotCostPerRequest: parseFloat(e.target.value) })}
+                  onChange={(e) => setRoiForm({ ...roiForm, BotCostPerRequest: safeNumber(e.target.value, roiForm.BotCostPerRequest) })}
                   className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-[#4B367C] focus:ring-1 focus:ring-[#4B367C]"
                 />
               </div>
@@ -1439,7 +1448,7 @@ export default function Dashboard({ token, userRole, userName, onLogout }) {
                 <input
                   type="number"
                   value={roiForm.ExpectedRunsPerDay}
-                  onChange={(e) => setRoiForm({ ...roiForm, ExpectedRunsPerDay: parseInt(e.target.value) })}
+                  onChange={(e) => setRoiForm({ ...roiForm, ExpectedRunsPerDay: safeNumber(e.target.value, roiForm.ExpectedRunsPerDay) })}
                   className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-[#4B367C] focus:ring-1 focus:ring-[#4B367C]"
                 />
               </div>
