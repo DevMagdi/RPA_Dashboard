@@ -55,7 +55,13 @@ export default function HealthPage() {
 
   const schema = data?.schema || {}
   const security = data?.security || {}
-  const problems = security.security_problems || []
+  const problems = Array.isArray(security.security_problems) ? security.security_problems : []
+  const schedulerJobs = Array.isArray(data?.scheduler?.jobs) ? data.scheduler.jobs : []
+  // The API currently reports `jobs` as a count. Keep supporting a jobs array
+  // too, so the page remains compatible if the API starts returning job details.
+  const schedulerJobCount = Number.isFinite(data?.scheduler?.jobs)
+    ? data.scheduler.jobs
+    : schedulerJobs.length
 
   return (
     <div className="space-y-4">
@@ -113,11 +119,11 @@ export default function HealthPage() {
         </StatCard>
 
         <StatCard title={t('health.scheduler')} icon={Timer} ok={data?.scheduler?.running}>
-          <InfoTile label={t('health.jobs')} value={(data?.scheduler?.jobs || []).length} />
+          <InfoTile label={t('health.jobs')} value={schedulerJobCount} />
           <div className="space-y-1">
-            {(data?.scheduler?.jobs || []).map((job) => (
-              <div key={job.id || job.name} className="flex items-center justify-between gap-2 text-[11px] text-muted">
-                <span className="truncate">{job.id || job.name}</span>
+            {schedulerJobs.map((job, index) => (
+              <div key={job.id || job.name || index} className="flex items-center justify-between gap-2 text-[11px] text-muted">
+                <span className="truncate">{job.id || job.name || job}</span>
                 <span className="tabular-nums">{job.next_run_time || job.next || '—'}</span>
               </div>
             ))}
