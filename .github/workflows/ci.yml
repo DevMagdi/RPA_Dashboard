@@ -12,7 +12,7 @@ permissions:
 jobs:
   backend:
     name: Backend (pytest + coverage gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       ENV: test
       DB_DIALECT: sqlite
@@ -20,8 +20,8 @@ jobs:
       DB_SEED_DEMO: "true"
       SCHEDULER_ENABLED: "false"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -34,20 +34,22 @@ jobs:
           python -m ruff check app tests scripts
       - name: Test (coverage gate 80% via .coveragerc)
         run: python -m pytest
-      - name: API smoke (62 checks, in-process)
+      - name: API smoke (64 checks, in-process)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           rm -f /tmp/smoke.sqlite3*
           DB_NAME=/tmp/smoke.sqlite3 python scripts/smoke_api.py
 
   frontend:
     name: Frontend (lint + build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: rpa-dashboard
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -58,10 +60,12 @@ jobs:
 
   security:
     name: Security scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Python dependencies audit
@@ -73,7 +77,15 @@ jobs:
         run: |
           npm ci
           npm audit --audit-level=critical || true
+      # Hard gate (no args input — v2's `args` was invalid — and no
+      # continue-on-error): the action scans the PR/push commit range
+      # with the committed .gitleaks.toml.  A separate full-history audit
+      # found pre-v4 secrets that must be rotated (see PR description);
+      # they are deliberately NOT allowlisted here.
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: --redact --verbose
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_ENABLE_COMMENTS: "false"

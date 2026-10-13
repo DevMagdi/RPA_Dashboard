@@ -9,6 +9,15 @@ from __future__ import annotations
 import sys
 import time
 import warnings
+from pathlib import Path
+
+# CI runs `python scripts/smoke_api.py` from the repo root; Python then puts
+# scripts/ (not the repo root) on sys.path, so `import app` would fail.
+# Insert the repo root explicitly so the smoke works exactly as CI runs it,
+# with no manual PYTHONPATH export required.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 warnings.filterwarnings("ignore")
 

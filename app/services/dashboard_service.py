@@ -215,7 +215,7 @@ def build_dashboard_payload(
         SELECT {flavor.top(12)}
                r.RunID, r.ProcessName, r.RequestID, r.Status, r.StartTime, r.EndTime,
                r.DurationMinutes, r.FailureReason, r.TransactionsCount, r.CostSaved,
-               r.MachineName, r.Trigger, r.TriggeredBy
+               r.MachineName, r.{flavor.quote_ident('Trigger')} AS {flavor.quote_ident('Trigger')}, r.TriggeredBy
         FROM ProcessRuns r
         JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND {window_filter}

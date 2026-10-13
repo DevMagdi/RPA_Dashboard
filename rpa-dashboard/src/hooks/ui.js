@@ -1,7 +1,7 @@
 /** Small UI primitives: debounce, media queries, clipboard, hotkeys, count-up. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { onRealtimeState, startRealtime } from '../lib/realtime'
+import { onRealtimeState } from '../lib/realtime'
 import storage from '../lib/storage'
 
 export function useDebouncedValue(value, delay = 350) {
@@ -135,13 +135,15 @@ export function useCountUp(target, duration = 900) {
   return value
 }
 
-/** Live connection state for the realtime stream (used by the status pill). */
+/**
+ * Live connection state for the realtime stream (used by the status pill).
+ * Subscribes only — the stream itself is owned by AuthProvider, which
+ * starts it after login/refresh and stops it on logout, so mounting this
+ * hook while logged out can never trigger `/api/realtime/events` 401s.
+ */
 export function useRealtimeStatus() {
   const [state, setState] = useState({ status: 'closed', lastEventAt: null, retries: 0 })
-  useEffect(() => {
-    startRealtime()
-    return onRealtimeState(setState)
-  }, [])
+  useEffect(() => onRealtimeState(setState), [])
   return state
 }
 

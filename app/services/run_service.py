@@ -329,7 +329,7 @@ def list_runs(
         f"""
         SELECT r.RunID, r.ProcessName, r.RequestID, r.Status, r.StartTime, r.EndTime, r.DurationMinutes,
                r.TransactionsCount, r.SuccessCount, r.FailedCount, r.TimeSavedHours, r.CostSaved,
-               r.FailureReason, r.MachineName, r.RobotName, r.Trigger, r.TriggeredBy, r.ExitCode,
+               r.FailureReason, r.MachineName, r.RobotName, r.{flavor.quote_ident('Trigger')} AS {flavor.quote_ident('Trigger')}, r.TriggeredBy, r.ExitCode,
                c.Department, c.Criticality
         FROM ProcessRuns r
         JOIN ProcessConfig c ON c.ProcessName = r.ProcessName
