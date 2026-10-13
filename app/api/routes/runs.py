@@ -6,6 +6,7 @@ could create a ``ProcessRuns`` row, so every KPI had to be seeded by hand.
 ``POST /api/runs/start``           — register the start of a run (idempotent)
 ``POST /api/runs/{id}/complete``   — finalise a run (status, transactions, savings)
 ``POST /api/runs/{id}/progress``   — live progress for long-running jobs
+``POST /api/runs/{id}/heartbeat``  — liveness heartbeat (updates LastHeartbeatAt)
 ``GET  /api/runs``                 — filtered, paginated run history
 ``GET  /api/runs/statistics``      — daily distribution
 ``GET  /api/runs/top-failures``    — most common failure reasons
@@ -80,42 +81,37 @@ def _authenticate_agent_or_user(
     request: Request,
     db: Session,
     x_agent_token: Optional[str],
-    x_tenant_key: Optional[str],
-) -> tuple[int, Optional[Dict[str, Any]], Optional[AuthenticatedUser]]:
+) -> tuple[Optional[Dict[str, Any]], Optional[AuthenticatedUser]]:
     """Resolve the caller: an enrolled agent **or** an authenticated user.
 
-    Returns ``(tenant_id, machine_row, principal)``.
+    Returns ``(machine_row, principal)``.
     """
     if x_agent_token:
-        # Agents identify themselves with the machine name header too
         machine_name = request.headers.get("x-machine-name")
         if not machine_name:
             raise HTTPException(status_code=400, detail="ترويسة X-Machine-Name مطلوبة مع توكن الأجنت")
 
         machine = fetch_one(
             db,
-            "SELECT TenantID, MachineName, AssignedProcess FROM BotInfrastructure WHERE MachineName = :m",
+            "SELECT MachineName, AssignedProcess FROM BotInfrastructure WHERE MachineName = :m",
             {"m": machine_name},
             operation="runs.agent_lookup",
         )
         if not machine:
             raise HTTPException(status_code=401, detail="الجهاز غير مسجل")
 
-        verified = infra_service.verify_agent_token(
-            db, machine_name=machine_name, token=x_agent_token, tenant_id=int(machine["TenantID"])
-        )
+        verified = infra_service.verify_agent_token(db, machine_name=machine_name, token=x_agent_token)
         if not verified:
             raise HTTPException(status_code=401, detail="توكن الجهاز غير صحيح")
-        return int(machine["TenantID"]), machine, None
+        return machine, None
 
-    # Fall back to the normal user authentication
     from app.api.deps import authenticate_bearer
 
     try:
         principal = authenticate_bearer(request, db)
     except HTTPException:
         raise HTTPException(status_code=401, detail="مطلوب مصادقة (توكن الأجنت أو تسجيل دخول المستخدم)")
-    return principal.tenant_id, None, principal
+    return None, principal
 
 
 # --------------------------------------------------------------------------- #
@@ -127,20 +123,25 @@ async def start_run(
     request: Request,
     db: Session = Depends(get_db),
     x_agent_token: Optional[str] = Header(None, alias="X-Agent-Token"),
+    idempotency_key_header: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> Dict[str, Any]:
-    """Create a ``Running`` row; replaying the same idempotency key is a no-op."""
-    tenant_id, machine, principal = _authenticate_agent_or_user(request, db, x_agent_token, request.headers.get("x-tenant-key"))
+    """Create a ``Running`` row; replaying the same idempotency key is a no-op.
 
-    if not process_service.process_exists(db, tenant_id=tenant_id, process_name=payload.ProcessName):
+    The key may be sent as the ``Idempotency-Key`` header (preferred) or as
+    the ``IdempotencyKey`` body field for legacy agents.
+    """
+    machine, principal = _authenticate_agent_or_user(request, db, x_agent_token)
+
+    if not process_service.process_exists(db, process_name=payload.ProcessName):
         raise HTTPException(status_code=404, detail="العملية غير مسجلة في النظام")
 
     try:
         run_id, created = run_service.start_run(
             db,
-            tenant_id=tenant_id,
+            
             process_name=payload.ProcessName,
             request_id=payload.RequestID,
-            idempotency_key=payload.IdempotencyKey,
+            idempotency_key=payload.IdempotencyKey or idempotency_key_header,
             machine_name=payload.MachineName or (machine or {}).get("MachineName"),
             robot_name=payload.RobotName,
             provider_run_id=payload.ProviderRunId,
@@ -155,7 +156,7 @@ async def start_run(
     if created:
         audit_service.record(
             db,
-            tenant_id=tenant_id,
+            
             action_type="Run_Started",
             user_id=principal.user_id if principal else None,
             process_name=payload.ProcessName,
@@ -168,8 +169,8 @@ async def start_run(
             },
             ip_address=client_ip(request),
         )
-        invalidate_dashboard_cache(tenant_id)
-        await _publish_run_event(tenant_id, "run_started", run_id, payload.ProcessName)
+        invalidate_dashboard_cache()
+        await _publish_run_event("run_started", run_id, payload.ProcessName)
 
     return {"status": "success", "run_id": run_id, "created": created, "process_name": payload.ProcessName}
 
@@ -183,12 +184,12 @@ async def complete_run(
     x_agent_token: Optional[str] = Header(None, alias="X-Agent-Token"),
 ) -> Dict[str, Any]:
     """Set the final status; duration and savings are computed server-side."""
-    tenant_id, machine, principal = _authenticate_agent_or_user(request, db, x_agent_token, request.headers.get("x-tenant-key"))
+    machine, principal = _authenticate_agent_or_user(request, db, x_agent_token)
 
     try:
         result = run_service.complete_run(
             db,
-            tenant_id=tenant_id,
+            
             run_id=run_id,
             status=payload.Status,
             transactions_count=payload.TransactionsCount,
@@ -207,7 +208,7 @@ async def complete_run(
         )
         audit_service.record(
             db,
-            tenant_id=tenant_id,
+            
             action_type=f"Run_{payload.Status}",
             user_id=principal.user_id if principal else None,
             process_name=(run_row or {}).get("ProcessName"),
@@ -217,8 +218,8 @@ async def complete_run(
             ip_address=client_ip(request),
             is_success=payload.Status == "Completed",
         )
-        invalidate_dashboard_cache(tenant_id)
-        await _publish_run_event(tenant_id, "run_completed", run_id, (run_row or {}).get("ProcessName"), result)
+        invalidate_dashboard_cache()
+        await _publish_run_event("run_completed", run_id, (run_row or {}).get("ProcessName"), result)
 
     return {"status": "success", **result}
 
@@ -232,14 +233,32 @@ def run_progress(
     x_agent_token: Optional[str] = Header(None, alias="X-Agent-Token"),
 ) -> Dict[str, Any]:
     """Refresh the live transaction counter for a long-running job."""
-    tenant_id, _machine, _principal = _authenticate_agent_or_user(request, db, x_agent_token, request.headers.get("x-tenant-key"))
+    _machine, _principal = _authenticate_agent_or_user(request, db, x_agent_token)
     try:
         return run_service.update_progress(
             db,
-            tenant_id=tenant_id,
+            
             run_id=run_id,
             transactions_count=payload.TransactionsCount,
             failure_reason=payload.FailureReason,
+        )
+    except RunError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{run_id}/heartbeat", summary="Run heartbeat")
+def run_heartbeat(
+    run_id: int,
+    payload: RunProgressRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    x_agent_token: Optional[str] = Header(None, alias="X-Agent-Token"),
+) -> Dict[str, Any]:
+    """Liveness ping for a running job (refreshes ``LastHeartbeatAt``)."""
+    _machine, _principal = _authenticate_agent_or_user(request, db, x_agent_token)
+    try:
+        return run_service.heartbeat_run(
+            db, run_id=run_id, transactions_count=payload.TransactionsCount, failure_reason=payload.FailureReason
         )
     except RunError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -265,7 +284,7 @@ def list_runs(
     since = datetime.utcnow() - timedelta(hours=since_hours) if since_hours else None
     return run_service.list_runs(
         db,
-        tenant_id=principal.tenant_id,
+        
         department_scope=principal.department,
         process_name=process,
         status=status_filter,
@@ -283,7 +302,7 @@ def statistics(
     principal: AuthenticatedUser = Depends(require_permission("dashboard:read", "*")),
 ) -> Dict[str, Any]:
     """Runs per day with completed/failed split."""
-    return run_service.run_statistics(db, tenant_id=principal.tenant_id, days=days)
+    return run_service.run_statistics(db, days=days)
 
 
 @router.get("/top-failures", summary="Most frequent failure reasons")
@@ -294,7 +313,7 @@ def top_failures(
     principal: AuthenticatedUser = Depends(require_permission("dashboard:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Failure fingerprints for targeted remediation."""
-    return run_service.top_failure_reasons(db, tenant_id=principal.tenant_id, days=days, limit=limit)
+    return run_service.top_failure_reasons(db, days=days, limit=limit)
 
 
 @router.post("/reap-stale", summary="Close abandoned running jobs")
@@ -303,24 +322,24 @@ def reap_stale(
     principal: AuthenticatedUser = Depends(require_permission("commands:write", "*")),
 ) -> Dict[str, Any]:
     """Mark long-running ``Running`` jobs (crashed agents) as ``Stopped``."""
-    count = run_service.reap_stale_runs(db, tenant_id=principal.tenant_id)
+    count = run_service.reap_stale_runs(db)
     if count:
         audit_service.record(
             db,
-            tenant_id=principal.tenant_id,
+            
             action_type="Runs_Reaped",
             user_id=principal.user_id,
             new_values={"count": count},
         )
-        invalidate_dashboard_cache(principal.tenant_id)
+        invalidate_dashboard_cache()
     return {"status": "success", "reaped": count}
 
 
 async def _publish_run_event(
-    tenant_id: int, event: str, run_id: int, process_name: Optional[str], extra: Optional[Dict[str, Any]] = None
+    event: str, run_id: int, process_name: Optional[str], extra: Optional[Dict[str, Any]] = None
 ) -> None:
     """Fan out a run lifecycle event to connected dashboards."""
     payload: Dict[str, Any] = {"run_id": run_id, "process_name": process_name}
     if extra:
         payload.update({k: v for k, v in extra.items() if k != "already_completed"})
-    await hub.publish(event, payload, tenant_id=tenant_id)
+    await hub.publish(event, payload)

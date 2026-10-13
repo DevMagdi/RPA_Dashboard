@@ -1,7 +1,7 @@
 """Alembic environment — dialect agnostic.
 
 The connection string comes from the application settings, so migrations run
-identically against SQL Server (bank on-prem), PostgreSQL (cloud) and SQLite
+identically against SQL Server (bank on-prem), PostgreSQL (private cloud) and SQLite
 (unit tests / air-gapped demos).
 """
 

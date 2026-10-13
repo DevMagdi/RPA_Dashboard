@@ -732,7 +732,7 @@ export default function LifecyclePage() {
               ))}
             </Select>
           </Field>
-          <Field label={t('lifecycle.vault')} required hint="Encrypted with the tenant key; never logged.">
+          <Field label={t('lifecycle.vault')} required hint="Encrypted at rest; decryption is audited and never logged.">
             <Input name="Value" type="password" required autoComplete="new-password" />
           </Field>
           <div className="flex justify-end gap-2">

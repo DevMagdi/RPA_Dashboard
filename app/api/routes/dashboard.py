@@ -26,7 +26,7 @@ from app.services.auth_service import AuthenticatedUser
 from app.services.dashboard_service import get_dashboard, process_options, invalidate_dashboard_cache
 from app.services.realtime import hub
 from app.services.sla_service import backlog_trend, sla_summary
-from app.services.tenant_service import get_branding
+from app.services.organization_service import get_branding
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Dashboard"])
@@ -51,7 +51,6 @@ def dashboard_data(
 
     payload = get_dashboard(
         db,
-        tenant_id=principal.tenant_id,
         department_scope=scope,
         process=process,
         days=days,
@@ -72,7 +71,7 @@ def process_filter_options(
     principal: AuthenticatedUser = Depends(current_principal),
 ) -> List[str]:
     """Distinct process names visible to the caller."""
-    return process_options(db, tenant_id=principal.tenant_id, department_scope=principal.department)
+    return process_options(db, department_scope=principal.department)
 
 
 @router.get("/dashboard/sla-summary", summary="SLA headline numbers")
@@ -81,7 +80,7 @@ def sla_headline(
     principal: AuthenticatedUser = Depends(current_principal),
 ) -> Dict[str, Any]:
     """Counts of healthy / warning / breach-risk processes."""
-    return sla_summary(db, tenant_id=principal.tenant_id, department_scope=principal.department)
+    return sla_summary(db, department_scope=principal.department)
 
 
 @router.get("/dashboard/backlog-trend", summary="Queue backlog trend")
@@ -91,7 +90,7 @@ def backlog(
     principal: AuthenticatedUser = Depends(current_principal),
 ) -> List[Dict[str, Any]]:
     """Backlog trend from queue snapshots (last 48 h)."""
-    return backlog_trend(db, tenant_id=principal.tenant_id, process_name=process_name)
+    return backlog_trend(db, process_name=process_name)
 
 
 @router.post("/dashboard/refresh", summary="Invalidate cached dashboard data")
@@ -102,10 +101,9 @@ def refresh_cache(
     meta: RequestMeta = Depends(request_meta),
 ) -> Dict[str, Any]:
     """Force the next dashboard read to rebuild (used after bulk imports)."""
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="Dashboard_Refreshed",
         user_id=principal.user_id,
         ip_address=meta.ip_address,
@@ -117,33 +115,13 @@ def refresh_cache(
 # --------------------------------------------------------------------------- #
 # Branding (public: needed to render the login screen)
 # --------------------------------------------------------------------------- #
-@router.get("/branding", tags=["Tenants"], summary="Tenant branding for the UI")
+@router.get("/branding", tags=["Organization"], summary="Organization branding for the UI")
 def branding(request: Request, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Return white-label branding (logo, colours, locale) for the frontend."""
-    from app.db.repository import fetch_one
-
-    tenant_key = request.headers.get("x-tenant-key") or "default"
-    tenant = fetch_one(
-        db,
-        "SELECT TenantID FROM Tenants WHERE TenantKey = :k AND IsActive = 1",
-        {"k": tenant_key},
-        operation="branding.lookup",
-    )
-    if not tenant:
-        tenant = fetch_one(
-            db, "SELECT TenantID FROM Tenants WHERE IsActive = 1 ORDER BY TenantID", operation="branding.default"
-        )
-    tenant_id = int(tenant["TenantID"]) if tenant else 1
-    payload = get_branding(db, tenant_id)
-    payload["api_version"] = "3.0.0"
-    payload["features"] = {
-        "mfa": True,
-        "realtime": True,
-        "capacity_advisor": True,
-        "multi_vendor": True,
-        "exports": True,
-    }
+    """Return organization branding (logo, colours, locale) for the frontend."""
+    payload = get_branding(db)
+    payload["api_version"] = "4.0.0"
     return payload
+
 
 
 # --------------------------------------------------------------------------- #
@@ -165,13 +143,12 @@ async def realtime_events(
     ``?token=`` query parameter — ``EventSource`` cannot set headers, and
     without the fallback the browser client could never subscribe.
     """
-    subscriber_id = f"{principal.tenant_id}:{principal.user_id}:{uuid.uuid4().hex[:8]}"
+    subscriber_id = f"{principal.user_id}:{uuid.uuid4().hex[:8]}"
 
     async def _generator():
         try:
             async for event in hub.subscribe_sse(
                 subscriber_id=subscriber_id,
-                tenant_id=principal.tenant_id,
                 user_id=principal.user_id,
                 department=principal.department,
                 role=principal.role,
@@ -213,6 +190,6 @@ async def broadcast_refresh(
 ) -> Dict[str, Any]:
     """Notify every connected client that data changed (cheap, no payload)."""
     delivered = await hub.publish(
-        "data_changed", {"reason": payload.reason, "by": principal.username}, tenant_id=principal.tenant_id
+        "data_changed", {"reason": payload.reason, "by": principal.username}
     )
     return {"status": "success", "delivered": delivered}

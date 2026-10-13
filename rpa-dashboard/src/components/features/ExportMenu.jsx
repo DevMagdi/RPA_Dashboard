@@ -10,7 +10,7 @@ import { Button } from '../ui'
 /**
  * Branded export menu (Excel / PDF).
  *
- * Exports are generated server-side with the tenant logo and colours, so a
+ * Exports are generated server-side with the organization logo and colours, so a
  * bank's CoE can attach them to a management pack without editing anything.
  */
 const EXPORTS = [

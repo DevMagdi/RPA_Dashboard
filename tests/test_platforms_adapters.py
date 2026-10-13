@@ -36,7 +36,7 @@ class StubAA:
 # --------------------------------------------------------------------------- #
 def test_provider_catalogue_without_credentials():
     catalogue = {row["provider"]: row for row in available_providers()}
-    assert set(catalogue) == {"generic_sql", "uipath", "automation_anywhere"}
+    assert set(catalogue) == {"generic_sql", "uipath", "automation_anywhere", "blue_prism"}
     for row in catalogue.values():
         assert row["capabilities"], f"empty capabilities for {row['provider']}"
         assert row["display_name"]
@@ -133,7 +133,7 @@ def test_aa_run_mapping_in_progress():
 # Native (generic SQL) adapter control actions
 # --------------------------------------------------------------------------- #
 def test_generic_sql_start_job_always_returns_external_id():
-    adapter = GenericSQLAdapter({"tenant_id": 1})
+    adapter = GenericSQLAdapter({})
     without_key = adapter.start_job(JobStartRequest(process_key="Invoice_Processing"))
     assert without_key.accepted
     assert without_key.external_id  # never None for an accepted job
@@ -144,7 +144,7 @@ def test_generic_sql_start_job_always_returns_external_id():
 
 
 def test_generic_sql_stop_job():
-    adapter = GenericSQLAdapter({"tenant_id": 1})
+    adapter = GenericSQLAdapter({})
     handle = adapter.stop_job("job-abc")
     assert handle.accepted
     assert handle.external_id == "job-abc"
@@ -326,7 +326,7 @@ def test_aa_start_and_stop_job():
 # Native adapter reads against the seeded database
 # --------------------------------------------------------------------------- #
 def test_generic_sql_reads_seeded_data(client):  # client bootstraps the DB
-    adapter = GenericSQLAdapter({"tenant_id": 1})
+    adapter = GenericSQLAdapter({})
     processes = adapter.get_processes()
     assert any(p.name == "Invoice_Processing" for p in processes)
     runs = adapter.get_runs(limit=5)

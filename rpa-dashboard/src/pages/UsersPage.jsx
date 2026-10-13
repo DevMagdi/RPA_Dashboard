@@ -212,7 +212,7 @@ export default function UsersPage() {
               ))}
             </Select>
           </Field>
-          <Field label={t('users.department')} hint={t('auth.tenantHint')}>
+          <Field label={t('users.department')}>
             <Input name="department" placeholder="ALL" />
           </Field>
           <Field label={t('users.temporaryPassword')} hint={t('users.temporaryPasswordHint')} required>

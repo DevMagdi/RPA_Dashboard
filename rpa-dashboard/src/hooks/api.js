@@ -236,20 +236,29 @@ export function useVaultStats() {
   })
 }
 
-export function useTenants(includeInactive = false) {
+export function useOrganization() {
   return useQuery({
-    queryKey: qk.tenants(includeInactive),
-    queryFn: () => api.get(`/api/tenants${queryString({ include_inactive: includeInactive })}`),
+    queryKey: qk.organization,
+    queryFn: () => api.get('/api/organization'),
     staleTime: 60_000,
   })
 }
 
-export function useTenant(id) {
+export function useAlerts(filters = {}) {
   return useQuery({
-    queryKey: qk.tenant(id),
-    queryFn: () => api.get(`/api/tenants/${id}`),
-    enabled: Boolean(id),
-    staleTime: 60_000,
+    queryKey: qk.alerts(filters),
+    queryFn: () => api.get(`/api/alerts${queryString({ status: filters.status, limit: filters.limit || 100 })}`),
+    staleTime: 15_000,
+  })
+}
+
+export function useAlertCount() {
+  return useQuery({
+    queryKey: qk.alertCount,
+    queryFn: () => api.get('/api/alerts/count'),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
 }
 
@@ -331,8 +340,8 @@ export function useConnectedAgents() {
 
 export function useProviderCatalogue() {
   return useQuery({
-    queryKey: ['tenants', 'providers'],
-    queryFn: () => api.get('/api/tenants/meta/providers'),
+    queryKey: ['organization', 'providers'],
+    queryFn: () => api.get('/api/organization/meta/providers'),
     staleTime: 30 * 60_000,
   })
 }
@@ -557,47 +566,46 @@ export function useRotateVaultKey() {
   })
 }
 
-export function useCreateTenant() {
-  const invalidate = useInvalidator()
-  return useMutation({
-    mutationFn: (payload) => api.post('/api/tenants', payload),
-    onSuccess: () => invalidate([['tenants']]),
-  })
-}
-
 export function useUpdateBranding() {
   const invalidate = useInvalidator()
   return useMutation({
-    mutationFn: ({ tenantId, ...payload }) => api.patch(`/api/tenants/${tenantId}/branding`, payload),
-    onSuccess: () => invalidate([['tenants'], ['branding']]),
+    mutationFn: (payload) => api.patch('/api/organization/branding', payload),
+    onSuccess: () => invalidate([['organization'], ['branding']]),
   })
 }
 
 export function useConfigurePlatform() {
   const invalidate = useInvalidator()
   return useMutation({
-    mutationFn: ({ tenantId, provider, config }) => api.post(`/api/tenants/${tenantId}/platform`, { Provider: provider, Config: config }),
-    onSuccess: () => invalidate([['tenants'], ['platform']]),
+    mutationFn: ({ provider, config }) => api.post('/api/organization/platform', { Provider: provider, Config: config }),
+    onSuccess: () => invalidate([['organization'], ['platform']]),
   })
 }
 
 export function useTestPlatformConfig() {
-  return useMutation({ mutationFn: (tenantId) => api.post(`/api/tenants/${tenantId}/platform/test`, {}) })
-}
-
-export function useSetTenantActive() {
-  const invalidate = useInvalidator()
-  return useMutation({
-    mutationFn: ({ tenantId, isActive }) =>
-      api.patch(`/api/tenants/${tenantId}/active${queryString({ is_active: isActive })}`),
-    onSuccess: () => invalidate([['tenants']]),
-  })
+  return useMutation({ mutationFn: () => api.post('/api/organization/platform/test', {}) })
 }
 
 export function useRunRetention() {
   return useMutation({
-    mutationFn: ({ tenantId, retentionDays = 730 }) =>
-      api.post(`/api/tenants/${tenantId}/retention/run${queryString({ retention_days: retentionDays })}`, {}),
+    mutationFn: ({ retentionDays = 730 } = {}) =>
+      api.post(`/api/organization/retention/run${queryString({ retention_days: retentionDays })}`, {}),
+  })
+}
+
+export function useSetAlertStatus() {
+  const invalidate = useInvalidator()
+  return useMutation({
+    mutationFn: ({ id, status }) => api.patch(`/api/alerts/${id}`, { Status: status }),
+    onSuccess: () => invalidate([['alerts']]),
+  })
+}
+
+export function useEvaluateAlerts() {
+  const invalidate = useInvalidator()
+  return useMutation({
+    mutationFn: () => api.post('/api/alerts/evaluate', {}),
+    onSuccess: () => invalidate([['alerts']]),
   })
 }
 

@@ -15,7 +15,6 @@ Every check prints OK/FAIL and the script exits non-zero if anything failed.
 
 from __future__ import annotations
 
-import json
 import os
 import statistics
 import sys
@@ -27,7 +26,6 @@ import httpx
 BASE_URL = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("CONTROL_ROOM_URL", "http://127.0.0.1:8000")).rstrip("/")
 USERNAME = os.getenv("CONTROL_ROOM_USER", "admin")
 PASSWORD = os.getenv("CONTROL_ROOM_PASSWORD", "ChangeMe_Admin1!")
-TENANT = os.getenv("CONTROL_ROOM_TENANT", "default")
 
 RESULTS: List[Tuple[str, bool, str]] = []
 TIMINGS: List[Tuple[str, float]] = []
@@ -81,7 +79,7 @@ def main() -> int:  # noqa: C901 - a linear scenario script is clearer here
         check("Liveness probe", bool(health and health.get("status") == "healthy"), str(health.get("status") if health else ""))
 
         # ----------------------------------------------------------- login
-        login = client.post("/api/auth/login", json={"username": USERNAME, "password": PASSWORD, "tenant_key": TENANT})
+        login = client.post("/api/auth/login", json={"username": USERNAME, "password": PASSWORD})
         login_body = body(login)
         check("Login (JSON) succeeds", login.status_code == 200, f"{login.status_code}")
         token = (login_body or {}).get("access_token")
@@ -130,8 +128,9 @@ def main() -> int:  # noqa: C901 - a linear scenario script is clearer here
             ("/api/audit-logs/summary", "audit summary", lambda d: "activity" in d),
             ("/api/notifications", "notification log", lambda d: isinstance(d, list)),
             ("/api/notifications/statistics", "notification SLI", lambda d: "total" in d),
-            ("/api/tenants", "tenants", lambda d: isinstance(d, list)),
-            ("/api/tenants/meta/providers", "tenant providers", lambda d: isinstance(d, list)),
+            ("/api/organization", "organization", lambda d: d.get("OrganizationID") == 1),
+            ("/api/organization/meta/providers", "platform providers", lambda d: isinstance(d, list)),
+            ("/api/alerts/count", "alert count", lambda d: "open" in d),
             ("/api/users", "users", lambda d: isinstance(d, list)),
             ("/api/auth/sessions", "sessions", lambda d: isinstance(d, list)),
             ("/health/detail", "self-health report", lambda d: "security" in d and "scheduler" in d),

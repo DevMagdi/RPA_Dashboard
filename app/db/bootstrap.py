@@ -1,4 +1,4 @@
-"""Database bootstrap: schema creation, tenant/role seeding and demo data.
+"""Database bootstrap: schema creation, organization/role seeding and demo data.
 
 Used by
 * the automated test-suite (SQLite in-memory),
@@ -6,7 +6,7 @@ Used by
 * first-run of a fresh on-prem install.
 
 Production banks create the schema through ``db/migrations`` (T-SQL) and only
-use this module for the tenant/role seed.
+use this module for the organization/role seed.
 """
 
 from __future__ import annotations
@@ -34,13 +34,13 @@ from app.db.tables import (
     RolePermissions,
     SchemaVersions,
     SystemUsers,
-    Tenants,
+    Organization,
     metadata,
 )
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "3.0.0"
+SCHEMA_VERSION = "4.0.0"
 
 # --------------------------------------------------------------------------- #
 # Role → permission matrix (kept in the DB so banks can customise it live)
@@ -102,27 +102,29 @@ def record_schema_version(version: str = SCHEMA_VERSION, description: str = "ini
             insert_row(session, SchemaVersions, {"Version": version, "Description": description})
 
 
-def ensure_tenant(
+def ensure_organization(
     session: Session,
     *,
-    tenant_key: str,
-    name: str,
+    name: str = "Organization",
     company_name: Optional[str] = None,
     primary_color: str = "#4B367C",
     accent_color: str = "#F37920",
     provider: str = "generic_sql",
     locale: str = "en",
 ) -> int:
-    """Return the tenant id, creating the tenant + default roles when needed."""
-    row = fetch_one(session, "SELECT TenantID FROM Tenants WHERE TenantKey = :k", {"k": tenant_key})
+    """Return the singleton organization id, seeding it + roles once.
+
+    Single-organization installation: exactly one ``Organization`` row may
+    ever exist. Repeated bootstrap calls return the same row.
+    """
+    row = fetch_one(session, "SELECT OrganizationID FROM Organization ORDER BY OrganizationID")
     if row:
-        tenant_id = int(row["TenantID"])
+        organization_id = int(row["OrganizationID"])
     else:
-        tenant_id = insert_row(
+        organization_id = insert_row(
             session,
-            Tenants,
+            Organization,
             {
-                "TenantKey": tenant_key,
                 "Name": name,
                 "CompanyName": company_name or name,
                 "BrandPrimaryColor": primary_color,
@@ -132,25 +134,18 @@ def ensure_tenant(
                 "IsActive": True,
             },
         )
-        logger.info("Tenant created: %s (id=%s)", tenant_key, tenant_id)
+        logger.info("Organization created: %s (id=%s)", name, organization_id)
 
-    seeded = fetch_scalar(
-        session, "SELECT COUNT(1) AS c FROM RolePermissions WHERE TenantID = :t", {"t": tenant_id}, default=0
-    )
+    seeded = fetch_scalar(session, "SELECT COUNT(1) AS c FROM RolePermissions", {}, default=0)
     if not seeded:
         for role, permissions in ROLE_PERMISSIONS.items():
             for permission in permissions:
-                insert_row(
-                    session,
-                    RolePermissions,
-                    {"TenantID": tenant_id, "Role": role, "Permission": permission},
-                )
-    return tenant_id
+                insert_row(session, RolePermissions, {"Role": role, "Permission": permission})
+    return organization_id
 
 
 def ensure_admin_user(
     session: Session,
-    tenant_id: int,
     *,
     username: str,
     password: str,
@@ -160,13 +155,13 @@ def ensure_admin_user(
     """Create the bootstrap administrator if the username is free."""
     existing = fetch_one(
         session,
-        "SELECT UserID FROM SystemUsers WHERE TenantID = :t AND Username = :u",
-        {"t": tenant_id, "u": username},
+        "SELECT UserID FROM SystemUsers WHERE Username = :u",
+        {"u": username},
     )
     if existing:
         return int(existing["UserID"])
 
-    policy = check_password_policy(password, min_length=8)
+    policy = check_password_policy(password)
     if not policy.ok:
         logger.warning("Bootstrap admin password rejected by policy: %s", policy.message)
         return None
@@ -175,7 +170,6 @@ def ensure_admin_user(
         session,
         SystemUsers,
         {
-            "TenantID": tenant_id,
             "Username": username,
             "Email": email,
             "FullName": username,
@@ -186,7 +180,7 @@ def ensure_admin_user(
             "FailedLoginAttempts": 0,
         },
     )
-    logger.info("Bootstrap admin '%s' created (tenant=%s, id=%s)", username, tenant_id, user_id)
+    logger.info("Bootstrap admin '%s' created (id=%s)", username, user_id)
     return user_id
 
 
@@ -203,13 +197,13 @@ DEMO_PROCESSES = [
 ]
 
 
-def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: int = 1337) -> Dict[str, int]:
+def seed_demo_data(session: Session, *, days: int = 30, seed: int = 1337) -> Dict[str, int]:
     """Populate a realistic demo dataset (processes, runs, queues, machines).
 
-    Idempotent: skips seeding when the tenant already owns process rows.
+    Idempotent: skips seeding when process rows already exist.
     """
     existing = fetch_scalar(
-        session, "SELECT COUNT(1) AS c FROM ProcessConfig WHERE TenantID = :t", {"t": tenant_id}, default=0
+        session, "SELECT COUNT(1) AS c FROM ProcessConfig WHERE 1 = 1", {}, default=0
     )
     if int(existing or 0) > 0:
         return {"processes": 0, "runs": 0, "machines": 0}
@@ -223,7 +217,6 @@ def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: in
             session,
             ProcessConfig,
             {
-                "TenantID": tenant_id,
                 "ProcessName": name,
                 "Department": dept,
                 "BotName": _bot,
@@ -245,7 +238,6 @@ def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: in
             session,
             ProcessQueues,
             {
-                "TenantID": tenant_id,
                 "ProcessName": name,
                 "PendingItems": pending,
                 "ActiveItems": rng.choice([0, 1, 2, 3]),
@@ -291,7 +283,6 @@ def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: in
                     session,
                     ProcessRuns,
                     {
-                        "TenantID": tenant_id,
                         "ProcessName": name,
                         "RequestID": f"{name[:3].upper()}-{day_date:%Y%m%d}-{index:04d}",
                         "Status": status,
@@ -327,7 +318,6 @@ def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: in
             session,
             BotInfrastructure,
             {
-                "TenantID": tenant_id,
                 "MachineName": machine_name,
                 "AssignedProcess": assigned,
                 "Status": "Online" if status == "Healthy" else "Offline",
@@ -340,7 +330,7 @@ def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: in
                 "RunnerType": runner_type,
                 "Platform": "generic_sql",
                 "OSName": os_name,
-                "AgentVersion": "3.0.0",
+                "AgentVersion": "4.0.0",
                 "LastIP": f"10.20.{rng.randint(1, 9)}.{rng.randint(10, 250)}",
             },
         )
@@ -358,7 +348,6 @@ def seed_demo_data(session: Session, tenant_id: int, *, days: int = 30, seed: in
             session,
             BotVersions,
             {
-                "TenantID": tenant_id,
                 "ProcessName": process,
                 "VersionTag": version_tag,
                 "CurrentStatus": status,
@@ -380,21 +369,16 @@ def bootstrap_database(
 
     summary: Dict[str, Any] = {"dialect": settings.DB_DIALECT, "tables": len(metadata.tables)}
     with session_scope() as session:
-        tenant_id = ensure_tenant(
-            session,
-            tenant_key="default",
-            name="FGS Solutions",
-            company_name="FGS Solutions",
-        )
-        summary["tenant_id"] = tenant_id
+        organization_id = ensure_organization(session, name="FGS Solutions", company_name="FGS Solutions")
+        summary["organization_id"] = organization_id
 
         username = admin_username or os.environ.get("BOOTSTRAP_ADMIN_USERNAME", "admin")
         password = admin_password or os.environ.get("BOOTSTRAP_ADMIN_PASSWORD", "ChangeMe_Admin1!")
-        admin_id = ensure_admin_user(session, tenant_id, username=username, password=password, role="SuperAdmin")
+        admin_id = ensure_admin_user(session, username=username, password=password, role="SuperAdmin")
         summary["admin_username"] = username if admin_id else None
 
         if create_demo:
-            summary.update(seed_demo_data(session, tenant_id))
+            summary.update(seed_demo_data(session))
 
     record_schema_version()
     return summary

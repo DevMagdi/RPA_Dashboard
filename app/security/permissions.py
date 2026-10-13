@@ -1,4 +1,4 @@
-"""Role & permission evaluation (role-based, department- and tenant-scoped).
+"""Role & permission evaluation (role-based and department-scoped).
 
 Permissions live in the database (``RolePermissions``) so a bank can create
 custom roles — e.g. *"Audit Reader"* — without a code change or a release.
@@ -75,18 +75,18 @@ class PermissionSet:
         return sorted(self.permissions)
 
 
-def load_permissions(tenant_id: int, role: str) -> PermissionSet:
-    """Load the permission set for ``role`` inside ``tenant_id``.
+def load_permissions(role: str) -> PermissionSet:
+    """Load the permission set for ``role``.
 
-    Falls back to the built-in matrix when the tenant has not customised roles
+    Falls back to the built-in matrix when no custom role rows exist
     (or the table is empty during a fresh bootstrap).
     """
     try:
         with session_scope() as session:
             rows = fetch_all(
                 session,
-                "SELECT Permission FROM RolePermissions WHERE TenantID = :t AND Role = :r",
-                {"t": tenant_id, "r": role},
+                "SELECT Permission FROM RolePermissions WHERE Role = :r",
+                {"r": role},
                 operation="permissions.load",
             )
     except Exception as exc:  # pragma: no cover - defensive: never block auth
@@ -105,7 +105,7 @@ def is_known_role(role: str) -> bool:
 
 
 def validate_role_or_permissions(role: str, extra_permissions: Optional[Iterable[str]] = None) -> bool:
-    """Used by the tenant admin API to reject typo'd roles."""
+    """Used by the user admin API to reject typo'd roles."""
     return is_known_role(role) or bool(list(extra_permissions or []))
 
 

@@ -1,9 +1,8 @@
-"""FastAPI dependencies: authentication, tenancy, permissions, rate limiting.
+"""FastAPI dependencies: authentication, permissions, rate limiting.
 
 Every protected route resolves its context through these helpers:
 
 * :func:`current_principal` — validated JWT → :class:`AuthenticatedUser`
-* :func:`tenant_id` — tenant isolation (token claim + optional header)
 * :func:`require_permission` — role/permission guard usable as a dependency
 * :func:`rate_limit` — per-endpoint token bucket backed by Redis/memory
 * :func:`request_meta` — IP + user agent for audit records
@@ -116,18 +115,17 @@ def authenticate_bearer(
         AUTH_EVENTS.labels(event="access_token", result="invalid").inc()
         raise _unauthorized("انتهت صلاحية الجلسة أو التوكن غير صالح")
 
-    tenant_id = int(payload.get("tenant_id") or 0)
     user_id = int(payload.get("user_id") or 0)
-    if not tenant_id or not user_id:
-        raise _unauthorized("التوكن لا يحتوي على بيانات المستأجر")
+    if not user_id:
+        raise _unauthorized("التوكن لا يحتوي على بيانات المستخدم")
 
-    principal = load_principal(db, tenant_id=tenant_id, user_id=user_id)
+    principal = load_principal(db, user_id=user_id)
     if principal is None:
         AUTH_EVENTS.labels(event="access_token", result="inactive").inc()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="الحساب غير متاح أو معطل")
 
     # Bind actor context so every subsequent log line is attributable
-    set_request_actor(tenant_id=principal.tenant_id, username=principal.username)
+    set_request_actor(username=principal.username)
     request.state.principal = principal
     return principal
 
@@ -141,14 +139,9 @@ def current_principal(
     return authenticate_bearer(request, db, credentials)
 
 
-def tenant_id(principal: AuthenticatedUser = Depends(current_principal)) -> int:
-    """Tenant scope for the current request."""
-    return principal.tenant_id
-
-
 def current_permissions(principal: AuthenticatedUser = Depends(current_principal), db: Session = Depends(get_db)) -> PermissionSet:
-    """Resolved permission set (cached per role inside the tenant)."""
-    return load_permissions(principal.tenant_id, principal.role)
+    """Resolved permission set for the current role."""
+    return load_permissions(principal.role)
 
 
 def require_permission(*required: str) -> Callable[..., AuthenticatedUser]:
@@ -162,7 +155,7 @@ def require_permission(*required: str) -> Callable[..., AuthenticatedUser]:
         principal: AuthenticatedUser = Depends(current_principal),
         db: Session = Depends(get_db),
     ) -> AuthenticatedUser:
-        permissions = load_permissions(principal.tenant_id, principal.role)
+        permissions = load_permissions(principal.role)
         if not permissions.has_any(required):
             AUTH_EVENTS.labels(event="permission", result="denied").inc()
             logger.warning(
@@ -178,54 +171,18 @@ def require_permission(*required: str) -> Callable[..., AuthenticatedUser]:
 
 
 # --------------------------------------------------------------------------- #
-# Platform-operator guard
+# Organization administrator guard (single-organization installation)
 # --------------------------------------------------------------------------- #
-#: TenantKey of the platform-operator tenant created at bootstrap.  Tenant
-#: management (list/provision/suspend *other* banks) is reserved for a
-#: SuperAdmin **of this tenant only**.
-PLATFORM_TENANT_KEY = "default"
-
-
-def platform_tenant_id(db: Session) -> Optional[int]:
-    """Resolve the platform-operator tenant id (``TenantKey='default'``)."""
-    from app.db.repository import fetch_one
-
-    row = fetch_one(
-        db,
-        "SELECT TenantID FROM Tenants WHERE TenantKey = :k",
-        {"k": PLATFORM_TENANT_KEY},
-        operation="deps.platform_tenant",
-    )
-    if row:
-        return int(row["TenantID"])
-    row = fetch_one(db, "SELECT MIN(TenantID) AS TenantID FROM Tenants", operation="deps.platform_tenant_min")
-    return int(row["TenantID"]) if row and row.get("TenantID") is not None else None
-
-
-def require_platform_admin(
+def require_organization_admin(
     principal: AuthenticatedUser = Depends(current_principal),
-    db: Session = Depends(get_db),
 ) -> AuthenticatedUser:
-    """Guard for cross-tenant (platform-operator) endpoints.
-
-    Tenant provisioning used to be guarded by ``require_permission("*")`` —
-    but every tenant gets its *own* ``SuperAdmin`` role seeded with the ``*``
-    permission **inside that tenant**, so any tenant's admin could list,
-    rebrand, reconfigure or suspend every other tenant.  This dependency
-    additionally binds the caller to the platform tenant (``default``), so a
-    tenant-local SuperAdmin can never cross the tenant boundary.
-    """
-    if principal.role != "SuperAdmin" or principal.tenant_id != platform_tenant_id(db):
-        AUTH_EVENTS.labels(event="permission", result="platform_denied").inc()
-        logger.warning(
-            "Platform-admin denied: user=%s role=%s tenant=%s",
-            principal.username,
-            principal.role,
-            principal.tenant_id,
-        )
+    """Guard for installation-wide settings (reserved for SuperAdmin)."""
+    if principal.role != "SuperAdmin":
+        AUTH_EVENTS.labels(event="permission", result="organization_admin_denied").inc()
+        logger.warning("Organization-admin denied: user=%s role=%s", principal.username, principal.role)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="هذا الإجراء مخصص لمشغّل المنصة فقط",
+            detail="هذا الإجراء مخصص لمسؤول النظام فقط",
         )
     return principal
 
@@ -309,37 +266,3 @@ def rate_limit(limit: int, window_seconds: int = 60, scope: str = "default") -> 
             )
 
     return _dependency
-
-
-# --------------------------------------------------------------------------- #
-# Tenant resolution helpers
-# --------------------------------------------------------------------------- #
-def resolve_tenant(
-    request: Request,
-    principal: AuthenticatedUser = Depends(current_principal),
-    db: Session = Depends(get_db),
-) -> int:
-    """Resolve the tenant for the request (token claim, optionally overridden).
-
-    A normal user is always bound to the tenant inside their token.  An
-    ``X-Tenant-Key`` header is only honoured for ``SuperAdmin`` — this powers the
-    platform-operator console without weakening tenant isolation for everyone
-    else.
-    """
-    requested = request.headers.get("x-tenant-key")
-    if not requested:
-        return principal.tenant_id
-    if principal.role != "SuperAdmin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="غير مصرح بالوصول لمستأجر آخر")
-
-    from app.db.repository import fetch_one
-
-    row = fetch_one(
-        db,
-        "SELECT TenantID FROM Tenants WHERE TenantKey = :k AND IsActive = 1",
-        {"k": requested},
-        operation="deps.resolve_tenant",
-    )
-    if not row:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المستأجر غير موجود")
-    return int(row["TenantID"])

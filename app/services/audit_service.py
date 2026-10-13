@@ -81,7 +81,7 @@ def _serialise(values: Optional[Any]) -> Optional[str]:
 def record(
     session: Session,
     *,
-    tenant_id: int,
+    
     action_type: str,
     user_id: Optional[int] = None,
     process_name: Optional[str] = None,
@@ -102,7 +102,6 @@ def record(
             session,
             AuditLogs,
             {
-                "TenantID": tenant_id,
                 "UserID": user_id,
                 "ActionType": action_type[:60],
                 "ProcessName": (process_name or None) and str(process_name)[:100],
@@ -123,7 +122,7 @@ def record(
 
 def record_standalone(
     *,
-    tenant_id: int,
+    
     action_type: str,
     user_id: Optional[int] = None,
     process_name: Optional[str] = None,
@@ -140,7 +139,7 @@ def record_standalone(
         with session_scope() as session:
             return record(
                 session,
-                tenant_id=tenant_id,
+                
                 action_type=action_type,
                 user_id=user_id,
                 process_name=process_name,
@@ -172,7 +171,7 @@ def record_strict(session: Session, **kwargs: Any) -> int:
 def query_logs(
     session: Session,
     *,
-    tenant_id: int,
+    
     limit: int = 200,
     offset: int = 0,
     action_type: Optional[str] = None,
@@ -188,8 +187,8 @@ def query_logs(
     from app.db.dialect import get_flavor
 
     flavor = get_flavor()
-    where = ["a.TenantID = :t"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 1000)), "offset": int(offset)}
+    where = ["1 = 1"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 1000)), "offset": int(offset)}
 
     if action_type:
         where.append("a.ActionType = :action")
@@ -225,8 +224,8 @@ def query_logs(
             a.EntityType, a.EntityID, a.OldValues, a.NewValues, a.ActionDate, a.IPAddress,
             a.UserAgent, a.CorrelationID, a.IsSuccess
         FROM AuditLogs a
-        LEFT JOIN SystemUsers u ON a.UserID = u.UserID AND u.TenantID = a.TenantID
-        LEFT JOIN ProcessConfig p ON a.ProcessName = p.ProcessName AND p.TenantID = a.TenantID
+        LEFT JOIN SystemUsers u ON a.UserID = u.UserID
+        LEFT JOIN ProcessConfig p ON a.ProcessName = p.ProcessName
         WHERE {' AND '.join(where)} {dept_join}
         ORDER BY a.ActionDate DESC, a.LogID DESC
         {flavor.paginate(params['limit'], params['offset'])}
@@ -234,10 +233,10 @@ def query_logs(
     return fetch_all(session, sql, params, operation="audit.query")
 
 
-def count_logs(session: Session, *, tenant_id: int, **filters: Any) -> int:
+def count_logs(session: Session, **filters: Any) -> int:
     """Total rows matching the audit filters (for pagination widgets)."""
-    where = ["TenantID = :t"]
-    params: Dict[str, Any] = {"t": tenant_id}
+    where = ["1 = 1"]
+    params: Dict[str, Any] = {}
     if filters.get("action_type"):
         where.append("ActionType = :action")
         params["action"] = filters["action_type"]
@@ -250,18 +249,18 @@ def count_logs(session: Session, *, tenant_id: int, **filters: Any) -> int:
     return int((row or {}).get("total") or 0)
 
 
-def purge_older_than(session: Session, *, tenant_id: int, retention_days: int) -> int:
+def purge_older_than(session: Session, *, retention_days: int) -> int:
     """Retention policy enforcement — delete audit rows beyond the window."""
     flavor = get_flavor()
     return execute(
         session,
-        f"DELETE FROM AuditLogs WHERE TenantID = :t AND ActionDate < {flavor.days_ago(retention_days)}",
-        {"t": tenant_id},
+        f"DELETE FROM AuditLogs WHERE ActionDate < {flavor.days_ago(retention_days)}",
+        {},
         operation="audit.purge",
     )
 
 
-def recent_critical_events(session: Session, *, tenant_id: int, hours: int = 24, limit: int = 20) -> list[Dict[str, Any]]:
+def recent_critical_events(session: Session, *, hours: int = 24, limit: int = 20) -> list[Dict[str, Any]]:
     """Failed/denied actions in the recent window — surfaced on the health page."""
     from app.db.dialect import get_flavor
 
@@ -271,17 +270,17 @@ def recent_critical_events(session: Session, *, tenant_id: int, hours: int = 24,
         f"""
         SELECT {flavor.top(int(limit))} ActionType, ProcessName, IPAddress, ActionDate, EntityType, EntityID
         FROM AuditLogs
-        WHERE TenantID = :t AND IsSuccess = {flavor.false_literal}
+        WHERE IsSuccess = {flavor.false_literal}
           AND ActionDate >= {flavor.days_ago(1)}
         ORDER BY ActionDate DESC{flavor.limit(int(limit))}
         """,
-        {"t": tenant_id},
+        {},
         operation="audit.critical",
     )
     return rows
 
 
-def summarise_activity(session: Session, *, tenant_id: int, days: int = 7) -> list[Dict[str, Any]]:
+def summarise_activity(session: Session, *, days: int = 7) -> list[Dict[str, Any]]:
     """Daily activity histogram for the audit dashboard widget."""
     from app.db.dialect import get_flavor
 
@@ -291,11 +290,11 @@ def summarise_activity(session: Session, *, tenant_id: int, days: int = 7) -> li
         f"""
         SELECT {flavor.cast_date('ActionDate')} AS day, COUNT(1) AS events
         FROM AuditLogs
-        WHERE TenantID = :t AND ActionDate >= {flavor.days_ago(days)}
+        WHERE ActionDate >= {flavor.days_ago(days)}
         GROUP BY {flavor.cast_date('ActionDate')}
         ORDER BY day
         """,
-        {"t": tenant_id},
+        {},
         operation="audit.activity",
     )
     return rows

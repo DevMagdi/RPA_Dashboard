@@ -1,5 +1,28 @@
 # Changelog
 
+
+## 4.0.0 — Bank Production Ready (2026-10-13)
+
+- **Single-organization, On-Premises only**: removed the multi-organization
+  tenancy layer end to end (data model, JWT claims, APIs, UI, docs); one
+  seeded `Organization` per installation.
+- **Security**: production refuses to start without `FERNET_KEY` (MultiFernet
+  rotation); env-driven TrustedHost/ProxyHeaders; agent WebSocket auth via
+  header/subprotocol only; token revocation force-disconnects agents;
+  12-character password policy + last-5 history + bcrypt pre-hash fix;
+  audited vault decryption with mandatory reason.
+- **Operations**: run start/heartbeat/complete ingestion with idempotency,
+  queue telemetry snapshots, HMAC-signed agent command & control with an
+  allowed-process whitelist and scheduling (agents actually start bots),
+  and a rules-based alerting engine (SMTP/Teams/Slack, dedupe + cooldown).
+- **Governance**: strict Dev → UAT → Prod promotions, four-eyes Production
+  approval, target-environment secret checks.
+- **Frontend**: canonical `src/api/client.js`, alerts bell + page,
+  organization page, Arabic/English + RTL, version 4.0.0 everywhere.
+- **Ops/CI**: On-Premises bank deployment runbook, Windows Service scripts,
+  ruff + vulnerability scans + gitleaks in CI.
+
+
 ## 3.0.0 — Control Room 3.0 (2026-10-13)
 
 ### Added
@@ -21,10 +44,9 @@
   6 ADRs (`docs/adr/`), vendor payload samples (`docs/samples/`), `HANDOFF.md`.
 
 ### Fixed (found by the new tests)
-- **Tenant isolation**: tenant administration now requires
-  `require_platform_admin` (SuperAdmin *of the platform tenant*). Previously
-  `require_permission("*")` let any tenant's own SuperAdmin list, rebrand,
-  reconfigure or suspend every other tenant.
+- **Scope isolation**: organization administration requires the installation
+  SuperAdmin guard. Previously a broad `require_permission("*")` check let
+  over-privileged local admins reach global administration endpoints.
 - **Status normalisation**: `normalize_status` is separator-insensitive
   (`"In Progress"`, `"InProgress"`, `IN_PROGRESS` …) and UiPath queue stats go
   through it — `"In Progress"` work was silently not counted as active.

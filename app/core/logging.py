@@ -6,7 +6,7 @@ Provides:
 * ``get_logger(name)`` — thin wrapper
 
 Log records emitted anywhere in the app automatically carry ``correlation_id``,
-``tenant_id`` (when known) and the logger name.
+``actor`` (when known) and the logger name.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ from app.core.config import get_settings
 # Context
 # --------------------------------------------------------------------------- #
 correlation_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("correlation_id", default="-")
-tenant_id_var: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar("tenant_id", default=None)
 user_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("user", default=None)
 
 
@@ -45,10 +44,8 @@ def get_correlation_id() -> str:
     return correlation_id_var.get()
 
 
-def set_request_actor(tenant_id: Optional[int] = None, username: Optional[str] = None) -> None:
+def set_request_actor(username: Optional[str] = None) -> None:
     """Attach request-scoped actor information to every subsequent log line."""
-    if tenant_id is not None:
-        tenant_id_var.set(tenant_id)
     if username:
         user_var.set(username)
 
@@ -61,7 +58,6 @@ class ContextFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003 - stdlib signature
         record.correlation_id = correlation_id_var.get()
-        record.tenant_id = tenant_id_var.get()
         record.actor = user_var.get()
         return True
 
@@ -69,7 +65,7 @@ class ContextFilter(logging.Filter):
 class JsonFormatter(logging.Formatter):
     """One JSON object per line — ready for ELK / Loki / CloudWatch."""
 
-    _EXTRA_KEYS = ("correlation_id", "tenant_id", "actor", "path", "method", "status_code", "duration_ms", "event")
+    _EXTRA_KEYS = ("correlation_id", "actor", "path", "method", "status_code", "duration_ms", "event")
 
     def format(self, record: logging.LogRecord) -> str:  # noqa: A003
         payload: Dict[str, Any] = {

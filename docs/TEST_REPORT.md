@@ -1,4 +1,4 @@
-# Test Report — Control Room 3.0.0
+# Test Report — Control Room 4.0.0
 
 Measured on 2026-10-13 in the delivery sandbox (Python 3.11 venv, SQLite
 test database, demo seed). Every number below is reproducible with the
@@ -26,7 +26,7 @@ commands in §5.
 | `test_platforms_base.py` | Status normalisation (26 parametrised vendor spellings incl. `"In Progress"`), `to_utc` formats, run summaries |
 | `test_platforms_adapters.py` | UiPath/AA payload mapping (HTTP stubbed), queue-stat buckets, provider catalogue **without credentials**, class-level `CAPABILITIES`, HTTP retry/error mapping, native adapter reads |
 | `test_auth_api.py` | Login/cookies, refresh rotation + replay revocation, logout, users CRUD, disable/delete, change-password, full MFA lifecycle |
-| `test_tenants_isolation.py` | Platform-admin guard: tenant-local SuperAdmin gets **403** on list/provision/read of tenants; provisioning, branding, platform config, suspend/resume, retention |
+| `test_organization.py` | Single-organization guard: non-SuperAdmin gets **403**; branding, platform config (vault-ref secrets only), provider catalogue, retention, alerts endpoints |
 | `test_processes_api.py` | ROI upsert, **SLA partial updates**, soft-delete then **404 on repeat**, queue telemetry, department scope |
 | `test_runs_api.py` | Idempotent run start (replay returns same `run_id`), completion savings + replay flag, statistics |
 | `test_dashboard_api.py` | Dashboard payload/cache, SLA summary, backlog, **SSE via `?token=` and header against a real uvicorn server**, 401s |
@@ -36,7 +36,7 @@ commands in §5.
 
 ## 3. Regressions pinned by tests (the 3.0.0 fixes)
 
-1. Cross-tenant administration → `test_tenants_isolation.py` (3 tests).
+1. Organization administration guard → `test_organization.py`.
 2. `"In Progress"` status → `test_platforms_base.py`, `test_platforms_adapters.py::test_aa_run_mapping_in_progress`, UiPath queue buckets.
 3. Provider catalogue without credentials → `test_provider_catalogue_without_credentials`, `test_http_adapters_instantiable_without_credentials`.
 4. SSE `?token=` → `test_dashboard_api.py` SSE tests (live server).
@@ -50,7 +50,7 @@ commands in §5.
 - SSE is tested against a real uvicorn server (module-scoped fixture):
   Starlette's TestClient deadlocks on infinite streams.
 - The suite uses one session-scoped SQLite database seeded with the demo
-  dataset; tests create uniquely-named users/processes/machines/tenants so
+  dataset; tests create uniquely-named users/processes/machines so
   they are order-independent within the session.
 - `scripts/smoke_api.py` must run on a **fresh** database file (it asserts
   first-login behaviour).

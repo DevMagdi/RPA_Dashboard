@@ -37,7 +37,7 @@ export const DATE_RANGES = [
   { value: 365, labelKey: 'dashboard.filters.days', count: 365 },
 ]
 
-/** Chart palettes resolve to CSS variables so they follow the tenant brand. */
+/** Chart palettes resolve to CSS variables so they follow the organization brand. */
 export const CHART_COLORS = {
   brand: 'var(--brand)',
   accent: 'var(--accent)',

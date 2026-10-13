@@ -35,12 +35,12 @@ class PlatformUnavailable(RuntimeError):
 class HttpAdapterConfig:
     """Configuration accepted by every HTTP-based adapter.
 
-    Stored per tenant (``Tenants.PlatformConfigJson``) and resolved through the
+    Stored for the organization (``Organization.PlatformConfigJson``) and resolved through the
     configured secret store — never hard-coded, never committed.
     """
 
     # Empty default: adapters must be *instantiable* without credentials so the
-    # provider catalogue / setup wizard can describe them before a tenant has
+    # provider catalogue / setup wizard can describe them before the organization has
     # configured anything (requests against an empty base URL fail fast with
     # PlatformUnavailable instead).
     base_url: str = ""
@@ -56,7 +56,7 @@ class HttpAdapterConfig:
     timeout: float = 20.0
     max_retries: int = 2
     # Vendor scoping headers
-    tenant_name: Optional[str] = None
+    workspace_name: Optional[str] = None
     organization_unit_id: Optional[str] = None
     folder_id: Optional[str] = None
     extra_headers: Dict[str, str] = field(default_factory=dict)
@@ -64,7 +64,7 @@ class HttpAdapterConfig:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "HttpAdapterConfig":
-        """Build a config from a tenant JSON blob (unknown keys → ``extra``)."""
+        """Build a config from the organization JSON blob (unknown keys → ``extra``)."""
         known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
         data = {k: v for k, v in (payload or {}).items() if k in known}
         extra = {k: v for k, v in (payload or {}).items() if k not in known}
@@ -114,8 +114,8 @@ class HttpPlatformAdapter(PlatformAdapter):
             pass
 
         # Vendor scoping headers (harmless when not needed)
-        if cfg.tenant_name:
-            headers.setdefault("X-UIPATH-TenantName", cfg.tenant_name)
+        if cfg.workspace_name:
+            headers.setdefault("X-UIPATH-OrganizationUnitId", cfg.workspace_name)
         if cfg.organization_unit_id:
             headers.setdefault("X-UIPATH-OrganizationUnitId", str(cfg.organization_unit_id))
         if cfg.folder_id:

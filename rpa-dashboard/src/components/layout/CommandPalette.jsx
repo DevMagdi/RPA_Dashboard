@@ -69,7 +69,8 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
       { id: 'nav-settings', label: t('nav.settings'), icon: SettingsIcon, run: () => navigate('/settings') },
     ]
     if (has('users:read')) navigation.push({ id: 'nav-users', label: t('nav.users'), icon: Users, run: () => navigate('/users') })
-    if (has('*')) navigation.push({ id: 'nav-tenants', label: t('nav.tenants'), icon: KeyRound, run: () => navigate('/tenants') })
+    if (has('*')) navigation.push({ id: 'nav-organization', label: t('nav.organization'), icon: KeyRound, run: () => navigate('/organization') })
+    navigation.push({ id: 'nav-alerts', label: t('nav.alerts'), icon: KeyRound, run: () => navigate('/alerts') })
 
     const actions = [
       {

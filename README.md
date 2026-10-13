@@ -1,74 +1,78 @@
-# RPA CoE Control Room 3.0
+# RPA CoE Control Room — v4.0.0 "Bank Production Ready"
 
-A **multi-tenant, multi-vendor Intelligent Automation Control Room** for banks
-and large enterprises. One vendor-neutral console over **UiPath Orchestrator**,
-**Automation Anywhere A360**, and in-house SQL-based RPA estates — telemetry,
-ROI/SLA analytics, a Capacity Advisor, lifecycle governance with a credential
-vault, and realtime dashboards.
+Enterprise-grade, single-tenant, On-Premises RPA CoE Control Room. Designed to be deployed inside a bank's or large enterprise's own data center or private cloud. Fully isolated, fully auditable, and fully compliant with local regulatory requirements. Vendor-neutral control plane over UiPath, Automation Anywhere, Blue Prism and in-house RPA platforms.
 
-| | |
+> **Deployment model:** On-Premises / bank private cloud only. One installation serves exactly **one organization** (one bank / large enterprise). There is no SaaS mode and no shared multi-organization hosting.
+
+## Supported RPA platforms
+
+| Platform | Integration |
 |---|---|
-| Backend | FastAPI · SQLAlchemy 2 · JWT + MFA (TOTP) · SSE/WebSocket realtime |
-| Frontend | React 19 · Vite · Tailwind · Recharts (AR/EN, white-label per tenant) |
-| Database | SQL Server (bank standard) · PostgreSQL · SQLite — config-only switch |
-| Tests | **257 pytest cases, ≥80 % coverage gate** · 62-check API smoke · 58-check live verification |
+| UiPath Orchestrator | REST API adapter (processes, runs, machines, queues, jobs) |
+| Automation Anywhere A360 | Control Room API adapter |
+| Blue Prism | Adapter (status/queue surface; extend per bank DBA/API access) |
+| In-house / SQL-based RPA | Generic SQL adapter + agent-based telemetry & run ingestion |
 
-## Quick start (local demo)
+## What it does
+
+- **Operations dashboard** — realtime KPIs, ROI & cost savings computed server-side, SLA tracking, capacity advice. Arabic + English UI with full RTL.
+- **Run & queue ingestion** — agents/bots report run start/heartbeat/complete and queue telemetry (`POST /api/runs/start`, `/api/runs/{id}/heartbeat`, `/api/runs/{id}/complete`, `POST /api/queues/telemetry`) with idempotency keys.
+- **Real command & control** — issue `RUN_BOT`/`STOP_BOT` to runner agents over an authenticated WebSocket, with a server-side allowed-process whitelist, HMAC-signed commands, ack/timeout tracking and basic scheduling.
+- **Alerting engine** — agent-offline, SLA-breach-risk, high-failure-rate and repeated-failure rules with dedupe + cooldown, delivered over SMTP / Teams / Slack (on-prem endpoints), with an in-app bell + alerts page (Open → Acknowledged → Resolved).
+- **Lifecycle governance** — strict Dev → UAT → Prod promotions, four-eyes approval for Production, target-environment secret checks, rollback, and an encrypted credential vault (Fernet/MultiFernet) where every decryption is audited with a mandatory reason.
+- **Bank-grade security** — JWT + rotating refresh families, MFA (TOTP), 12-character password policy with history, account lockout, RBAC + department scoping, full audit trail, agent enrollment codes with revocation + force-disconnect.
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI · SQLAlchemy 2 · Alembic · Redis (cache/realtime) · WebSocket/SSE |
+| Frontend | React 19 · Vite · Tailwind · Recharts (lazy-loaded routes/charts) |
+| Database | SQL Server (bank standard) · PostgreSQL · SQLite (dev/tests) |
+| Agent | Python robot agent (enrollment, heartbeat, signed command execution) |
+
+## Run locally (development only)
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env                     # dev defaults work out of the box
 DB_DIALECT=sqlite DB_SEED_DEMO=true .venv/bin/python -m app.main
-# API + (optional) SPA on http://127.0.0.1:8000 — login admin / ChangeMe_Admin1!
+# API on http://127.0.0.1:8000 — demo login admin / ChangeMe_Admin1!
 ```
-
-Frontend development:
 
 ```bash
 cd rpa-dashboard && npm ci && npm run dev   # http://127.0.0.1:5173 (proxies /api)
 ```
 
-## Docker (single host)
+## Deploy On-Premises (production)
+
+Follow **[docs/DEPLOYMENT_ON_PREM_BANK.md](docs/DEPLOYMENT_ON_PREM_BANK.md)** — network topology, SQL Server setup, secret management (Azure Key Vault / HashiCorp Vault over private endpoints), Nginx/IIS reverse proxy + certificates, Windows Service installation, backup/restore and health monitoring.
+
+Production starts **from environment variables only** (no committed `.env`), and refuses to start in `ENV=prod` without the required secrets (`FERNET_KEY`, `JWT_SECRET_KEY`, …).
+
+Docker (single-host evaluation or bank private cloud):
 
 ```bash
-cp .env.example .env   # set DB_PASSWORD / JWT_SECRET_KEY / FERNET_KEY / AGENT_TOKEN_PEPPER
-docker compose up -d   # PostgreSQL + Redis + API + nginx web on :8080
-docker compose --profile mssql up -d   # optional SQL Server instead
+docker compose up -d   # SQL Server profile available; set every secret via env
 ```
 
-## Testing & quality gates
+## Tests & CI
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest                 # 257 tests, coverage gate 80% (.coveragerc)
-python scripts/smoke_api.py      # 62 end-to-end API checks (needs env below)
-DB_DIALECT=sqlite DB_NAME=/tmp/smoke.sqlite3 ENV=test DB_SEED_DEMO=true \
-  SCHEDULER_ENABLED=false python scripts/smoke_api.py
-python scripts/verify_dashboard.py http://127.0.0.1:8000   # 58 live checks
+python -m pytest        # full suite, 80% coverage gate
+cd rpa-dashboard && npm run lint && npm run build
 ```
+
+CI runs ruff + pyflakes, the pytest suite, frontend lint/build, dependency vulnerability scans (pip-audit / npm audit) and a gitleaks secret scan.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data flow, tenancy & adapter model |
-| [docs/TEST_REPORT.md](docs/TEST_REPORT.md) | Measured test/coverage/smoke results |
-| [docs/CTO_REVIEW.md](docs/CTO_REVIEW.md) | Production readiness + residual risks R1–R12 |
-| [docs/DEPLOYMENT_ON_PREM_BANK.md](docs/DEPLOYMENT_ON_PREM_BANK.md) | Bank on-prem (SQL Server, no egress) |
-| [docs/DEPLOYMENT_CLOUD.md](docs/DEPLOYMENT_CLOUD.md) | Cloud (PostgreSQL, Key Vault/Vault) |
+| [docs/DEPLOYMENT_ON_PREM_BANK.md](docs/DEPLOYMENT_ON_PREM_BANK.md) | Production On-Premises deployment runbook |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, layering, data flow |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [docs/samples/](docs/samples/) | Sample UiPath / Automation Anywhere payloads |
-| [HANDOFF.md](HANDOFF.md) | What changed in 3.0.0 and how to review it |
+| [CHANGELOG.md](CHANGELOG.md) | Release history (4.0.0) |
 
-## Security model (summary)
-
-- Short-lived JWT access tokens (15 min) + rotating refresh-token families
-  (replay revokes the family), CSRF double-submit on cookie-authenticated calls.
-- MFA (TOTP + backup codes), account lockout, password policy (3-of-4 classes).
-- Tenant isolation on every query; cross-tenant administration is reserved
-  for the platform operator (`require_platform_admin`).
-- Credentials encrypted at rest (Fernet vault); secrets resolved through
-  env / Azure Key Vault / HashiCorp Vault — never committed (`.env.example`
-  documents all 80 settings, values stay out of git).
-
-> Internal platform — proprietary, bank-internal use.
+> Proprietary — bank-internal use. Never commit secrets, agent credentials or database backups to this repository.

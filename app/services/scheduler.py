@@ -13,7 +13,7 @@ capacity refresh        5 min      recompute the Capacity Advisor + notify on cr
 realtime tick           10 s       push a KPI snapshot to dashboard subscribers
 stale runs reaper       15 min     close ``Running`` rows abandoned by crashed agents
 command timeout sweep   1 min      mark unacknowledged runner commands as ``Timeout``
-retention purge         24 h       enforce data-retention policies per tenant
+retention purge         24 h       enforce the organization data-retention policy
 session housekeeping    6 h        purge expired refresh tokens
 platform sync           config     pull telemetry from UiPath / Automation Anywhere
 ======================  =========  ==================================================
@@ -40,7 +40,7 @@ from app.services.dashboard_service import build_dashboard_payload
 from app.services.infra_service import timeout_stale_commands
 from app.services.realtime import hub
 from app.services.run_service import reap_stale_runs
-from app.services.tenant_service import purge_tenant_data
+from app.services.organization_service import purge_organization_data
 
 logger = logging.getLogger(__name__)
 
@@ -132,86 +132,79 @@ class Scheduler:
         """Push a light KPI snapshot to every connected dashboard."""
         if hub.subscriber_count() == 0:
             return {"skipped": "no subscribers"}
-
-        tenants = _active_tenants()
-        delivered = 0
-        for tenant_id in tenants:
-            try:
-                with session_scope() as session:
-                    payload = build_dashboard_payload(
-                        session, tenant_id=tenant_id, department_scope="ALL", days=30, include_capacity=False
-                    )
-                delivered += await hub.publish(
-                    "kpi_update",
-                    {
-                        "kpis": payload.get("kpis", {}),
-                        "sidebarStats": payload.get("sidebarStats", {}),
-                        "meta": payload.get("meta", {}),
-                    },
-                    tenant_id=tenant_id,
-                )
-            except Exception as exc:  # pragma: no cover
-                logger.debug("Realtime tick failed for tenant %s: %s", tenant_id, exc)
-        return {"tenants": len(tenants), "delivered": delivered}
+        try:
+            with session_scope() as session:
+                payload = build_dashboard_payload(session, department_scope="ALL", days=30, include_capacity=False)
+            delivered = await hub.publish(
+                "kpi_update",
+                {
+                    "kpis": payload.get("kpis", {}),
+                    "sidebarStats": payload.get("sidebarStats", {}),
+                    "meta": payload.get("meta", {}),
+                },
+            )
+            return {"delivered": delivered}
+        except Exception as exc:  # pragma: no cover
+            logger.debug("Realtime tick failed: %s", exc)
+            return {"delivered": 0}
 
     async def _capacity_refresh(self) -> Dict[str, Any]:
         """Recompute the Capacity Advisor and push critical insights out."""
         settings = get_settings()
-        generated: Dict[int, int] = {}
-        for tenant_id in _active_tenants():
+        try:
+            with session_scope() as session:
+                recommendations = generate_recommendations(session, persist=True)
+                if settings.NOTIFY_ENABLED:
+                    to_send = [
+                        {
+                            "id": getattr(r, "recommendation_id", None),
+                            "severity": r.severity,
+                            "title": r.title,
+                            "detail": r.detail,
+                        }
+                        for r in recommendations
+                        if r.severity == "Critical"
+                    ]
+                    notification_service.notify_capacity_recommendations(session, recommendations=to_send)
+            await hub.publish(
+                "capacity_update",
+                {
+                    "critical": len([r for r in recommendations if r.severity == "Critical"]),
+                    "warning": len([r for r in recommendations if r.severity == "Warning"]),
+                    "generated": len(recommendations),
+                },
+            )
+            # Alerting engine evaluation (agent offline / SLA / failure rules)
             try:
+                from app.services.alert_service import evaluate_alerts
+
                 with session_scope() as session:
-                    recommendations = generate_recommendations(session, tenant_id=tenant_id, persist=True)
-                    if settings.NOTIFY_ENABLED:
-                        to_send = []
-                        for recommendation in recommendations:
-                            if recommendation.severity == "Critical":
-                                to_send.append(
-                                    {
-                                        "id": getattr(recommendation, "recommendation_id", None),
-                                        "severity": recommendation.severity,
-                                        "title": recommendation.title,
-                                        "detail": recommendation.detail,
-                                    }
-                                )
-                        notification_service.notify_capacity_recommendations(
-                            session, tenant_id=tenant_id, recommendations=to_send
-                        )
-                generated[tenant_id] = len(recommendations)
-                await hub.publish(
-                    "capacity_update",
-                    {
-                        "critical": len([r for r in recommendations if r.severity == "Critical"]),
-                        "warning": len([r for r in recommendations if r.severity == "Warning"]),
-                        "generated": len(recommendations),
-                    },
-                    tenant_id=tenant_id,
-                )
+                    alerts = evaluate_alerts(session)
             except Exception as exc:  # pragma: no cover
-                logger.error("Capacity refresh failed for tenant %s: %s", tenant_id, exc)
-        return {"tenants": generated}
+                logger.error("Alert evaluation failed: %s", exc)
+                alerts = []
+            return {"generated": len(recommendations), "alerts": len(alerts)}
+        except Exception as exc:  # pragma: no cover
+            logger.error("Capacity refresh failed: %s", exc)
+            return {"generated": 0}
 
     def _reap_runs(self) -> Dict[str, int]:
         """Close abandoned Running rows."""
-        reaped: Dict[str, int] = {}
-        for tenant_id in _active_tenants():
-            try:
-                with session_scope() as session:
-                    reaped[tenant_id] = reap_stale_runs(session, tenant_id=tenant_id)
-            except Exception as exc:  # pragma: no cover
-                logger.error("Run reaper failed for tenant %s: %s", tenant_id, exc)
-        return reaped
+        try:
+            with session_scope() as session:
+                return {"reaped": reap_stale_runs(session)}
+        except Exception as exc:  # pragma: no cover
+            logger.error("Run reaper failed: %s", exc)
+            return {"reaped": 0}
 
     def _sweep_commands(self) -> Dict[str, int]:
         """Timeout commands that were never acknowledged."""
-        swept: Dict[str, int] = {}
-        for tenant_id in _active_tenants():
-            try:
-                with session_scope() as session:
-                    swept[tenant_id] = timeout_stale_commands(session, tenant_id=tenant_id)
-            except Exception as exc:  # pragma: no cover
-                logger.error("Command sweep failed: %s", exc)
-        return swept
+        try:
+            with session_scope() as session:
+                return {"swept": timeout_stale_commands(session)}
+        except Exception as exc:  # pragma: no cover
+            logger.error("Command sweep failed: %s", exc)
+            return {"swept": 0}
 
     def _housekeeping(self) -> Dict[str, int]:
         """Purge expired refresh tokens."""
@@ -226,59 +219,29 @@ class Scheduler:
         return purged
 
     def _retention(self) -> Dict[str, Any]:
-        """Enforce each tenant's data-retention policy (soft-delete aware)."""
-        results: Dict[str, Any] = {}
+        """Enforce the organization data-retention policy."""
         try:
             with session_scope() as session:
-                tenants = fetch_all(
+                row = fetch_all(
                     session,
-                    "SELECT TenantID, COALESCE(DataRetentionDays, 730) AS days FROM Tenants WHERE IsActive = 1",
-                    operation="scheduler.tenants",
+                    "SELECT COALESCE(DataRetentionDays, 730) AS days FROM Organization WHERE IsActive = 1",
+                    operation="scheduler.organization",
                 )
-                for tenant in tenants:
-                    tenant_id = int(tenant["TenantID"])
-                    results[str(tenant_id)] = purge_tenant_data(
-                        session, tenant_id=tenant_id, retention_days=int(tenant["days"])
-                    )
+                days = int(row[0]["days"]) if row else 730
+                return purge_organization_data(session, retention_days=days)
         except Exception as exc:  # pragma: no cover
             logger.error("Retention job failed: %s", exc)
-        return results
+            return {}
 
     async def _platform_sync(self) -> Dict[str, Any]:
-        """Pull telemetry from the tenant's RPA platform (UiPath / AA)."""
-        from app.services.sync_service import sync_tenant
+        """Pull telemetry from the configured RPA platform (UiPath / AA / Blue Prism)."""
+        from app.services.sync_service import sync_organization
 
-        summary: Dict[str, Any] = {}
-        for tenant_id in _active_tenants():
-            try:
-                summary[str(tenant_id)] = await asyncio.to_thread(sync_tenant, tenant_id)
-            except Exception as exc:  # pragma: no cover - vendor dependent
-                logger.warning("Platform sync failed for tenant %s: %s", tenant_id, exc)
-                summary[str(tenant_id)] = {"ok": False, "error": str(exc)[:200]}
-        return summary
-
-
-def _active_tenants(limit: int = 50) -> List[int]:
-    """Tenant ids with at least one active user (cheap cached query)."""
-    from app.core.cache import get_cache
-
-    cache = get_cache()
-    cached = cache.get_json("scheduler:active_tenants")
-    if cached:
-        return [int(t) for t in cached]
-    try:
-        with session_scope() as session:
-            rows = fetch_all(
-                session,
-                "SELECT TenantID FROM Tenants WHERE IsActive = 1",
-                operation="scheduler.active_tenants",
-            )
-        tenants = [int(row["TenantID"]) for row in rows][:limit]
-        cache.set_json("scheduler:active_tenants", tenants, 120)
-        return tenants
-    except Exception as exc:  # pragma: no cover
-        logger.warning("Unable to list tenants: %s", exc)
-        return []
+        try:
+            return await asyncio.to_thread(sync_organization)
+        except Exception as exc:  # pragma: no cover - vendor dependent
+            logger.warning("Platform sync failed: %s", exc)
+            return {"ok": False, "error": str(exc)[:200]}
 
 
 scheduler = Scheduler()

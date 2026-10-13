@@ -5,13 +5,16 @@ It intentionally keeps the original ``PascalCase`` table/column names so that
 existing bank databases migrate in place, while adding the enterprise features
 required by the transformation:
 
-* **multi-tenancy** — every business table carries ``TenantID``
+* **single organization** — one installation serves exactly one bank /
+  enterprise; there is no cross-organization data and no organization
+  discriminator column on business tables. The singleton ``Organization``
+  row holds branding / platform configuration for the whole installation.
 * **soft delete & retention** — ``IsDeleted`` / ``DeletedAt`` / ``RetentionDays``
 * **multi-vendor** — ``Provider`` / ``PlatformProcessKey`` / ``ProviderRunId``
 * **audit fidelity** — ``CorrelationID`` / ``UserAgent`` on ``AuditLogs``
 * **MFA & sessions** — ``MfaSecretEncrypted``, ``RefreshTokens``
 * **capacity advisor** — ``Recommendations``, ``QueueSnapshots``
-* **governance** — ``ApprovalRequests``, ``BotCommands``, ``NotificationLog``
+* **governance** — ``ApprovalRequests``, ``BotCommands``, ``NotificationLog``, ``Alerts``
 
 ``metadata.create_all(engine)`` bootstraps a fresh database on any dialect;
 production upgrades use the migration scripts under ``db/migrations``.
@@ -53,11 +56,6 @@ def pk_big(name: str) -> Column:
     return Column(name, BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
 
 
-def tenant_fk() -> Column:
-    """The tenant discriminator present on every business table."""
-    return Column("TenantID", Integer, ForeignKey("Tenants.TenantID", ondelete="CASCADE"), nullable=False, index=True)
-
-
 def soft_delete_columns() -> list[Column]:
     """``IsDeleted`` / ``DeletedAt`` pair for logical deletion."""
     return [
@@ -77,11 +75,10 @@ def audit_stamp_columns() -> list[Column]:
 # --------------------------------------------------------------------------- #
 # Tenancy & identity
 # --------------------------------------------------------------------------- #
-Tenants = Table(
-    "Tenants",
+Organization = Table(
+    "Organization",
     metadata,
-    pk("TenantID"),
-    Column("TenantKey", String(50), nullable=False, unique=True, index=True),
+    pk("OrganizationID"),
     Column("Name", String(200), nullable=False),
     Column("CompanyName", String(200), nullable=True),
     Column("BrandPrimaryColor", String(20), nullable=False, server_default="#4B367C"),
@@ -101,7 +98,6 @@ SystemUsers = Table(
     "SystemUsers",
     metadata,
     pk("UserID"),
-    tenant_fk(),
     Column("Username", String(100), nullable=False),
     Column("Email", String(200), nullable=True),
     Column("FullName", String(200), nullable=True),
@@ -113,6 +109,7 @@ SystemUsers = Table(
     Column("LockedUntil", DateTime, nullable=True),
     Column("LastLoginDate", DateTime, nullable=True),
     Column("MustChangePassword", Boolean, nullable=False, server_default="0"),
+    Column("PasswordChangedAt", DateTime, nullable=True),
     # --- MFA ---
     Column("MfaEnabled", Boolean, nullable=False, server_default="0"),
     Column("MfaSecretEncrypted", String(500), nullable=True),
@@ -121,27 +118,25 @@ SystemUsers = Table(
     Column("LastMfaVerifiedAt", DateTime, nullable=True),
     *soft_delete_columns(),
     *audit_stamp_columns(),
-    UniqueConstraint("TenantID", "Username", name="UQ_SystemUsers_Tenant_Username"),
-    Index("IX_SystemUsers_Tenant_Role", "TenantID", "Role"),
+    UniqueConstraint("Username", name="UQ_SystemUsers_Username"),
+    Index("IX_SystemUsers_Role", "Role"),
 )
 
 RolePermissions = Table(
     "RolePermissions",
     metadata,
     pk("PermissionID"),
-    tenant_fk(),
     Column("Role", String(50), nullable=False, index=True),
     Column("Permission", String(100), nullable=False),
     Column("GrantedBy", Integer, nullable=True),
     Column("CreatedAt", DateTime, server_default=func.now(), nullable=False),
-    UniqueConstraint("TenantID", "Role", "Permission", name="UQ_RolePermissions"),
+    UniqueConstraint("Role", "Permission", name="UQ_RolePermissions"),
 )
 
 RefreshTokens = Table(
     "RefreshTokens",
     metadata,
     pk("TokenID"),
-    tenant_fk(),
     Column("UserID", Integer, ForeignKey("SystemUsers.UserID", ondelete="CASCADE"), nullable=False, index=True),
     Column("TokenHash", String(128), nullable=False, unique=True),
     Column("ExpiresAt", DateTime, nullable=False, index=True),
@@ -152,14 +147,13 @@ RefreshTokens = Table(
     Column("UserAgent", String(400), nullable=True),
     Column("LastUsedAt", DateTime, nullable=True),
     Column("CreatedAt", DateTime, server_default=func.now(), nullable=False),
-    Index("IX_RefreshTokens_User_Active", "TenantID", "UserID", "RevokedAt"),
+    Index("IX_RefreshTokens_User_Active", "UserID", "RevokedAt"),
 )
 
 AuditLogs = Table(
     "AuditLogs",
     metadata,
     pk_big("LogID"),
-    tenant_fk(),
     Column("UserID", Integer, nullable=True, index=True),
     Column("ActionType", String(60), nullable=False, index=True),
     Column("ProcessName", String(100), nullable=True),
@@ -172,8 +166,8 @@ AuditLogs = Table(
     Column("CorrelationID", String(64), nullable=True, index=True),
     Column("IsSuccess", Boolean, nullable=False, server_default="1"),
     Column("ActionDate", DateTime, server_default=func.now(), nullable=False, index=True),
-    Index("IX_AuditLogs_Tenant_Date", "TenantID", "ActionDate"),
-    Index("IX_AuditLogs_Tenant_Action", "TenantID", "ActionType", "ActionDate"),
+    Index("IX_AuditLogs_Date", "ActionDate"),
+    Index("IX_AuditLogs_Action", "ActionType", "ActionDate"),
 )
 
 # --------------------------------------------------------------------------- #
@@ -183,7 +177,6 @@ ProcessConfig = Table(
     "ProcessConfig",
     metadata,
     pk("ConfigID"),
-    tenant_fk(),
     Column("ProcessName", String(100), nullable=False),
     Column("Department", String(50), nullable=False, server_default="Operations", index=True),
     Column("BotName", String(100), nullable=True),
@@ -202,15 +195,14 @@ ProcessConfig = Table(
     Column("RetentionDays", Integer, nullable=True),
     *soft_delete_columns(),
     *audit_stamp_columns(),
-    UniqueConstraint("TenantID", "ProcessName", name="UQ_ProcessConfig_Tenant_Process"),
-    Index("IX_ProcessConfig_Tenant_Dept", "TenantID", "Department"),
+    UniqueConstraint("ProcessName", name="UQ_ProcessConfig_Process"),
+    Index("IX_ProcessConfig_Dept", "Department"),
 )
 
 ProcessRuns = Table(
     "ProcessRuns",
     metadata,
     pk_big("RunID"),
-    tenant_fk(),
     Column("ProcessName", String(100), nullable=False),
     Column("RequestID", String(100), nullable=True),
     Column("Status", String(20), nullable=False, index=True),
@@ -233,45 +225,43 @@ ProcessRuns = Table(
     Column("Trigger", String(40), nullable=True),  # schedule | manual | api | agent
     Column("TriggeredBy", String(100), nullable=True),
     Column("TriggerReason", String(300), nullable=True),
+    Column("LastHeartbeatAt", DateTime, nullable=True),
     *soft_delete_columns(),
     *audit_stamp_columns(),
-    UniqueConstraint("TenantID", "IdempotencyKey", name="UQ_ProcessRuns_Idempotency"),
-    Index("IX_ProcessRuns_Tenant_Start", "TenantID", "StartTime"),
-    Index("IX_ProcessRuns_Tenant_Process_Start", "TenantID", "ProcessName", "StartTime"),
-    Index("IX_ProcessRuns_Tenant_Status_Start", "TenantID", "Status", "StartTime"),
+    UniqueConstraint("IdempotencyKey", name="UQ_ProcessRuns_Idempotency"),
+    Index("IX_ProcessRuns_Start", "StartTime"),
+    Index("IX_ProcessRuns_Process_Start", "ProcessName", "StartTime"),
+    Index("IX_ProcessRuns_Status_Start", "Status", "StartTime"),
 )
 
 ProcessQueues = Table(
     "ProcessQueues",
     metadata,
     pk("QueueID"),
-    tenant_fk(),
     Column("ProcessName", String(100), nullable=False),
     Column("PendingItems", Integer, nullable=False, server_default="0"),
     Column("ActiveItems", Integer, nullable=False, server_default="0"),
     Column("AvgItemProcessingSeconds", Integer, nullable=False, server_default="30"),
     Column("LastUpdatedAt", DateTime, server_default=func.now(), nullable=False),
     *soft_delete_columns(),
-    UniqueConstraint("TenantID", "ProcessName", name="UQ_ProcessQueues_Tenant_Process"),
+    UniqueConstraint("ProcessName", name="UQ_ProcessQueues_Process"),
 )
 
 QueueSnapshots = Table(
     "QueueSnapshots",
     metadata,
     pk_big("SnapshotID"),
-    tenant_fk(),
     Column("ProcessName", String(100), nullable=False, index=True),
     Column("PendingItems", Integer, nullable=False, server_default="0"),
     Column("ActiveItems", Integer, nullable=False, server_default="0"),
     Column("CapturedAt", DateTime, server_default=func.now(), nullable=False, index=True),
-    Index("IX_QueueSnapshots_Tenant_Process_Time", "TenantID", "ProcessName", "CapturedAt"),
+    Index("IX_QueueSnapshots_Process_Time", "ProcessName", "CapturedAt"),
 )
 
 BotInfrastructure = Table(
     "BotInfrastructure",
     metadata,
     pk("MachineID"),
-    tenant_fk(),
     Column("MachineName", String(100), nullable=False),
     Column("AssignedProcess", String(100), nullable=True),
     Column("Status", String(20), nullable=False, server_default="Offline"),
@@ -291,15 +281,14 @@ BotInfrastructure = Table(
     Column("AgentVersion", String(40), nullable=True),
     *soft_delete_columns(),
     *audit_stamp_columns(),
-    UniqueConstraint("TenantID", "MachineName", name="UQ_BotInfrastructure_Tenant_Machine"),
-    Index("IX_BotInfrastructure_Tenant_Status", "TenantID", "Status"),
+    UniqueConstraint("MachineName", name="UQ_BotInfrastructure_Machine"),
+    Index("IX_BotInfrastructure_Status", "Status"),
 )
 
 AgentEnrollmentCodes = Table(
     "AgentEnrollmentCodes",
     metadata,
     pk("CodeID"),
-    tenant_fk(),
     Column("MachineName", String(100), nullable=False, index=True),
     Column("EnrollmentCode", String(40), nullable=False, index=True),
     Column("ExpiresAt", DateTime, nullable=False),
@@ -311,7 +300,6 @@ BotVersions = Table(
     "BotVersions",
     metadata,
     pk("VersionID"),
-    tenant_fk(),
     Column("ProcessName", String(100), nullable=False, index=True),
     Column("VersionTag", String(40), nullable=False),
     Column("CurrentStatus", String(40), nullable=False, server_default="Development"),
@@ -323,14 +311,13 @@ BotVersions = Table(
     Column("ArtifactUrl", String(500), nullable=True),
     Column("HealthScore", Float, nullable=True),
     *soft_delete_columns(),
-    UniqueConstraint("TenantID", "ProcessName", "VersionTag", name="UQ_BotVersions_Tenant_Process_Tag"),
+    UniqueConstraint("ProcessName", "VersionTag", name="UQ_BotVersions_Process_Tag"),
 )
 
 BotVault = Table(
     "BotVault",
     metadata,
     pk("VaultID"),
-    tenant_fk(),
     Column("VersionID", Integer, ForeignKey("BotVersions.VersionID", ondelete="CASCADE"), nullable=False, index=True),
     Column("CredentialName", String(100), nullable=False),
     Column("Environment", String(20), nullable=False, server_default="Development"),
@@ -348,7 +335,6 @@ PromotionAuditLog = Table(
     "PromotionAuditLog",
     metadata,
     pk("PromotionID"),
-    tenant_fk(),
     Column("VersionID", Integer, nullable=False, index=True),
     Column("PreviousStatus", String(40), nullable=False),
     Column("NewStatus", String(40), nullable=False),
@@ -362,7 +348,6 @@ ApprovalRequests = Table(
     "ApprovalRequests",
     metadata,
     pk("ApprovalID"),
-    tenant_fk(),
     Column("VersionID", Integer, nullable=False, index=True),
     Column("ProcessName", String(100), nullable=False),
     Column("TargetEnvironment", String(40), nullable=False),
@@ -379,7 +364,6 @@ Recommendations = Table(
     "Recommendations",
     metadata,
     pk_big("RecommendationID"),
-    tenant_fk(),
     Column("Kind", String(60), nullable=False, index=True),
     Column("Severity", String(20), nullable=False, index=True),
     Column("ProcessName", String(100), nullable=True, index=True),
@@ -395,14 +379,13 @@ Recommendations = Table(
     Column("AcknowledgedBy", Integer, nullable=True),
     Column("AcknowledgedAt", DateTime, nullable=True),
     Column("AppliedAt", DateTime, nullable=True),
-    Index("IX_Recommendations_Tenant_Status", "TenantID", "Status", "CreatedAt"),
+    Index("IX_Recommendations_Status_Created", "Status", "CreatedAt"),
 )
 
 BotCommands = Table(
     "BotCommands",
     metadata,
     pk_big("CommandID"),
-    tenant_fk(),
     Column("MachineName", String(100), nullable=False, index=True),
     Column("Command", String(200), nullable=False),
     Column("PayloadJson", Text, nullable=True),
@@ -413,14 +396,15 @@ BotCommands = Table(
     Column("AckedAt", DateTime, nullable=True),
     Column("Result", String(500), nullable=True),
     Column("TimeoutSeconds", Integer, nullable=False, server_default="60"),
-    Index("IX_BotCommands_Tenant_Status", "TenantID", "Status", "IssuedAt"),
+    Column("Signature", String(128), nullable=True),
+    Column("ScheduledAt", DateTime, nullable=True),
+    Index("IX_BotCommands_StatusIssued", "Status", "IssuedAt"),
 )
 
 NotificationLog = Table(
     "NotificationLog",
     metadata,
     pk_big("NotificationID"),
-    tenant_fk(),
     Column("Channel", String(30), nullable=False, index=True),
     Column("Target", String(300), nullable=True),
     Column("Subject", String(300), nullable=False),
@@ -438,7 +422,6 @@ PlatformSyncLog = Table(
     "PlatformSyncLog",
     metadata,
     pk_big("SyncID"),
-    tenant_fk(),
     Column("Provider", String(40), nullable=False),
     Column("Operation", String(60), nullable=False),
     Column("Status", String(20), nullable=False),
@@ -446,6 +429,39 @@ PlatformSyncLog = Table(
     Column("DurationMs", Integer, nullable=True),
     Column("Error", String(500), nullable=True),
     Column("StartedAt", DateTime, server_default=func.now(), nullable=False, index=True),
+)
+
+PasswordHistory = Table(
+    "PasswordHistory",
+    metadata,
+    pk_big("HistoryID"),
+    Column("UserID", Integer, ForeignKey("SystemUsers.UserID", ondelete="CASCADE"), nullable=False, index=True),
+    Column("PasswordHash", String(255), nullable=False),
+    Column("CreatedAt", DateTime, server_default=func.now(), nullable=False, index=True),
+)
+
+Alerts = Table(
+    "Alerts",
+    metadata,
+    pk_big("AlertID"),
+    Column("RuleKey", String(80), nullable=False, index=True),
+    Column("Severity", String(20), nullable=False, server_default="Warning", index=True),
+    Column("Title", String(300), nullable=False),
+    Column("Detail", Text, nullable=True),
+    Column("EntityType", String(50), nullable=True),
+    Column("EntityID", String(100), nullable=True, index=True),
+    Column("Status", String(20), nullable=False, server_default="Open", index=True),
+    Column("DedupeKey", String(200), nullable=False, unique=True, index=True),
+    Column("Fingerprint", String(200), nullable=True, index=True),
+    Column("FirstSeenAt", DateTime, server_default=func.now(), nullable=False),
+    Column("LastSeenAt", DateTime, server_default=func.now(), nullable=False, index=True),
+    Column("OccurrenceCount", Integer, nullable=False, server_default="1"),
+    Column("AcknowledgedBy", Integer, nullable=True),
+    Column("AcknowledgedAt", DateTime, nullable=True),
+    Column("ResolvedBy", Integer, nullable=True),
+    Column("ResolvedAt", DateTime, nullable=True),
+    Column("NotifiedAt", DateTime, nullable=True),
+    Index("IX_Alerts_StatusLastSeen", "Status", "LastSeenAt"),
 )
 
 SchemaVersions = Table(
@@ -458,7 +474,7 @@ SchemaVersions = Table(
 
 __all__ = [
     "metadata",
-    "Tenants",
+    "Organization",
     "SystemUsers",
     "RolePermissions",
     "RefreshTokens",
@@ -477,5 +493,7 @@ __all__ = [
     "BotCommands",
     "NotificationLog",
     "PlatformSyncLog",
+    "PasswordHistory",
+    "Alerts",
     "SchemaVersions",
 ]

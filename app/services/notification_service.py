@@ -147,7 +147,7 @@ def _send_email(recipients: List[str], subject: str, body: str, severity: str) -
 # --------------------------------------------------------------------------- #
 # Dispatch
 # --------------------------------------------------------------------------- #
-def _is_in_cooldown(session: Session, *, tenant_id: int, dedupe_key: str) -> bool:
+def _is_in_cooldown(session: Session, *, dedupe_key: str) -> bool:
     """True when the same alert was delivered inside the cooldown window."""
     settings = get_settings()
     cutoff = _now() - timedelta(minutes=settings.NOTIFY_COOLDOWN_MINUTES)
@@ -155,9 +155,9 @@ def _is_in_cooldown(session: Session, *, tenant_id: int, dedupe_key: str) -> boo
         session,
         """
         SELECT NotificationID FROM NotificationLog
-        WHERE TenantID = :t AND DedupeKey = :k AND Status = 'Sent' AND CreatedAt >= :cutoff
+        WHERE DedupeKey = :k AND Status = 'Sent' AND CreatedAt >= :cutoff
         """,
-        {"t": tenant_id, "k": dedupe_key, "cutoff": cutoff},
+        {"k": dedupe_key, "cutoff": cutoff},
         operation="notify.cooldown",
     )
     return bool(row)
@@ -166,7 +166,7 @@ def _is_in_cooldown(session: Session, *, tenant_id: int, dedupe_key: str) -> boo
 def notify(
     session: Session,
     *,
-    tenant_id: int,
+    
     subject: str,
     body: str,
     severity: str = "Info",
@@ -185,7 +185,7 @@ def notify(
     settings = get_settings()
     dedupe = dedupe_key or f"{severity}:{subject[:120]}"
 
-    if not force and _is_in_cooldown(session, tenant_id=tenant_id, dedupe_key=dedupe):
+    if not force and _is_in_cooldown(session, dedupe_key=dedupe):
         return {"queued": False, "reason": "cooldown", "dedupe_key": dedupe}
 
     requested = channels or _default_channels()
@@ -197,7 +197,6 @@ def notify(
             session,
             NotificationLog,
             {
-                "TenantID": tenant_id,
                 "Channel": "disabled",
                 "Subject": subject[:300],
                 "Body": body[:4000],
@@ -215,7 +214,6 @@ def notify(
             session,
             NotificationLog,
             {
-                "TenantID": tenant_id,
                 "Channel": channel,
                 "Target": ",".join(recipients or [])[:300] or None,
                 "Subject": subject[:300],
@@ -286,7 +284,7 @@ def _dispatch_async(
         _executor.submit(_worker)
 
 
-def notify_capacity_recommendations(session: Session, *, tenant_id: int, recommendations: List[Dict[str, Any]]) -> int:
+def notify_capacity_recommendations(session: Session, *, recommendations: List[Dict[str, Any]]) -> int:
     """Fan out *critical* capacity insights (used by the scheduler)."""
     sent = 0
     for recommendation in recommendations:
@@ -294,7 +292,7 @@ def notify_capacity_recommendations(session: Session, *, tenant_id: int, recomme
             continue
         result = notify(
             session,
-            tenant_id=tenant_id,
+            
             subject=recommendation.get("title") or "Critical capacity insight",
             body=recommendation.get("detail") or "",
             severity="Critical",
@@ -306,11 +304,11 @@ def notify_capacity_recommendations(session: Session, *, tenant_id: int, recomme
     return sent
 
 
-def list_notifications(session: Session, *, tenant_id: int, limit: int = 100, status: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_notifications(session: Session, *, limit: int = 100, status: Optional[str] = None) -> List[Dict[str, Any]]:
     """Delivery log for the operations screen."""
     flavor = get_flavor()
-    where = ["TenantID = :t"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 500))}
+    where = ["1 = 1"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 500))}
     if status:
         where.append("Status = :s")
         params["s"] = status
@@ -329,11 +327,11 @@ def list_notifications(session: Session, *, tenant_id: int, limit: int = 100, st
     )
 
 
-def send_test_notification(session: Session, *, tenant_id: int, severity: str = "Info") -> Dict[str, Any]:
+def send_test_notification(session: Session, *, severity: str = "Info") -> Dict[str, Any]:
     """Verify channel wiring from the admin settings screen."""
     return notify(
         session,
-        tenant_id=tenant_id,
+        
         subject="RPA CoE — رسالة تجريبية",
         body="تم إرسال هذه الرسالة للتأكد من إعدادات قنوات التنبيه (Slack/Teams/Email).",
         severity=severity,
@@ -342,7 +340,7 @@ def send_test_notification(session: Session, *, tenant_id: int, severity: str = 
     )
 
 
-def notification_statistics(session: Session, *, tenant_id: int, days: int = 7) -> Dict[str, Any]:
+def notification_statistics(session: Session, *, days: int = 7) -> Dict[str, Any]:
     """Delivery SLI: how many alerts were delivered vs failed."""
     flavor = get_flavor()
     row = fetch_one(
@@ -353,9 +351,9 @@ def notification_statistics(session: Session, *, tenant_id: int, days: int = 7) 
                COALESCE(SUM(CASE WHEN Status = 'Failed' THEN 1 ELSE 0 END), 0) AS failed,
                COALESCE(SUM(CASE WHEN Status = 'Skipped' THEN 1 ELSE 0 END), 0) AS skipped
         FROM NotificationLog
-        WHERE TenantID = :t AND CreatedAt >= {flavor.days_ago(int(days))}
+        WHERE CreatedAt >= {flavor.days_ago(int(days))}
         """,
-        {"t": tenant_id},
+        {},
         operation="notify.stats",
     ) or {}
     total = int(row.get("total") or 0)

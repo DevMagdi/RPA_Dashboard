@@ -73,11 +73,22 @@ COMMON_PASSWORDS = {
 # Passwords
 # --------------------------------------------------------------------------- #
 def _pw_bytes(password: str) -> bytes:
-    """Encode a password applying bcrypt's 72-byte limit on *both* sides.
+    """Pre-hash with SHA-256 (base64) so bcrypt never truncates.
 
-    The original implementation hashed ``pw[:72]`` but verified the full
-    string, which made any password longer than 72 bytes impossible to use.
+    bcrypt silently truncates inputs beyond 72 bytes, which would make two
+    different long passwords compare equal. Hashing first with SHA-256 and
+    base64-encoding the digest (44 bytes) gives bcrypt a fixed-size,
+    high-entropy input. Legacy hashes (direct bcrypt of the raw password)
+    are still verified by :func:`verify_password` as a fallback.
     """
+    import base64 as _b64
+    import hashlib as _hl
+
+    return _b64.b64encode(_hl.sha256(password.encode("utf-8")).digest())
+
+
+def _pw_bytes_legacy(password: str) -> bytes:
+    """Legacy direct encoding (pre-4.0 hashes), truncation included."""
     return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
@@ -91,9 +102,14 @@ def verify_password(password: str, hashed: str) -> bool:
     if not hashed:
         return False
     try:
-        return bcrypt.checkpw(_pw_bytes(password), hashed.encode("utf-8"))
+        if bcrypt.checkpw(_pw_bytes(password), hashed.encode("utf-8")):
+            return True
     except (ValueError, TypeError):
-        # Malformed/legacy hash (e.g. truncated column) — never leak why.
+        return False
+    try:
+        # Legacy fallback: hashes created before the SHA-256 pre-hash (<=3.x).
+        return bcrypt.checkpw(_pw_bytes_legacy(password), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
         return False
 
 
@@ -121,7 +137,7 @@ class PasswordPolicyResult:
 def check_password_policy(password: str, *, min_length: Optional[int] = None) -> PasswordPolicyResult:
     """Validate a password against the platform policy.
 
-    Policy: minimum length (config), at least three of four character classes,
+    Policy: minimum length (config, 12 by default), at least three of four character classes,
     and not present in a small list of well-known weak passwords.
     """
     settings = get_settings()
@@ -160,7 +176,7 @@ def create_access_token(
     subject: str,
     *,
     role: str,
-    tenant_id: int,
+    
     user_id: int,
     department: str = "ALL",
     expires_delta: Optional[timedelta] = None,
@@ -172,7 +188,6 @@ def create_access_token(
     payload: Dict[str, Any] = {
         "sub": subject,
         "role": role,
-        "tenant_id": tenant_id,
         "user_id": user_id,
         "department": department,
         "type": "access",
@@ -190,7 +205,7 @@ def create_refresh_token(
     subject: str,
     *,
     user_id: int,
-    tenant_id: int,
+    
     token_id: str,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
@@ -200,7 +215,6 @@ def create_refresh_token(
     payload = {
         "sub": subject,
         "user_id": user_id,
-        "tenant_id": tenant_id,
         "jti": token_id,
         "type": "refresh",
         "iat": int(_now().timestamp()),

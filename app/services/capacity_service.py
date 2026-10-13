@@ -15,7 +15,7 @@ For every process the engine computes:
   attended, 4 h test bot).
 * **Predicted queue wait** — ``depth × seconds-per-item ÷ parallel capacity``.
 * **SLA verdict** — predicted wait vs ``SLATargetMinutes`` (breach risk at 100%,
-  warning at the tenant's ``SLAWarningRatio``).
+  warning at the process ``SLAWarningRatio``).
 * **Throughput gap** — actual runs/day versus ``ExpectedRunsPerDay``.
 * **Fleet hygiene** — offline runners still assigned, idle runners, processes
   without an SLA target, chronic failures.
@@ -118,8 +118,8 @@ class Recommendation:
 # --------------------------------------------------------------------------- #
 # Analytics
 # --------------------------------------------------------------------------- #
-def compute_capacity(session: Session, *, tenant_id: int, window_days: int = 7) -> List[ProcessCapacity]:
-    """Compute the capacity snapshot for every active process of a tenant."""
+def compute_capacity(session: Session, *, window_days: int = 7) -> List[ProcessCapacity]:
+    """Compute the capacity snapshot for every active process."""
     flavor = get_flavor()
     settings = get_settings()
 
@@ -129,10 +129,10 @@ def compute_capacity(session: Session, *, tenant_id: int, window_days: int = 7) 
         SELECT ConfigID, ProcessName, Department, Criticality, SLATargetMinutes,
                ExpectedRunsPerDay, SLAWarningRatio
         FROM ProcessConfig
-        WHERE TenantID = :t AND IsActive = {flavor.true_literal} AND IsDeleted = {flavor.false_literal}
+        WHERE IsActive = {flavor.true_literal} AND IsDeleted = {flavor.false_literal}
         ORDER BY ProcessName
         """,
-        {"t": tenant_id},
+        {},
         operation="capacity.config",
     )
     if not config_rows:
@@ -148,10 +148,10 @@ def compute_capacity(session: Session, *, tenant_id: int, window_days: int = 7) 
                COALESCE(SUM(CASE WHEN r.Status IN ('Failed','Stopped') THEN 1 ELSE 0 END), 0) AS failed,
                COALESCE(SUM(COALESCE(r.CostSaved, 0)), 0) AS cost_saved
         FROM ProcessRuns r
-        WHERE r.TenantID = :t AND r.StartTime >= {flavor.days_ago(window_days)}
+        WHERE r.StartTime >= {flavor.days_ago(window_days)}
         GROUP BY r.ProcessName
         """,
-        {"t": tenant_id},
+        {},
         operation="capacity.runs",
     )
     runs_by_process = {str(row["ProcessName"]): row for row in run_rows}
@@ -161,9 +161,9 @@ def compute_capacity(session: Session, *, tenant_id: int, window_days: int = 7) 
         f"""
         SELECT AssignedProcess, RunnerType, Status, LastPing, CPU_Usage
         FROM BotInfrastructure
-        WHERE TenantID = :t AND IsDeleted = {flavor.false_literal}
+        WHERE IsDeleted = {flavor.false_literal}
         """,
-        {"t": tenant_id},
+        {},
         operation="capacity.machines",
     )
     fleet: Dict[str, List[Dict[str, Any]]] = {}
@@ -176,9 +176,9 @@ def compute_capacity(session: Session, *, tenant_id: int, window_days: int = 7) 
         f"""
         SELECT ProcessName, PendingItems, ActiveItems, AvgItemProcessingSeconds
         FROM ProcessQueues
-        WHERE TenantID = :t AND IsDeleted = {flavor.false_literal}
+        WHERE IsDeleted = {flavor.false_literal}
         """,
-        {"t": tenant_id},
+        {},
         operation="capacity.queues",
     )
     queue_by_process = {str(row["ProcessName"]): row for row in queue_rows}
@@ -431,11 +431,11 @@ def _recommend_idle_fleet(capacities: List[ProcessCapacity]) -> Optional[Recomme
 
 
 def generate_recommendations(
-    session: Session, *, tenant_id: int, persist: bool = True, limit_per_kind: int = 50
+    session: Session, *, persist: bool = True, limit_per_kind: int = 50
 ) -> List[Recommendation]:
     """Run the engine, persist the insights and return them (newest first)."""
     settings = get_settings()
-    capacities = compute_capacity(session, tenant_id=tenant_id, window_days=settings.CAPACITY_LOOKAHEAD_DAYS // 2 or 7)
+    capacities = compute_capacity(session, window_days=settings.CAPACITY_LOOKAHEAD_DAYS // 2 or 7)
 
     candidates: List[Recommendation] = []
     for capacity in capacities:
@@ -456,7 +456,7 @@ def generate_recommendations(
     candidates.sort(key=lambda r: (order.get(r.severity, 3), -(r.metrics.get("queue_depth") or 0)))
 
     if persist:
-        _persist(session, tenant_id=tenant_id, recommendations=candidates[:limit_per_kind])
+        _persist(session, recommendations=candidates[:limit_per_kind])
 
     for recommendation in candidates:
         RECOMMENDATIONS.labels(severity=recommendation.severity, kind=recommendation.kind).inc()
@@ -464,14 +464,14 @@ def generate_recommendations(
     return candidates
 
 
-def _persist(session: Session, *, tenant_id: int, recommendations: List[Recommendation]) -> None:
+def _persist(session: Session, *, recommendations: List[Recommendation]) -> None:
     """Upsert recommendations, keeping history and avoiding duplicates."""
     now = datetime.utcnow()
     open_rows = fetch_all(
         session,
         "SELECT RecommendationID, Fingerprint, Severity, Status FROM Recommendations "
-        "WHERE TenantID = :t AND Status IN ('Open','Acknowledged','Requested')",
-        {"t": tenant_id},
+        "WHERE Status IN ('Open','Acknowledged','Requested')",
+        {},
         operation="capacity.open_recommendations",
     )
 
@@ -501,7 +501,6 @@ def _persist(session: Session, *, tenant_id: int, recommendations: List[Recommen
             session,
             Recommendations,
             {
-                "TenantID": tenant_id,
                 "Kind": recommendation.kind,
                 "Severity": recommendation.severity,
                 "ProcessName": recommendation.process_name,
@@ -529,21 +528,21 @@ def _persist(session: Session, *, tenant_id: int, recommendations: List[Recommen
 
 
 def get_capacity_summary(
-    session: Session, *, tenant_id: int, department_scope: str = "ALL", use_cache: bool = True
+    session: Session, *, department_scope: str = "ALL", use_cache: bool = True
 ) -> Dict[str, Any]:
     """Capacity snapshot + active recommendations (cached for the dashboard)."""
     cache = get_cache()
-    cache_key = f"capacity:v2:{tenant_id}:{department_scope}"
+    cache_key = f"capacity:v4:{department_scope}"
     if use_cache:
         cached = cache.get_json(cache_key)
         if cached:
             return cached
 
-    capacities = compute_capacity(session, tenant_id=tenant_id)
+    capacities = compute_capacity(session)
     if department_scope and department_scope.upper() != "ALL":
         capacities = [c for c in capacities if c.department == department_scope]
 
-    recommendations = _load_open_recommendations(session, tenant_id=tenant_id, department_scope=department_scope)
+    recommendations = _load_open_recommendations(session, department_scope=department_scope)
 
     bottlenecks = sorted(
         [c for c in capacities if c.sla_status in ("Breach_Risk", "Warning")],
@@ -612,12 +611,12 @@ def get_capacity_summary(
 
 
 def _load_open_recommendations(
-    session: Session, *, tenant_id: int, department_scope: str = "ALL", limit: int = 100
+    session: Session, *, department_scope: str = "ALL", limit: int = 100
 ) -> List[Dict[str, Any]]:
     """Read active recommendations, mapped for the API/UI."""
     flavor = get_flavor()
-    where = ["TenantID = :t", "Status IN ('Open','Acknowledged','Requested')"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(limit)}
+    where = ["Status IN ('Open','Acknowledged','Requested')"]
+    params: Dict[str, Any] = {"limit": int(limit)}
     if department_scope and department_scope.upper() != "ALL":
         where.append("(Department = :dept OR Department IS NULL)")
         params["dept"] = department_scope
@@ -671,7 +670,7 @@ def _load_open_recommendations(
 def list_recommendations(
     session: Session,
     *,
-    tenant_id: int,
+    
     status: Optional[str] = None,
     severity: Optional[str] = None,
     process_name: Optional[str] = None,
@@ -679,8 +678,8 @@ def list_recommendations(
 ) -> List[Dict[str, Any]]:
     """History view: filter by status/severity/process."""
     flavor = get_flavor()
-    where = ["TenantID = :t"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 1000))}
+    where = ["1 = 1"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 1000))}
     if status:
         where.append("Status = :status")
         params["status"] = status
@@ -736,7 +735,7 @@ def list_recommendations(
 def set_recommendation_status(
     session: Session,
     *,
-    tenant_id: int,
+    
     recommendation_id: int,
     status: str,
     user_id: Optional[int] = None,
@@ -750,8 +749,8 @@ def set_recommendation_status(
     row = fetch_one(
         session,
         "SELECT RecommendationID, Status, Kind, ProcessName, ActionPayloadJson FROM Recommendations "
-        "WHERE TenantID = :t AND RecommendationID = :id",
-        {"t": tenant_id, "id": recommendation_id},
+        "WHERE RecommendationID = :id",
+        {"id": recommendation_id},
         operation="capacity.get_recommendation",
     )
     if not row:
@@ -781,11 +780,11 @@ def set_recommendation_status(
     }
 
 
-def capacity_history(session: Session, *, tenant_id: int, process_name: Optional[str] = None, days: int = 30) -> List[Dict[str, Any]]:
+def capacity_history(session: Session, *, process_name: Optional[str] = None, days: int = 30) -> List[Dict[str, Any]]:
     """Historical SLA/queue trend for one process (backed by QueueSnapshots)."""
     flavor = get_flavor()
-    where = ["TenantID = :t", f"CapturedAt >= {flavor.days_ago(int(days))}"]
-    params: Dict[str, Any] = {"t": tenant_id}
+    where = [f"CapturedAt >= {flavor.days_ago(int(days))}"]
+    params: Dict[str, Any] = {}
     if process_name:
         where.append("ProcessName = :p")
         params["p"] = process_name

@@ -3,7 +3,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import api, { ApiError, setAccessToken, setUnauthenticatedHandler } from '../lib/api'
 import { qk, queryClient } from '../lib/queryClient'
 import { startRealtime, stopRealtime } from '../lib/realtime'
-import storage from '../lib/storage'
 
 const AuthContext = createContext(null)
 
@@ -84,12 +83,8 @@ export function AuthProvider({ children }) {
    * enabled — the caller then asks for the six-digit code.
    */
   const login = useCallback(
-    async ({ username, password, tenantKey }) => {
+    async ({ username, password }) => {
       setLastError(null)
-      if (tenantKey !== undefined) {
-        if (tenantKey) storage.set('tenant', tenantKey)
-        else storage.remove('tenant')
-      }
       try {
         const data = await api.post('/api/auth/login', { username, password })
         if (data.mfa_required) {

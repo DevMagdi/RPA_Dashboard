@@ -10,15 +10,15 @@ import { useTheme } from '../context/ThemeProvider'
 import { applyLanguage } from '../i18n'
 import { Button, Field, Input, Notice } from '../components/ui'
 
-/** Sign-in screen (password → optional MFA), tenant-aware and bilingual. */
+/** Sign-in screen (password → optional MFA), bilingual (Arabic/English). */
 export default function LoginPage() {
   const { t, i18n } = useTranslation()
   const location = useLocation()
   const { login, verifyMfa, cancelMfa, isAuthenticated, mfaChallenge, lastError, clearError } = useAuth()
-  const { branding, companyName, tenantKey } = useBranding()
+  const { branding, companyName } = useBranding()
   const { toggleTheme, isDark } = useTheme()
 
-  const [form, setForm] = useState({ username: '', password: '', tenantKey: tenantKey || '' })
+  const [form, setForm] = useState({ username: '', password: '' })
   const [code, setCode] = useState('')
   const [useBackup, setUseBackup] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -203,14 +203,7 @@ export default function LoginPage() {
                 </div>
               </Field>
 
-              <Field label={t('auth.tenantKey')} hint={t('auth.tenantHint')}>
-                <Input
-                  value={form.tenantKey}
-                  onChange={(event) => setForm({ ...form, tenantKey: event.target.value })}
-                  placeholder="default"
-                  autoComplete="organization"
-                />
-              </Field>
+
 
               <Button type="submit" variant="primary" className="w-full justify-center" loading={submitting}>
                 {submitting ? t('auth.signingIn') : t('auth.signIn')}

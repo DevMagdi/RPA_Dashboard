@@ -19,11 +19,16 @@
     "infrastructure": "Infrastructure",
     "lifecycle": "Lifecycle & Vault",
     "audit": "Audit Trail",
-    "tenants": "Tenants",
     "users": "Users & Roles",
     "health": "Control Room Health",
     "settings": "Settings",
-    "sections": { "operations": "Operations", "governance": "Governance", "administration": "Administration" }
+    "sections": {
+      "operations": "Operations",
+      "governance": "Governance",
+      "administration": "Administration"
+    },
+    "organization": "Organization",
+    "alerts": "Alerts"
   },
   "actions": {
     "refresh": "Refresh",
@@ -67,8 +72,6 @@
     "signingIn": "Signing in…",
     "username": "Username",
     "password": "Password",
-    "tenantKey": "Tenant",
-    "tenantHint": "Leave empty for the default tenant",
     "welcome": "Welcome back",
     "subtitle": "Sign in to the automation control room",
     "mfaTitle": "Two-factor verification",
@@ -112,7 +115,13 @@
     "savingsTrend": "Value realisation (14 days)",
     "healthDonut": "Outcome distribution",
     "departmentBreakdown": "By department",
-    "filters": { "department": "Department", "process": "Process", "range": "Range", "all": "All", "days": "{{count}} days" },
+    "filters": {
+      "department": "Department",
+      "process": "Process",
+      "range": "Range",
+      "all": "All",
+      "days": "{{count}} days"
+    },
     "empty": {
       "runs": "No runs in the selected window",
       "chart": "Not enough data yet — runs will populate this chart",
@@ -139,7 +148,11 @@
     "status": "Status",
     "openRecommendations": "Open recommendations",
     "history": "Queue & SLA history",
-    "severity": { "Info": "Info", "Warning": "Warning", "Critical": "Critical" },
+    "severity": {
+      "Info": "Info",
+      "Warning": "Warning",
+      "Critical": "Critical"
+    },
     "statuses": {
       "Open": "Open",
       "Acknowledged": "Acknowledged",
@@ -182,7 +195,7 @@
     "subtitle": "Execution history with realised savings",
     "status": "Status",
     "machine": "Runner",
-    "started": "Started",
+    "started": "Job accepted",
     "finished": "Finished",
     "duration": "Duration",
     "transactions": "Transactions",
@@ -191,7 +204,6 @@
     "statistics": "Statistics",
     "topFailures": "Top failure reasons",
     "startRun": "Start a job",
-    "started": "Job accepted",
     "stop": "Stop",
     "stoppped": "Stop requested",
     "reapStale": "Close stale runs",
@@ -266,8 +278,16 @@
     "lastAccessed": "Last accessed",
     "rotation": "Rotate encryption key",
     "rotationDryRun": "Dry run",
-    "env": { "Development": "Development", "UAT": "UAT", "Production": "Production", "Retired": "Retired" },
-    "workflow": { "fourEyes": "Production changes require approval from a second person", "breakGlass": "Break-glass promotion (SuperAdmin, audited)" }
+    "env": {
+      "Development": "Development",
+      "UAT": "UAT",
+      "Production": "Production",
+      "Retired": "Retired"
+    },
+    "workflow": {
+      "fourEyes": "Production changes require approval from a second person",
+      "breakGlass": "Break-glass promotion (SuperAdmin, audited)"
+    }
   },
   "audit": {
     "title": "Audit Trail",
@@ -284,28 +304,6 @@
     "success": "Success",
     "failed": "Failed",
     "empty": "No audit records match the filters"
-  },
-  "tenants": {
-    "title": "Tenants",
-    "subtitle": "White-label provisioning for every business line or bank",
-    "tenantKey": "Tenant key",
-    "companyName": "Company name",
-    "primaryColor": "Primary colour",
-    "accentColor": "Accent colour",
-    "locale": "Default language",
-    "provider": "Automation platform",
-    "createTenant": "Provision tenant",
-    "branding": "Branding",
-    "platformConfig": "Platform configuration",
-    "configHint": "Secrets are referenced from Key Vault/Vault — pass vault:NAME, never a raw password.",
-    "testConnection": "Test connection",
-    "activation": "Active",
-    "retention": "Retention",
-    "runRetention": "Enforce retention policy",
-    "stats": "Usage",
-    "users": "Users",
-    "processes": "Processes",
-    "runs": "Runs"
   },
   "users": {
     "title": "Users & Roles",
@@ -404,5 +402,33 @@
     "never": "Never",
     "justNow": "just now",
     "unknown": "Unknown"
+  },
+  "organization": {
+    "title": "Organization",
+    "subtitle": "This On-Premises installation serves a single organization",
+    "name": "Organization name",
+    "companyName": "Company name",
+    "primaryColor": "Primary colour",
+    "accentColor": "Accent colour",
+    "locale": "Default language",
+    "provider": "Automation platform",
+    "branding": "Branding",
+    "platformConfig": "Platform configuration",
+    "configHint": "Secrets stay in the bank secret manager — pass vault:NAME references, never a raw password.",
+    "testConnection": "Test connection",
+    "retention": "Run retention now",
+    "singleOrgNotice": "Single-tenant On-Premises deployment: one installation = one bank/enterprise. Fully isolated and auditable."
+  },
+  "alerts": {
+    "title": "Alerts",
+    "subtitle": "Operational alerting over agents, SLAs and failure patterns",
+    "alert": "Alert",
+    "rule": "Rule",
+    "severity": "Severity",
+    "lastSeen": "Last seen",
+    "acknowledge": "Acknowledge",
+    "resolve": "Resolve",
+    "evaluate": "Evaluate rules now",
+    "empty": "No alerts — everything is healthy"
   }
 }

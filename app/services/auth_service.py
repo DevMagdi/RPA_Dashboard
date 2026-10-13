@@ -55,7 +55,6 @@ class AuthenticatedUser:
     """User record used by the request pipeline."""
 
     user_id: int
-    tenant_id: int
     username: str
     role: str
     department: str
@@ -108,35 +107,35 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def find_user(session: Session, *, username: str, tenant_id: int) -> Optional[Dict[str, Any]]:
-    """Fetch a user row by username inside a tenant (case-insensitive)."""
+def find_user(session: Session, *, username: str) -> Optional[Dict[str, Any]]:
+    """Fetch a user row by username (case-insensitive)."""
     return fetch_one(
         session,
         """
         SELECT * FROM SystemUsers
-        WHERE TenantID = :t AND LOWER(Username) = LOWER(:u) AND (IsDeleted = 0 OR IsDeleted IS NULL)
+        WHERE LOWER(Username) = LOWER(:u) AND (IsDeleted = 0 OR IsDeleted IS NULL)
         """,
-        {"t": tenant_id, "u": username},
+        {"u": username},
         operation="auth.find_user",
     )
 
 
-def find_user_by_id(session: Session, *, user_id: int, tenant_id: int) -> Optional[Dict[str, Any]]:
+def find_user_by_id(session: Session, *, user_id: int) -> Optional[Dict[str, Any]]:
     """Fetch a user row by primary key."""
     return fetch_one(
         session,
-        "SELECT * FROM SystemUsers WHERE TenantID = :t AND UserID = :u",
-        {"t": tenant_id, "u": user_id},
+        "SELECT * FROM SystemUsers WHERE UserID = :u",
+        {"u": user_id},
         operation="auth.find_user_id",
     )
 
 
 def _build_principal(session: Session, row: Dict[str, Any]) -> AuthenticatedUser:
     """Map a DB row + its permissions into an :class:`AuthenticatedUser`."""
-    permission_set = load_permissions(int(row["TenantID"]), str(row["Role"]))
+    permission_set = load_permissions(str(row["Role"]))
     return AuthenticatedUser(
         user_id=int(row["UserID"]),
-        tenant_id=int(row["TenantID"]),
+        
         username=str(row["Username"]),
         role=str(row["Role"]),
         department=str(row.get("AllowedDepartment") or "ALL"),
@@ -157,7 +156,7 @@ def _is_locked(row: Dict[str, Any]) -> bool:
 # --------------------------------------------------------------------------- #
 # Step 1 — credentials
 # --------------------------------------------------------------------------- #
-def authenticate(session: Session, *, tenant_id: int, username: str, password: str) -> LoginChallenge:
+def authenticate(session: Session, *, username: str, password: str) -> LoginChallenge:
     """Verify credentials and decide whether MFA is required.
 
     The function never reveals whether the username exists: callers receive the
@@ -165,7 +164,7 @@ def authenticate(session: Session, *, tenant_id: int, username: str, password: s
     route layer.
     """
     settings = get_settings()
-    row = find_user(session, username=username, tenant_id=tenant_id)
+    row = find_user(session, username=username)
 
     if not row:
         return LoginChallenge(success=False, error="اسم المستخدم أو كلمة المرور غير صحيحة", error_code="user_not_found")
@@ -204,7 +203,7 @@ def authenticate(session: Session, *, tenant_id: int, username: str, password: s
             mfa_token=create_access_token(
                 principal.username,
                 role=principal.role,
-                tenant_id=principal.tenant_id,
+                
                 user_id=principal.user_id,
                 department=principal.department,
                 expires_delta=timedelta(minutes=5),
@@ -231,17 +230,15 @@ def _register_failed_attempt(session: Session, row: Dict[str, Any]) -> int:
 # --------------------------------------------------------------------------- #
 # Step 2 — MFA
 # --------------------------------------------------------------------------- #
-def verify_mfa_challenge(session: Session, *, tenant_id: int, mfa_token: str, code: str) -> AuthenticatedUser:
+def verify_mfa_challenge(session: Session, *, mfa_token: str, code: str) -> AuthenticatedUser:
     """Complete the login by verifying a TOTP code or a backup code."""
     try:
         payload = decode_token(mfa_token, expected_type="mfa")
     except Exception as exc:
         raise AuthError("انتهت صلاحية خطوة التحقق، برجاء تسجيل الدخول من جديد", code="mfa_token_invalid") from exc
 
-    if int(payload.get("tenant_id", 0)) != int(tenant_id):
-        raise AuthError("طلب غير صالح", code="tenant_mismatch", status_code=403)
 
-    row = find_user_by_id(session, user_id=int(payload["user_id"]), tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=int(payload["user_id"]))
     if not row:
         raise AuthError("المستخدم غير موجود", code="user_not_found")
 
@@ -304,14 +301,14 @@ def _load_backup_codes(row: Dict[str, Any]) -> List[str]:
         return []
 
 
-def begin_mfa_setup(session: Session, *, user_id: int, tenant_id: int) -> Dict[str, Any]:
+def begin_mfa_setup(session: Session, *, user_id: int) -> Dict[str, Any]:
     """Generate a TOTP secret + provisioning QR code for the current user.
 
     The secret is stored encrypted but **not yet active**: ``MfaEnabled`` only
     flips to true after the user proves possession through
     :func:`confirm_mfa_setup`.
     """
-    row = find_user_by_id(session, user_id=user_id, tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=user_id)
     if not row:
         raise AuthError("المستخدم غير موجود", code="user_not_found", status_code=404)
 
@@ -350,12 +347,12 @@ def _qr_png_base64(payload: str) -> Optional[str]:
         return None
 
 
-def confirm_mfa_setup(session: Session, *, user_id: int, tenant_id: int, code: str) -> List[str]:
+def confirm_mfa_setup(session: Session, *, user_id: int, code: str) -> List[str]:
     """Activate MFA after the user verifies the first TOTP code.
 
     Returns the freshly generated backup codes (shown exactly once).
     """
-    row = find_user_by_id(session, user_id=user_id, tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=user_id)
     if not row:
         raise AuthError("المستخدم غير موجود", code="user_not_found", status_code=404)
 
@@ -383,9 +380,9 @@ def confirm_mfa_setup(session: Session, *, user_id: int, tenant_id: int, code: s
     return backup_codes
 
 
-def disable_mfa(session: Session, *, user_id: int, tenant_id: int, password: str) -> None:
+def disable_mfa(session: Session, *, user_id: int, password: str) -> None:
     """Disable MFA — requires the current password (re-authentication)."""
-    row = find_user_by_id(session, user_id=user_id, tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=user_id)
     if not row or not verify_password(password, str(row.get("PasswordHash") or "")):
         raise AuthError("كلمة المرور غير صحيحة", code="bad_password", status_code=400)
 
@@ -398,9 +395,9 @@ def disable_mfa(session: Session, *, user_id: int, tenant_id: int, password: str
     )
 
 
-def regenerate_backup_codes(session: Session, *, user_id: int, tenant_id: int, password: str) -> List[str]:
+def regenerate_backup_codes(session: Session, *, user_id: int, password: str) -> List[str]:
     """Issue a new set of backup codes (invalidating the previous set)."""
-    row = find_user_by_id(session, user_id=user_id, tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=user_id)
     if not row or not verify_password(password, str(row.get("PasswordHash") or "")):
         raise AuthError("كلمة المرور غير صحيحة", code="bad_password", status_code=400)
     if not bool(row.get("MfaEnabled")):
@@ -432,14 +429,14 @@ def complete_login(
     access_token = create_access_token(
         principal.username,
         role=principal.role,
-        tenant_id=principal.tenant_id,
+        
         user_id=principal.user_id,
         department=principal.department,
     )
     issued = token_service.issue_refresh_token(
         session,
         user_id=principal.user_id,
-        tenant_id=principal.tenant_id,
+        
         username=principal.username,
         ip_address=ip_address,
         user_agent=user_agent,
@@ -476,8 +473,7 @@ def refresh_session(
         raise AuthError("الجلسة منتهية، برجاء تسجيل الدخول من جديد", code="refresh_invalid") from exc
 
     username = str(payload.get("sub") or "")
-    tenant_id = int(payload.get("tenant_id") or 0)
-    row = find_user(session, username=username, tenant_id=tenant_id)
+    row = find_user(session, username=username)
     if not row or not bool(row.get("IsActive", True)):
         raise AuthError("الحساب غير متاح", code="inactive_account", status_code=403)
 
@@ -488,7 +484,7 @@ def refresh_session(
     access_token = create_access_token(
         principal.username,
         role=principal.role,
-        tenant_id=principal.tenant_id,
+        
         user_id=principal.user_id,
         department=principal.department,
     )
@@ -502,12 +498,35 @@ def refresh_session(
     }
 
 
-def load_principal(session: Session, *, tenant_id: int, user_id: int) -> Optional[AuthenticatedUser]:
+def load_principal(session: Session, *, user_id: int) -> Optional[AuthenticatedUser]:
     """Load a principal by id (used by every authenticated request)."""
-    row = find_user_by_id(session, user_id=user_id, tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=user_id)
     if not row or not bool(row.get("IsActive", True)) or _is_locked(row):
         return None
     return _build_principal(session, row)
+
+
+def _check_password_history(session: Session, *, user_id: int, new_password: str) -> None:
+    """Reject reuse of the last ``PASSWORD_HISTORY_SIZE`` passwords."""
+
+    size = int(get_settings().PASSWORD_HISTORY_SIZE or 5)
+    if size <= 0:
+        return
+    rows = fetch_all(
+        session,
+        "SELECT PasswordHash FROM PasswordHistory WHERE UserID = :u ORDER BY HistoryID DESC",
+        {"u": user_id},
+        operation="auth.password_history",
+    )[:size]
+    for row in rows:
+        if verify_password(new_password, str(row.get("PasswordHash") or "")):
+            raise AuthError("لا يمكن إعادة استخدام كلمة مرور سابقة", code="password_reused", status_code=400)
+
+
+def _record_password_history(session: Session, *, user_id: int, password_hash: str) -> None:
+    from app.db.tables import PasswordHistory
+
+    insert_row(session, PasswordHistory, {"UserID": user_id, "PasswordHash": password_hash})
 
 
 # --------------------------------------------------------------------------- #
@@ -516,7 +535,7 @@ def load_principal(session: Session, *, tenant_id: int, user_id: int) -> Optiona
 def create_user(
     session: Session,
     *,
-    tenant_id: int,
+    
     username: str,
     password: str,
     role: str,
@@ -533,20 +552,20 @@ def create_user(
     if not policy.ok:
         raise AuthError(policy.message, code="weak_password", status_code=400)
 
-    if find_user(session, username=username, tenant_id=tenant_id):
+    if find_user(session, username=username):
         raise AuthError("اسم المستخدم مستخدم بالفعل", code="duplicate_username", status_code=400)
 
 
-    return int(
+    _hash = hash_password(password)
+    _uid = int(
         insert_row(
             session,
             SystemUsers,
             {
-                "TenantID": tenant_id,
                 "Username": username,
                 "Email": email,
                 "FullName": full_name or username,
-                "PasswordHash": hash_password(password),
+                "PasswordHash": _hash,
                 "Role": role,
                 "AllowedDepartment": department or "ALL",
                 "IsActive": True,
@@ -555,19 +574,21 @@ def create_user(
             },
         )
     )
+    _record_password_history(session, user_id=_uid, password_hash=_hash)
+    return _uid
 
 
 def change_password(
     session: Session,
     *,
     user_id: int,
-    tenant_id: int,
+    
     current_password: str,
     new_password: str,
     keep_current_session_token_id: Optional[int] = None,
 ) -> None:
     """Change a password, enforce the policy and revoke all other sessions."""
-    row = find_user_by_id(session, user_id=user_id, tenant_id=tenant_id)
+    row = find_user_by_id(session, user_id=user_id)
     if not row or not verify_password(current_password, str(row.get("PasswordHash") or "")):
         raise AuthError("كلمة المرور الحالية غير صحيحة", code="bad_password", status_code=400)
 
@@ -576,53 +597,55 @@ def change_password(
         raise AuthError(policy.message, code="weak_password", status_code=400)
     if verify_password(new_password, str(row.get("PasswordHash") or "")):
         raise AuthError("كلمة المرور الجديدة مطابقة للحالية", code="same_password", status_code=400)
+    _check_password_history(session, user_id=user_id, new_password=new_password)
 
-
+    new_hash = hash_password(new_password)
     update_rows(
         session,
         SystemUsers,
-        {"PasswordHash": hash_password(new_password), "MustChangePassword": False},
+        {"PasswordHash": new_hash, "MustChangePassword": False, "PasswordChangedAt": _now()},
         [SystemUsers.c.UserID == user_id],
     )
-    token_service.revoke_all_for_user(session, user_id=user_id, tenant_id=tenant_id, reason="password_changed")
+    _record_password_history(session, user_id=user_id, password_hash=new_hash)
+    token_service.revoke_all_for_user(session, user_id=user_id, reason="password_changed")
 
 
-def list_users(session: Session, *, tenant_id: int, limit: int = 200) -> List[Dict[str, Any]]:
-    """List users of a tenant (never returns password hashes)."""
+def list_users(session: Session, *, limit: int = 200) -> List[Dict[str, Any]]:
+    """List users (never returns password hashes)."""
     rows = fetch_all(
         session,
         """
         SELECT UserID, Username, Email, FullName, Role, AllowedDepartment, IsActive, MfaEnabled,
                FailedLoginAttempts, LockedUntil, LastLoginDate, CreatedAt
         FROM SystemUsers
-        WHERE TenantID = :t AND (IsDeleted = 0 OR IsDeleted IS NULL)
+        WHERE (IsDeleted = 0 OR IsDeleted IS NULL)
         ORDER BY Username
         """,
-        {"t": tenant_id},
+        {},
         operation="auth.list_users",
     )
     return rows
 
 
-def set_user_active(session: Session, *, tenant_id: int, user_id: int, is_active: bool) -> int:
+def set_user_active(session: Session, *, user_id: int, is_active: bool) -> int:
     """Enable/disable a user (soft governance action)."""
 
     affected = update_rows(
-        session, SystemUsers, {"IsActive": is_active}, [SystemUsers.c.UserID == user_id, SystemUsers.c.TenantID == tenant_id]
+        session, SystemUsers, {"IsActive": is_active}, [SystemUsers.c.UserID == user_id]
     )
     if not is_active:
-        token_service.revoke_all_for_user(session, user_id=user_id, tenant_id=tenant_id, reason="account_disabled")
+        token_service.revoke_all_for_user(session, user_id=user_id, reason="account_disabled")
     return affected
 
 
-def soft_delete_user(session: Session, *, tenant_id: int, user_id: int) -> int:
+def soft_delete_user(session: Session, *, user_id: int) -> int:
     """Logically delete a user (retention friendly, never breaks audit joins)."""
 
     affected = update_rows(
         session,
         SystemUsers,
         {"IsDeleted": True, "DeletedAt": _now(), "IsActive": False},
-        [SystemUsers.c.UserID == user_id, SystemUsers.c.TenantID == tenant_id],
+        [SystemUsers.c.UserID == user_id],
     )
-    token_service.revoke_all_for_user(session, user_id=user_id, tenant_id=tenant_id, reason="account_deleted")
+    token_service.revoke_all_for_user(session, user_id=user_id, reason="account_deleted")
     return affected

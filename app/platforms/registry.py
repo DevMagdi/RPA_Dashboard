@@ -1,11 +1,11 @@
-"""Adapter registry — resolves the provider configured per tenant.
+"""Adapter registry — resolves the provider configured for the organization.
 
-Onboarding a new client is a **configuration** operation:
+Configuring the vendor platform is a **configuration** operation:
 
-1. ``POST /api/tenants/{id}/platform`` with ``{"provider": "uipath", ...}``
+1. ``POST /api/organization/platform`` with ``{"provider": "uipath", ...}``
 2. credentials are stored through the secret backend
    (Key Vault / Vault / env), never in the repository
-3. :func:`get_adapter_for_tenant` returns a ready adapter on the next request
+3. :func:`get_adapter` returns a ready adapter on the next request
 
 Adding a brand-new vendor only requires implementing
 :class:`~app.platforms.base.PlatformAdapter` and registering it here (or via
@@ -27,19 +27,21 @@ from app.db.session import session_scope
 from app.platforms.automation_anywhere import AutomationAnywhereAdapter
 from app.platforms.base import PlatformAdapter
 from app.platforms.generic_sql import GenericSQLAdapter
+from app.platforms.blue_prism import BluePrismAdapter
 from app.platforms.uipath import UiPathOrchestratorAdapter
 
 logger = logging.getLogger(__name__)
 
-#: Built-in providers.  Keys are the values stored in ``Tenants.PlatformProvider``.
+#: Built-in providers.  Keys are the values stored in ``Organization.PlatformProvider``.
 BUILTIN_ADAPTERS: Dict[str, Type[PlatformAdapter]] = {
     "generic_sql": GenericSQLAdapter,
     "uipath": UiPathOrchestratorAdapter,
     "automation_anywhere": AutomationAnywhereAdapter,
+    "blue_prism": BluePrismAdapter,
 }
 
 #: Credential keys that must be resolved through the secret backend rather than
-#: being persisted in the tenant JSON blob in clear text.
+#: being persisted in the organization JSON blob in clear text.
 _SECRET_KEYS = ("client_secret", "password", "api_key", "token")
 
 
@@ -69,7 +71,7 @@ def load_plugin_adapters() -> None:
 
 
 def available_providers() -> List[Dict[str, Any]]:
-    """Catalogue of providers for the setup wizard / tenant configuration UI."""
+    """Catalogue of providers for the setup wizard / organization configuration UI."""
     catalogue: List[Dict[str, Any]] = []
     for key, adapter_cls in BUILTIN_ADAPTERS.items():
         # Class-level CAPABILITIES: no instantiation, so the catalogue works
@@ -115,7 +117,7 @@ def _resolve_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     return resolved
 
 
-def build_adapter(provider: str, config: Optional[Dict[str, Any]] = None, tenant_id: int = 1) -> PlatformAdapter:
+def build_adapter(provider: str, config: Optional[Dict[str, Any]] = None) -> PlatformAdapter:
     """Instantiate an adapter for ``provider`` with the given configuration."""
     key = (provider or "generic_sql").strip().lower()
     adapter_cls = BUILTIN_ADAPTERS.get(key)
@@ -125,18 +127,17 @@ def build_adapter(provider: str, config: Optional[Dict[str, Any]] = None, tenant
         key = "generic_sql"
 
     payload = _resolve_secrets(config or {})
-    payload.setdefault("tenant_id", tenant_id)
     return adapter_cls(payload)
 
 
-def get_tenant_platform_config(tenant_id: int) -> Dict[str, Any]:
-    """Load the stored provider + configuration for a tenant."""
+def get_platform_config() -> Dict[str, Any]:
+    """Load the stored provider + configuration for the organization."""
     with session_scope() as session:
         row = fetch_one(
             session,
-            "SELECT PlatformProvider, PlatformConfigJson FROM Tenants WHERE TenantID = :t",
-            {"t": tenant_id},
-            operation="registry.tenant_config",
+            "SELECT PlatformProvider, PlatformConfigJson FROM Organization ORDER BY OrganizationID",
+            {},
+            operation="registry.platform_config",
         )
     if not row:
         return {"provider": "generic_sql", "config": {}}
@@ -150,37 +151,37 @@ def get_tenant_platform_config(tenant_id: int) -> Dict[str, Any]:
 
 
 @lru_cache(maxsize=64)
-def _cached_adapter(tenant_id: int, provider: str, config_json: str) -> PlatformAdapter:
-    """Adapters are stateless enough to be cached per (tenant, config) pair."""
+def _cached_adapter(provider: str, config_json: str) -> PlatformAdapter:
+    """Adapters are stateless enough to be cached per config."""
     try:
         config = json.loads(config_json) if config_json else {}
     except ValueError:
         config = {}
-    return build_adapter(provider, config, tenant_id=tenant_id)
+    return build_adapter(provider, config)
 
 
-def get_adapter_for_tenant(tenant_id: int, *, use_cache: bool = True) -> PlatformAdapter:
-    """Return a ready-to-use adapter for the tenant's configured provider."""
-    stored = get_tenant_platform_config(tenant_id)
+def get_adapter(*, use_cache: bool = True) -> PlatformAdapter:
+    """Return a ready-to-use adapter for the configured provider."""
+    stored = get_platform_config()
     provider = stored["provider"]
     config = stored["config"]
 
     if not use_cache:
-        return build_adapter(provider, config, tenant_id=tenant_id)
+        return build_adapter(provider, config)
     try:
-        return _cached_adapter(tenant_id, provider, json.dumps(config, sort_keys=True, default=str))
+        return _cached_adapter(provider, json.dumps(config, sort_keys=True, default=str))
     except TypeError:  # unhashable config → bypass the cache
-        return build_adapter(provider, config, tenant_id=tenant_id)
+        return build_adapter(provider, config)
 
 
 def invalidate_adapter_cache() -> None:
-    """Drop cached adapters (called when tenant platform config changes)."""
+    """Drop cached adapters (called when platform config changes)."""
     _cached_adapter.cache_clear()
 
 
-def platform_health(tenant_id: int) -> Dict[str, Any]:
-    """Health probe of the tenant's provider (used by ``/health/detail``)."""
-    adapter = get_adapter_for_tenant(tenant_id)
+def platform_health() -> Dict[str, Any]:
+    """Health probe of the configured provider (used by ``/health/detail``)."""
+    adapter = get_adapter()
     health = adapter.health()
     return {
         "provider": health.provider,

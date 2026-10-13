@@ -54,6 +54,7 @@ class CommandRequest(BaseModel):
     Parameters: Dict[str, Any] = Field(default_factory=dict)
     Reason: Optional[str] = Field(None, max_length=300)
     TimeoutSeconds: int = Field(60, ge=5, le=3600)
+    ScheduledAt: Optional[Any] = Field(None, description="ISO datetime; future values queue the command for later delivery")
 
 
 class JobControlRequest(BaseModel):
@@ -85,7 +86,7 @@ def infrastructure(
     principal: AuthenticatedUser = Depends(require_permission("infrastructure:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Machines with resource usage, health status and staleness flags."""
-    return infra_service.list_machines(db, tenant_id=principal.tenant_id, include_deleted=include_deleted)
+    return infra_service.list_machines(db, include_deleted=include_deleted)
 
 
 @router.get("/infrastructure/summary", summary="Fleet KPIs")
@@ -94,7 +95,7 @@ def infrastructure_summary(
     principal: AuthenticatedUser = Depends(require_permission("infrastructure:read", "*")),
 ) -> Dict[str, Any]:
     """Online/offline/warning counts and average utilisation."""
-    return infra_service.fleet_summary(db, tenant_id=principal.tenant_id)
+    return infra_service.fleet_summary(db)
 
 
 @router.post("/register-machine", status_code=201, summary="Register a runner + enrolment code")
@@ -107,7 +108,7 @@ def register_machine(
     try:
         result = infra_service.register_machine(
             db,
-            tenant_id=principal.tenant_id,
+            
             machine_name=payload.MachineName,
             assigned_process=payload.AssignedBot,
             runner_type=payload.RunnerType,
@@ -121,7 +122,7 @@ def register_machine(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Register_Machine",
         user_id=principal.user_id,
         entity_type="BotInfrastructure",
@@ -132,7 +133,7 @@ def register_machine(
             "RunnerType": payload.RunnerType,
         },
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return {"status": "success", **result}
 
 
@@ -143,14 +144,14 @@ def regenerate_enrollment(
     principal: AuthenticatedUser = Depends(require_permission("infrastructure:write", "*")),
 ) -> Dict[str, Any]:
     """Invalidate old codes and issue a fresh one (15 min TTL by default)."""
-    machines = infra_service.list_machines(db, tenant_id=principal.tenant_id)
+    machines = infra_service.list_machines(db)
     if not any(m.get("MachineName") == machine_name for m in machines):
         raise HTTPException(status_code=404, detail="الجهاز غير مسجل في النظام")
 
-    result = infra_service.issue_enrollment_code(db, tenant_id=principal.tenant_id, machine_name=machine_name)
+    result = infra_service.issue_enrollment_code(db, machine_name=machine_name)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Regenerate_Enrollment_Code",
         user_id=principal.user_id,
         entity_type="BotInfrastructure",
@@ -170,7 +171,7 @@ def update_machine(
     try:
         affected = infra_service.update_machine(
             db,
-            tenant_id=principal.tenant_id,
+            
             machine_name=machine_name,
             assigned_process=payload.AssignedBot,
             runner_type=payload.RunnerType,
@@ -185,7 +186,7 @@ def update_machine(
         raise HTTPException(status_code=404, detail="الجهاز غير موجود")
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Update_Machine",
         user_id=principal.user_id,
         entity_type="BotInfrastructure",
@@ -202,12 +203,12 @@ def delete_machine(
     principal: AuthenticatedUser = Depends(require_permission("infrastructure:write", "*")),
 ) -> Dict[str, Any]:
     """Remove a runner from the active fleet (telemetry history preserved)."""
-    affected = infra_service.soft_delete_machine(db, tenant_id=principal.tenant_id, machine_name=machine_name)
+    affected = infra_service.soft_delete_machine(db, machine_name=machine_name)
     if not affected:
         raise HTTPException(status_code=404, detail="الجهاز غير موجود")
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Delete_Machine",
         user_id=principal.user_id,
         entity_type="BotInfrastructure",
@@ -217,24 +218,25 @@ def delete_machine(
 
 
 @router.post("/machines/{machine_name}/revoke-token", summary="Revoke a runner's credentials")
-def revoke_token(
+async def revoke_token(
     machine_name: str,
     db: Session = Depends(get_db),
     principal: AuthenticatedUser = Depends(require_permission("infrastructure:write", "*")),
 ) -> Dict[str, Any]:
     """Invalidate the agent token (stolen VM / decommissioned host)."""
-    affected = infra_service.revoke_agent_token(db, tenant_id=principal.tenant_id, machine_name=machine_name)
+    affected = infra_service.revoke_agent_token(db, machine_name=machine_name)
     if not affected:
         raise HTTPException(status_code=404, detail="الجهاز غير موجود")
+    disconnected = await hub.disconnect_agent(machine_name)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Revoke_Agent_Token",
         user_id=principal.user_id,
         entity_type="BotInfrastructure",
         entity_id=machine_name,
     )
-    return {"status": "success", "message": "تم إلغاء توكن الجهاز — يجب إعادة التسجيل من جديد"}
+    return {"status": "success", "disconnected": disconnected, "message": "تم إلغاء توكن الجهاز وفصل الاتصال — يجب إعادة التسجيل من جديد"}
 
 
 # --------------------------------------------------------------------------- #
@@ -258,7 +260,7 @@ async def send_command(
     try:
         result = infra_service.issue_command(
             db,
-            tenant_id=principal.tenant_id,
+            
             machine_name=machine_name,
             command=payload.Command,
             payload=command_payload,
@@ -274,17 +276,18 @@ async def send_command(
             "type": "command",
             "command_id": result["command_id"],
             "command": payload.Command,
+            "signature": result.get("signature"),
             **command_payload,
         },
     )
     if delivered:
-        infra_service.mark_command_delivered(db, tenant_id=principal.tenant_id, command_id=result["command_id"])
+        infra_service.mark_command_delivered(db, command_id=result["command_id"])
         result["delivered"] = True
         result["status"] = "Sent"
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Command_Issued",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
@@ -305,7 +308,7 @@ def list_commands(
 ) -> List[Dict[str, Any]]:
     """Audit of every start/stop/ping issued from the Control Room."""
     return infra_service.list_commands(
-        db, tenant_id=principal.tenant_id, machine_name=machine_name, status=status_filter, limit=limit
+        db, machine_name=machine_name, status=status_filter, limit=limit
     )
 
 
@@ -315,15 +318,15 @@ async def start_job(
     db: Session = Depends(get_db),
     principal: AuthenticatedUser = Depends(require_permission("commands:write", "*")),
 ) -> Dict[str, Any]:
-    """Dispatch a start request through the tenant's platform adapter."""
+    """Dispatch a start request through the configured platform adapter."""
     from app.platforms.base import JobStartRequest
-    from app.platforms.registry import get_adapter_for_tenant
+    from app.platforms.registry import get_adapter
 
-    process = fetch_process(db, principal.tenant_id, payload.ProcessName)
+    process = fetch_process(db, payload.ProcessName)
     if not process:
         raise HTTPException(status_code=404, detail="العملية غير موجودة")
 
-    adapter = get_adapter_for_tenant(principal.tenant_id)
+    adapter = get_adapter()
     if not adapter.capabilities().get("start_job"):
         raise HTTPException(status_code=501, detail="المزوّد الحالي لا يدعم بدء التشغيل مباشرة")
 
@@ -345,7 +348,7 @@ async def start_job(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Job_Start_Requested",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
@@ -379,13 +382,13 @@ async def stop_job(
     principal: AuthenticatedUser = Depends(require_permission("commands:write", "*")),
 ) -> Dict[str, Any]:
     """Stop a job on the platform adapter (UiPath/AA) or the native agent."""
-    from app.platforms.registry import get_adapter_for_tenant
+    from app.platforms.registry import get_adapter
 
-    adapter = get_adapter_for_tenant(principal.tenant_id)
+    adapter = get_adapter()
     handle = adapter.stop_job(external_id, reason=reason)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Job_Stop_Requested",
         user_id=principal.user_id,
         entity_type="Job",
@@ -402,7 +405,7 @@ async def stop_job(
 @router.get("/platform/providers", summary="Supported RPA platforms")
 def providers(principal: AuthenticatedUser = Depends(require_permission("infrastructure:read", "*"))) -> List[Dict[str, Any]]:
     """Catalogue of adapters with their capability matrix (setup wizard)."""
-    from app.services.tenant_service import list_providers
+    from app.services.organization_service import list_providers
 
     return list_providers()
 
@@ -415,7 +418,7 @@ def platform_health(
     """Ping the configured platform (used by the health page)."""
     from app.platforms.registry import platform_health as probe
 
-    return probe(principal.tenant_id)
+    return probe()
 
 
 @router.post("/platform/sync", summary="Trigger a platform synchronisation")
@@ -427,16 +430,16 @@ async def trigger_sync(
     """Pull telemetry from UiPath / Automation Anywhere on demand."""
     import asyncio
 
-    result = await asyncio.to_thread(sync_service.sync_tenant, principal.tenant_id, lookback_days=lookback_days, force=True)
+    result = await asyncio.to_thread(sync_service.sync_organization, lookback_days=lookback_days, force=True)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Platform_Sync",
         user_id=principal.user_id,
         new_values={k: str(v)[:200] for k, v in result.items()},
         is_success=bool(result.get("ok")),
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return result
 
 
@@ -446,16 +449,16 @@ def sync_history(
     principal: AuthenticatedUser = Depends(require_permission("infrastructure:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Diagnostics for the platform integration."""
-    return sync_service.sync_history(principal.tenant_id, limit=limit)
+    return sync_service.sync_history(limit=limit)
 
 
-def fetch_process(db: Session, tenant_id: int, process_name: str) -> Optional[Dict[str, Any]]:
+def fetch_process(db: Session, process_name: str) -> Optional[Dict[str, Any]]:
     """Small local helper (keeps the route file free of raw SQL)."""
     from app.db.repository import fetch_one
 
     return fetch_one(
         db,
-        "SELECT ProcessName, PlatformProcessKey, Provider FROM ProcessConfig WHERE TenantID = :t AND ProcessName = :p",
-        {"t": tenant_id, "p": process_name},
+        "SELECT ProcessName, PlatformProcessKey, Provider FROM ProcessConfig WHERE ProcessName = :p",
+        {"p": process_name},
         operation="machines.fetch_process",
     )

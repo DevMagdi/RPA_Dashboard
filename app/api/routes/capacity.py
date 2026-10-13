@@ -37,7 +37,7 @@ def insights(
     if principal.department == "ALL" and department:
         scope = department
     return capacity_service.get_capacity_summary(
-        db, tenant_id=principal.tenant_id, department_scope=scope, use_cache=not refresh
+        db, department_scope=scope, use_cache=not refresh
     )
 
 
@@ -47,7 +47,7 @@ def utilization(
     principal: AuthenticatedUser = Depends(require_permission("capacity:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Raw capacity analytics (utilisation, queue, predicted wait, SLA verdict)."""
-    scopes = capacity_service.compute_capacity(db, tenant_id=principal.tenant_id)
+    scopes = capacity_service.compute_capacity(db)
     if principal.department != "ALL":
         scopes = [item for item in scopes if item.department == principal.department]
     return [
@@ -78,7 +78,7 @@ async def generate(
     principal: AuthenticatedUser = Depends(require_permission("capacity:act", "*")),
 ) -> Dict[str, Any]:
     """Run the advisor engine, persist insights and notify on critical ones."""
-    recommendations = capacity_service.generate_recommendations(db, tenant_id=principal.tenant_id, persist=True)
+    recommendations = capacity_service.generate_recommendations(db, persist=True)
     scope = principal.department
     if scope != "ALL":
         recommendations = [r for r in recommendations if r.department in (scope, None)]
@@ -86,7 +86,7 @@ async def generate(
     critical = [r for r in recommendations if r.severity == "Critical"]
     sent = notification_service.notify_capacity_recommendations(
         db,
-        tenant_id=principal.tenant_id,
+        
         recommendations=[
             {
                 "id": getattr(r, "recommendation_id", None),
@@ -99,7 +99,7 @@ async def generate(
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Capacity_Recalculated",
         user_id=principal.user_id,
         new_values={"generated": len(recommendations), "critical": len(critical), "notifications": sent},
@@ -107,7 +107,7 @@ async def generate(
     await hub.publish(
         "capacity_update",
         {"critical": len(critical), "generated": len(recommendations)},
-        tenant_id=principal.tenant_id,
+        
     )
     return {
         "status": "success",
@@ -142,7 +142,7 @@ def list_recommendations(
     """Filterable history of every insight ever produced (audit friendly)."""
     return capacity_service.list_recommendations(
         db,
-        tenant_id=principal.tenant_id,
+        
         status=status_filter,
         severity=severity,
         process_name=process,
@@ -166,7 +166,7 @@ async def update_status(
     try:
         result = capacity_service.set_recommendation_status(
             db,
-            tenant_id=principal.tenant_id,
+            
             recommendation_id=recommendation_id,
             status=payload.Status,
             user_id=principal.user_id,
@@ -180,7 +180,7 @@ async def update_status(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type=f"Recommendation_{payload.Status}",
         user_id=principal.user_id,
         process_name=result.get("process_name"),
@@ -192,7 +192,7 @@ async def update_status(
     if payload.Status == "Requested":
         notification_service.notify(
             db,
-            tenant_id=principal.tenant_id,
+            
             subject=f"طلب سعة إضافية: {result.get('process_name') or 'عام'}",
             body=(
                 f"طلب من {principal.username}: {payload.Comment or 'لم يتم إضافة تعليق'}\n"
@@ -207,7 +207,7 @@ async def update_status(
     await hub.publish(
         "recommendation_updated",
         {"id": recommendation_id, "status": payload.Status, "by": principal.username},
-        tenant_id=principal.tenant_id,
+        
     )
     return {"status": "success", **result}
 
@@ -221,5 +221,5 @@ def history(
 ) -> List[Dict[str, Any]]:
     """Daily queue depth history (backed by queue snapshots)."""
     return capacity_service.capacity_history(
-        db, tenant_id=principal.tenant_id, process_name=process, days=days
+        db, process_name=process, days=days
     )

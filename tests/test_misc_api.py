@@ -22,8 +22,9 @@ def test_version_endpoint(client):
     response = client.get("/api/version")
     assert response.status_code == 200
     body = response.json()
-    assert body["version"] == "3.0.0"
-    assert body["features"]["multi_tenant"] is True
+    assert body["version"] == "4.0.0"
+    assert body["features"]["single_organization"] is True
+    assert body["features"]["deployment"] == "on_premises"
     assert body["features"]["multi_vendor"] is True
 
 
@@ -95,8 +96,18 @@ def test_credential_vault_roundtrip(client, admin_headers):
     assert "s3cr3t-value" not in listing.text  # listings never leak plaintext
 
 
+def _add_credential(client, headers, version_id, environment):
+    stored = client.post(
+        f"/api/bot-versions/{version_id}/credentials",
+        json={"CredentialName": f"{environment}_KEY", "Environment": environment, "Value": "x-secret"},
+        headers=headers,
+    )
+    assert stored.status_code == 201, stored.text
+
+
 def test_promote_to_uat_and_production_gate(client, admin_headers):
     version_id = _create_version(client, admin_headers)
+    _add_credential(client, admin_headers, version_id, "UAT")
     uat = client.post(
         f"/api/bot-versions/{version_id}/promote", json={"TargetEnvironment": "UAT"}, headers=admin_headers
     )
@@ -110,6 +121,8 @@ def test_promote_to_uat_and_production_gate(client, admin_headers):
 def test_approval_four_eyes(client, admin_headers, create_user, login):
     version_id = _create_version(client, admin_headers)
     # Lifecycle path is Development -> UAT -> Production: promote first.
+    _add_credential(client, admin_headers, version_id, "UAT")
+    _add_credential(client, admin_headers, version_id, "Production")
     promoted = client.post(
         f"/api/bot-versions/{version_id}/promote", json={"TargetEnvironment": "UAT"}, headers=admin_headers
     )
@@ -208,13 +221,13 @@ def test_exports_require_auth(client):
 # --------------------------------------------------------------------------- #
 # Service-layer units: sync, scheduler, notifications, realtime hub
 # --------------------------------------------------------------------------- #
-def test_sync_tenant_and_history(client):  # client bootstraps the DB
+def test_sync_organization_and_history(client):  # client bootstraps the DB
     from app.services import sync_service
 
-    result = sync_service.sync_tenant(1)
+    result = sync_service.sync_organization()
     assert result["ok"] is True
     assert result["provider"] == "generic_sql"  # native provider: already local
-    history = sync_service.sync_history(1, limit=5)
+    history = sync_service.sync_history(limit=5)
     assert isinstance(history, list)
 
 
@@ -254,15 +267,14 @@ def test_notification_service_units(client):
     from app.services import notification_service
 
     with session_scope() as session:
-        stats = notification_service.notification_statistics(session, tenant_id=1)
+        stats = notification_service.notification_statistics(session)
         assert isinstance(stats, dict)
-        listed = notification_service.list_notifications(session, tenant_id=1, limit=5)
+        listed = notification_service.list_notifications(session, limit=5)
         assert isinstance(listed, list)
-        test_result = notification_service.send_test_notification(session, tenant_id=1)
+        test_result = notification_service.send_test_notification(session)
         assert isinstance(test_result, dict)
         sent = notification_service.notify(
             session,
-            tenant_id=1,
             subject="Pytest notification",
             body="coverage",
             severity="Info",
@@ -276,7 +288,7 @@ async def test_realtime_hub_publish_and_snapshot():
     from app.services.realtime import RealtimeHub
 
     hub = RealtimeHub()
-    delivered = await hub.publish("data_changed", {"reason": "pytest"}, tenant_id=1)
+    delivered = await hub.publish("data_changed", {"reason": "pytest"})
     assert delivered == 0  # no subscribers yet
     snapshot = hub.snapshot()
     assert isinstance(snapshot, dict)
@@ -289,10 +301,10 @@ async def test_realtime_hub_sse_subscribe_receives_connected():
     from app.services.realtime import RealtimeHub
 
     hub = RealtimeHub()
-    stream = hub.subscribe_sse(subscriber_id="t:1:x", tenant_id=1, user_id=1, department="ALL", role="SuperAdmin")
+    stream = hub.subscribe_sse(subscriber_id="org:x", user_id=1, department="ALL", role="SuperAdmin")
     first = await asyncio.wait_for(stream.__anext__(), timeout=5)
     assert "connected" in first
-    await hub.publish("kpi", {"value": 1}, tenant_id=1)
+    await hub.publish("kpi", {"value": 1})
     second = await asyncio.wait_for(stream.__anext__(), timeout=5)
     assert "kpi" in second
     await stream.aclose()
@@ -315,7 +327,7 @@ def test_agent_websocket_rejects_bad_token(client, admin_headers):
     from starlette.websockets import WebSocketDisconnect
 
     try:
-        with client.websocket_connect(f"/ws/agent/{name}?token=forged") as ws:
+        with client.websocket_connect(f"/ws/agent/{name}", subprotocols=["agent-token.forged"]) as ws:
             ws.receive_text()
         raise AssertionError("websocket should have been rejected")
     except WebSocketDisconnect:
@@ -346,7 +358,7 @@ def test_agent_websocket_heartbeat_flow(client, admin_headers):
     import json as _json
 
     name, token = _enrolled_ws_agent(client, admin_headers)
-    with client.websocket_connect(f"/ws/agent/{name}?token={token}") as ws:
+    with client.websocket_connect(f"/ws/agent/{name}", subprotocols=[f"agent-token.{token}"]) as ws:
         ws.send_text(_json.dumps({"type": "heartbeat", "CPU_Usage": 10, "RAM_Usage": 20, "HDD_Usage": 30}))
         ws.send_text(_json.dumps({"type": "command_ack", "command_id": 0, "success": True, "result": "ok"}))
         ws.send_text("not-json")  # malformed frames are ignored, socket stays up
@@ -374,15 +386,14 @@ def test_notify_capacity_recommendations_unit(client):
     with session_scope() as session:
         count = notification_service.notify_capacity_recommendations(
             session,
-            tenant_id=1,
             recommendations=[{"ProcessName": "Invoice_Processing", "Kind": "add_runner", "Severity": "Warning"}],
         )
         assert isinstance(count, int)
 
 
-def test_resolve_tenant_header_rules(client, admin_headers, user_headers):
-    from app.api.deps import platform_tenant_id
-    from app.db.session import session_scope
-
-    with session_scope() as session:
-        assert platform_tenant_id(session) == 1
+def test_organization_is_singleton(client, admin_headers):
+    response = client.get("/api/organization", headers=admin_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["OrganizationID"] == 1
+    assert body["Name"]

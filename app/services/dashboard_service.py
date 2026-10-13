@@ -7,7 +7,7 @@ renders in **< 1.5 s**.  The original implementation issued nine independent
 scans on every 15-second poll; this version:
 
 * performs **six indexed aggregates** instead of nine unindexed scans,
-* keeps a short-lived cache (Redis, 20 s TTL) keyed by tenant + scope + filters,
+* keeps a short-lived cache (Redis, 20 s TTL) keyed by scope + filters,
 * exposes ``cache_hit``/``build_ms`` metadata so the UI can show freshness,
 * never re-computes capacity analytics inline (they are pre-computed and cached).
 
@@ -37,16 +37,16 @@ CACHE_TTL_SECONDS = 20
 
 def _filters(
     *,
-    tenant_id: int,
+    
     department_scope: str,
     process: Optional[str] = None,
     departments: Optional[List[str]] = None,
 ) -> tuple[List[str], List[str], Dict[str, Any]]:
     """Build the config/run WHERE fragments shared by every aggregate."""
     flavor = get_flavor()
-    cfg_filters = ["c.TenantID = :tenant", f"c.IsDeleted = {flavor.false_literal}"]
-    run_filters = ["r.TenantID = :tenant", f"r.IsDeleted = {flavor.false_literal}"]
-    params: Dict[str, Any] = {"tenant": tenant_id}
+    cfg_filters = [f"c.IsDeleted = {flavor.false_literal}"]
+    run_filters = [f"r.IsDeleted = {flavor.false_literal}"]
+    params: Dict[str, Any] = {}
 
     if department_scope and department_scope.upper() != "ALL":
         cfg_filters.append("c.Department = :dept")
@@ -86,7 +86,7 @@ def _expand_in_clause(sql: str, params: Dict[str, Any]) -> tuple[str, Dict[str, 
 def build_dashboard_payload(
     session: Session,
     *,
-    tenant_id: int,
+    
     department_scope: str = "ALL",
     process: Optional[str] = None,
     days: int = 90,
@@ -96,7 +96,7 @@ def build_dashboard_payload(
     started = time.perf_counter()
     flavor = get_flavor()
     cfg_filters, run_filters, params = _filters(
-        tenant_id=tenant_id, department_scope=department_scope, process=process
+        department_scope=department_scope, process=process
     )
     params["days"] = int(days)
 
@@ -139,7 +139,7 @@ def build_dashboard_payload(
             COALESCE(SUM(CASE WHEN r.Status = 'Running' THEN 1 ELSE 0 END), 0) AS runningNow,
             COALESCE(AVG(CASE WHEN r.DurationMinutes IS NOT NULL THEN r.DurationMinutes END), 0) AS avgDuration
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND {window_filter}
     """
     run_row = fetch_one(session, run_sql, params, operation="dashboard.run_kpis") or {}
@@ -163,7 +163,7 @@ def build_dashboard_payload(
         f"""
         SELECT r.Status AS name, COUNT(1) AS value
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND {window_filter}
         GROUP BY r.Status
         """,
@@ -182,7 +182,7 @@ def build_dashboard_payload(
                COALESCE(SUM(COALESCE(r.CostSaved, 0)), 0) AS cost_saved,
                COALESCE(SUM(CASE WHEN r.Status = 'Completed' THEN 1 ELSE 0 END), 0) AS completed
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND r.StartTime >= {flavor.days_ago(14)}
         GROUP BY {flavor.cast_date('r.StartTime')}
         ORDER BY 1
@@ -217,7 +217,7 @@ def build_dashboard_payload(
                r.DurationMinutes, r.FailureReason, r.TransactionsCount, r.CostSaved,
                r.MachineName, r.Trigger, r.TriggeredBy
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND {window_filter}
         ORDER BY r.StartTime DESC{flavor.limit(12)}
         """,
@@ -232,7 +232,7 @@ def build_dashboard_payload(
                r.ProcessName, r.RequestID, r.Status, r.StartTime,
                COALESCE(NULLIF(r.FailureReason, ''), 'Unknown Error') AS FailureReason
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND r.StartTime >= {flavor.today()} AND r.Status IN ('Failed','Stopped')
         ORDER BY r.StartTime DESC{flavor.limit(200)}
         """,
@@ -245,7 +245,7 @@ def build_dashboard_payload(
         f"""
         SELECT {flavor.top(1)} r.ProcessName, r.RequestID, r.StartTime, r.MachineName
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND r.Status = 'Running'
         ORDER BY r.StartTime DESC{flavor.limit(1)}
         """,
@@ -262,7 +262,7 @@ def build_dashboard_payload(
                COALESCE(SUM(COALESCE(r.CostSaved, 0)), 0) AS saved,
                COALESCE(SUM(COALESCE(r.TransactionsCount, 0)), 0) AS transactions
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON r.ProcessName = c.ProcessName
         WHERE {run_where} AND {window_filter}
         GROUP BY c.Department
         ORDER BY 2 DESC
@@ -341,7 +341,7 @@ def build_dashboard_payload(
 
     if include_capacity:
         try:
-            payload["capacity"] = get_capacity_summary(session, tenant_id=tenant_id, department_scope=department_scope)
+            payload["capacity"] = get_capacity_summary(session, department_scope=department_scope)
         except Exception as exc:  # pragma: no cover - capacity must never break the dashboard
             logger.warning("Capacity summary unavailable: %s", exc)
             payload["capacity"] = {"recommendations": [], "utilization": [], "summary": {}}
@@ -360,7 +360,7 @@ def build_dashboard_payload(
 def get_dashboard(
     session: Session,
     *,
-    tenant_id: int,
+    
     department_scope: str = "ALL",
     process: Optional[str] = None,
     days: int = 90,
@@ -368,7 +368,7 @@ def get_dashboard(
 ) -> Dict[str, Any]:
     """Cached dashboard accessor used by the HTTP route."""
     cache = get_cache()
-    cache_key = f"dash:v3:{tenant_id}:{department_scope}:{process or 'all'}:{days}"
+    cache_key = f"dash:v4:{department_scope}:{process or 'all'}:{days}"
     if use_cache:
         cached = cache.get_json(cache_key)
         if cached:
@@ -377,7 +377,7 @@ def get_dashboard(
 
     payload = build_dashboard_payload(
         session,
-        tenant_id=tenant_id,
+        
         department_scope=department_scope,
         process=process,
         days=days,
@@ -388,17 +388,17 @@ def get_dashboard(
     return payload
 
 
-def invalidate_dashboard_cache(tenant_id: int) -> None:
-    """Bust every cached dashboard slice for a tenant (called on data writes)."""
-    get_cache().delete_prefix(f"dash:v3:{tenant_id}:")
-    get_cache().delete_prefix(f"capacity:v2:{tenant_id}:")
+def invalidate_dashboard_cache() -> None:
+    """Bust every cached dashboard slice (called on data writes)."""
+    get_cache().delete_prefix("dash:v4:")
+    get_cache().delete_prefix("capacity:v4:")
 
 
-def process_options(session: Session, *, tenant_id: int, department_scope: str = "ALL") -> List[str]:
+def process_options(session: Session, *, department_scope: str = "ALL") -> List[str]:
     """Distinct process names for filter dropdowns (tiny indexed query)."""
     flavor = get_flavor()
-    where = ["TenantID = :t", f"IsDeleted = {flavor.false_literal}"]
-    params: Dict[str, Any] = {"t": tenant_id}
+    where = [f"IsDeleted = {flavor.false_literal}"]
+    params: Dict[str, Any] = {}
     if department_scope and department_scope.upper() != "ALL":
         where.append("Department = :dept")
         params["dept"] = department_scope

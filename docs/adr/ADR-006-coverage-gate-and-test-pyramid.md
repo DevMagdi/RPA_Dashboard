@@ -4,7 +4,7 @@
 - **Date:** 2026-10-13
 
 ## Context
-The 2.x line shipped with no automated tests; defects (tenant-isolation,
+The 2.x line shipped with no automated tests; defects (scope-isolation,
 status-normalisation, provider-catalogue) were only found by manual review.
 
 ## Decision

@@ -82,7 +82,7 @@ def list_processes(
     """Keyset-paginated list — stable and index friendly for large catalogues."""
     return process_service.list_processes(
         db,
-        tenant_id=principal.tenant_id,
+        
         department_scope=principal.department,
         search=search,
         department=department,
@@ -102,7 +102,7 @@ def get_process(
     principal: AuthenticatedUser = Depends(require_permission("processes:read", "*")),
 ) -> Dict[str, Any]:
     """Return one process (403 when outside the caller's department scope)."""
-    row = process_service.get_process(db, tenant_id=principal.tenant_id, process_name=process_name)
+    row = process_service.get_process(db, process_name=process_name)
     if not row:
         raise HTTPException(status_code=404, detail="العملية غير موجودة")
     if principal.department != "ALL" and str(row.get("Department")) != principal.department:
@@ -116,7 +116,7 @@ def department_stats(
     principal: AuthenticatedUser = Depends(require_permission("processes:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Process counts per department (sidebar tree / filters)."""
-    return process_service.department_stats(db, tenant_id=principal.tenant_id)
+    return process_service.department_stats(db)
 
 
 @router.get("/processes-meta/roi-summary", summary="ROI realisation per process")
@@ -127,7 +127,7 @@ def roi_summary(
 ) -> List[Dict[str, Any]]:
     """Realised savings, hours saved and target attainment."""
     return process_service.roi_summary(
-        db, tenant_id=principal.tenant_id, department_scope=principal.department, days=days
+        db, department_scope=principal.department, days=days
     )
 
 
@@ -140,19 +140,19 @@ def set_process_active(
 ) -> Dict[str, Any]:
     """Toggle a process without deleting its history."""
     affected = process_service.set_active(
-        db, tenant_id=principal.tenant_id, process_name=process_name, is_active=payload.IsActive
+        db, process_name=process_name, is_active=payload.IsActive
     )
     if not affected:
         raise HTTPException(status_code=404, detail="العملية غير موجودة")
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Process_Activation_Changed",
         user_id=principal.user_id,
         process_name=process_name,
         new_values={"IsActive": payload.IsActive},
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return {"status": "success", "is_active": payload.IsActive}
 
 
@@ -163,17 +163,17 @@ def delete_process(
     principal: AuthenticatedUser = Depends(require_permission("processes:write", "*")),
 ) -> Dict[str, Any]:
     """Logically delete a process (audit + history preserved)."""
-    affected = process_service.soft_delete_process(db, tenant_id=principal.tenant_id, process_name=process_name)
+    affected = process_service.soft_delete_process(db, process_name=process_name)
     if not affected:
         raise HTTPException(status_code=404, detail="العملية غير موجودة")
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Delete_Process",
         user_id=principal.user_id,
         process_name=process_name,
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return {"status": "success", "message": "تم حذف العملية (يمكن استرجاعها من قاعدة البيانات)"}
 
 
@@ -193,7 +193,7 @@ def update_roi(
     try:
         result = process_service.update_roi(
             db,
-            tenant_id=principal.tenant_id,
+            
             process_name=payload.ProcessName,
             emp_minutes_per_request=payload.EmpMinutesPerRequest,
             emp_cost_per_request=payload.EmpCostPerRequest,
@@ -209,14 +209,14 @@ def update_roi(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Create_Process_ROI" if result["created"] else "Update_ROI",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
         old_values=result["before"],
         new_values=result["after"],
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return {
         "status": "success",
         "created": result["created"],
@@ -237,7 +237,7 @@ def update_sla(
     try:
         result = process_service.update_sla(
             db,
-            tenant_id=principal.tenant_id,
+            
             process_name=payload.ProcessName,
             sla_target_minutes=payload.SLATargetMinutes,
             avg_item_processing_seconds=payload.AvgItemProcessingSeconds,
@@ -248,14 +248,14 @@ def update_sla(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Update_SLA",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
         old_values=result["before"],
         new_values=result["after"],
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return {"status": "success", "message": "تم تحديث إعدادات الـ SLA"}
 
 
@@ -267,7 +267,7 @@ def sla_workload(
 ) -> List[Dict[str, Any]]:
     """Per-process queue depth, predicted drain time and SLA status."""
     return sla_service.get_workload(
-        db, tenant_id=principal.tenant_id, department_scope=principal.department, process_name=process
+        db, department_scope=principal.department, process_name=process
     )
 
 
@@ -278,12 +278,12 @@ def queue_telemetry(
     principal: AuthenticatedUser = Depends(require_permission("processes:write", "*")),
 ) -> Dict[str, Any]:
     """Upsert queue depth (called by the scheduler or an integration job)."""
-    if not process_service.process_exists(db, tenant_id=principal.tenant_id, process_name=payload.ProcessName):
+    if not process_service.process_exists(db, process_name=payload.ProcessName):
         raise HTTPException(status_code=404, detail="العملية غير موجودة")
 
     result = sla_service.update_queue_telemetry(
         db,
-        tenant_id=principal.tenant_id,
+        
         process_name=payload.ProcessName,
         pending_items=payload.PendingItems,
         active_items=payload.ActiveItems,
@@ -291,11 +291,11 @@ def queue_telemetry(
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Queue_Telemetry",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
         new_values={k: str(v) for k, v in result.items()},
     )
-    invalidate_dashboard_cache(principal.tenant_id)
+    invalidate_dashboard_cache()
     return {"status": "success", "data": {k: str(v) for k, v in result.items()}}

@@ -2,7 +2,7 @@
 
 Banks need evidence artefacts: an audit extract for the regulator, a monthly
 ROI pack for the steering committee, a run history for an incident review.
-Both formats are generated **with the tenant branding** (colours, company name)
+Both formats are generated **with the organization branding** (colours, company name)
 so the same product can be white-labelled per client.
 """
 
@@ -13,20 +13,20 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
-from app.services.tenant_service import get_branding
+from app.services.organization_service import get_branding
 
 logger = logging.getLogger(__name__)
 
 MAX_ROWS = 50_000
 
 
-def _branding(tenant_id: int) -> Dict[str, Any]:
+def _branding() -> Dict[str, Any]:
     """Fetch branding with a safe fallback (never blocks an export)."""
     try:
         from app.db.session import session_scope
 
         with session_scope() as session:
-            return get_branding(session, tenant_id)
+            return get_branding(session)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Branding lookup failed: %s", exc)
         return {"company_name": "RPA CoE", "name": "RPA CoE Control Room", "primary_color": "#4B367C", "accent_color": "#F37920"}
@@ -34,7 +34,7 @@ def _branding(tenant_id: int) -> Dict[str, Any]:
 
 def build_excel(
     *,
-    tenant_id: int,
+    
     title: str,
     columns: Sequence[str],
     rows: Sequence[Dict[str, Any]],
@@ -46,7 +46,7 @@ def build_excel(
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
-    branding = _branding(tenant_id)
+    branding = _branding()
     header_bg = str(branding.get("primary_color") or "#4B367C").replace("#", "")
     accent = str(branding.get("accent_color") or "#F37920").replace("#", "")
 
@@ -123,7 +123,7 @@ def build_excel(
 
 def build_pdf(
     *,
-    tenant_id: int,
+    
     title: str,
     sections: List[Dict[str, Any]],
     summary_lines: Optional[List[str]] = None,
@@ -135,7 +135,7 @@ def build_pdf(
     from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    branding = _branding(tenant_id)
+    branding = _branding()
     primary = colors.HexColor(str(branding.get("primary_color") or "#4B367C"))
     accent = colors.HexColor(str(branding.get("accent_color") or "#F37920"))
 

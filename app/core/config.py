@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     ENV: Literal["dev", "test", "prod"] = "dev"
     APP_NAME: str = "RPA CoE Control Room"
-    APP_VERSION: str = "3.0.0"
+    APP_VERSION: str = "4.0.0"
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
 
@@ -83,7 +83,8 @@ class Settings(BaseSettings):
     ENROLLMENT_TTL_MINUTES: int = 15
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_MINUTES: int = 15
-    PASSWORD_MIN_LENGTH: int = 8
+    PASSWORD_MIN_LENGTH: int = 12
+    PASSWORD_HISTORY_SIZE: int = 5
     COOKIE_SECURE: bool = False
     COOKIE_DOMAIN: Optional[str] = None
     CSRF_ENABLED: bool = True
@@ -105,7 +106,7 @@ class Settings(BaseSettings):
     MFA_BACKUP_CODES: int = 10
 
     # ------------------------------------------------------------------ #
-    # Secret backends (white-label multi-tenant deployments)
+    # Secret backends (bank secret-manager integration)
     # ------------------------------------------------------------------ #
     SECRET_BACKEND: Literal["env", "azure_keyvault", "hashicorp_vault"] = "env"
     AZURE_KEYVAULT_URL: str = ""
@@ -141,6 +142,11 @@ class Settings(BaseSettings):
     NOTIFY_SLACK_WEBHOOK: str = ""
     NOTIFY_TEAMS_WEBHOOK: str = ""
     NOTIFY_COOLDOWN_MINUTES: int = 30
+    ALERT_FAILURE_RATE_THRESHOLD: float = 0.25
+    ALERT_FAILURE_MIN_RUNS: int = 10
+    ALERT_REPEATED_FAILURE_THRESHOLD: int = 3
+    COMMAND_ALLOWED_PROCESSES: str = ""  # comma-separated whitelist; empty = ProcessConfig-assigned only
+    AGENT_COMMAND_HMAC_SECRET: str = ""
 
     # ------------------------------------------------------------------ #
     # Observability
@@ -155,7 +161,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     DB_AUTO_BOOTSTRAP: bool = Field(
         default=True,
-        description="Create missing tables + seed the default tenant on startup (off for strict DBA-managed deployments)",
+        description="Create missing tables + seed the single organization on startup (off for strict DBA-managed deployments)",
     )
     DB_SEED_DEMO: bool = Field(
         default=False, description="Seed the demo dataset when the database is empty (dev/demo only)"

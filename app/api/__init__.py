@@ -9,7 +9,7 @@ by the same process:
   enriched with the new payload fields.  Existing installations keep working
   after the upgrade; nothing has to be redeployed in lockstep.
 * **v3 routes** — the enterprise surface (capacity advisor, lifecycle &
-  approvals, vault, exports, tenants, health).
+  approvals, vault, exports, organization, alerts, health).
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ from app.api.routes import (
     machines,
     processes,
     runs,
-    tenants,
+    alerts,
+    organization,
 )
 
 #: Routers without an internal prefix (paths are declared in full).
@@ -45,7 +46,8 @@ FLAT_ROUTERS: List[Tuple[object, List[str]]] = [
     (capacity.router, ["Capacity Advisor"]),
     (lifecycle.router, ["Lifecycle & Vault"]),
     (audit.router, ["Audit & Reporting"]),
-    (tenants.router, ["Tenants"]),
+    (organization.router, ["Organization"]),
+    (alerts.router, ["Alerts"]),
 ]
 
 

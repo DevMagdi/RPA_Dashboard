@@ -2,7 +2,7 @@
 
 Endpoint paths differ between Control Room generations, so they are
 **configuration-driven** (``endpoints`` map in the adapter config).  Defaults
-target Automation 360 (A2019+) and can be overridden per tenant without a code
+target Automation 360 (A2019+) and can be overridden per installation without a code
 change — the core requirement for white-label deployments.
 
 ====================  ==========================================================
