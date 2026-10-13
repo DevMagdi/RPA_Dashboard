@@ -72,11 +72,15 @@ def available_providers() -> List[Dict[str, Any]]:
     """Catalogue of providers for the setup wizard / tenant configuration UI."""
     catalogue: List[Dict[str, Any]] = []
     for key, adapter_cls in BUILTIN_ADAPTERS.items():
-        try:
-            instance = adapter_cls({})  # configuration-free instance for metadata
-            capabilities = instance.capabilities()
-        except Exception:  # pragma: no cover - defensive
-            capabilities = {}
+        # Class-level CAPABILITIES: no instantiation, so the catalogue works
+        # with zero credentials configured (HTTP adapters used to raise here
+        # because base_url was required, emptying their capability matrix).
+        capabilities = dict(getattr(adapter_cls, "CAPABILITIES", {}) or {})
+        if not capabilities:  # out-of-tree plugin without the class attribute
+            try:
+                capabilities = adapter_cls({}).capabilities()
+            except Exception:  # pragma: no cover - defensive
+                capabilities = {}
         catalogue.append(
             {
                 "provider": key,

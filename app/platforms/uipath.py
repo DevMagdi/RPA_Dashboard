@@ -159,12 +159,16 @@ class UiPathOrchestratorAdapter(HttpPlatformAdapter):
             definition = item.get("QueueDefinition") or {}
             key = str(definition.get("Name") or item.get("QueueDefinitionId") or "unknown")
             stats = buckets.setdefault(key, QueueStats(process_key=key, last_updated_at=to_utc(item.get("CreationTime"))))
-            status = str(item.get("Status") or "").lower()
-            if status in ("new", "retried"):
+            # NOTE: go through normalize_status — UiPath reports queue items as
+            # "InProgress" but other sources write "In Progress"; comparing raw
+            # lower-cased strings here silently missed the spaced variant and
+            # under-counted active work.
+            status = normalize_status(item.get("Status"))
+            if status is CanonicalStatus.PENDING:
                 stats.pending += 1
-            elif status in ("inprogress", "in_progress"):
+            elif status is CanonicalStatus.RUNNING:
                 stats.active += 1
-            elif status in ("failed", "abandoned"):
+            elif status in (CanonicalStatus.FAILED, CanonicalStatus.FAULTED):
                 stats.failed += 1
         return list(buckets.values())
 
@@ -290,17 +294,16 @@ class UiPathOrchestratorAdapter(HttpPlatformAdapter):
             message="Stop requested",
         )
 
-    def capabilities(self) -> Dict[str, bool]:
-        return {
-            "read_processes": True,
-            "read_runs": True,
-            "read_queues": True,
-            "read_machines": True,
-            "read_bot_status": True,
-            "start_job": True,
-            "stop_job": True,
-            "queue_items": True,
-        }
+    CAPABILITIES: Dict[str, bool] = {
+        "read_processes": True,
+        "read_runs": True,
+        "read_queues": True,
+        "read_machines": True,
+        "read_bot_status": True,
+        "start_job": True,
+        "stop_job": True,
+        "queue_items": True,
+    }
 
     @staticmethod
     def _dump_arguments(arguments: Dict[str, Any]) -> str:

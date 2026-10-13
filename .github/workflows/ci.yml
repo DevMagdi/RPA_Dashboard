@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (pytest + coverage gate)
+    runs-on: ubuntu-latest
+    env:
+      ENV: test
+      DB_DIALECT: sqlite
+      DB_NAME: /tmp/ci-tests.sqlite3
+      DB_SEED_DEMO: "true"
+      SCHEDULER_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip uninstall -y playwright || true
+      - name: Lint (pyflakes)
+        run: python -m pyflakes app tests
+      - name: Test (coverage gate 80% via .coveragerc)
+        run: python -m pytest
+      - name: API smoke (62 checks, in-process)
+        run: |
+          rm -f /tmp/smoke.sqlite3*
+          DB_NAME=/tmp/smoke.sqlite3 python scripts/smoke_api.py
+
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rpa-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: rpa-dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python dependencies audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --strict || true
+      - name: Node dependencies audit
+        working-directory: rpa-dashboard
+        run: |
+          npm ci
+          npm audit --audit-level=critical || true
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: --redact --verbose

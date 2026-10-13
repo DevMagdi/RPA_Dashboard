@@ -1,0 +1,15 @@
+[run]
+source = app
+branch = False
+omit =
+    */__main__.py
+
+[report]
+# Quality gate: the suite must keep at least 80% of the backend covered.
+fail_under = 80
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:

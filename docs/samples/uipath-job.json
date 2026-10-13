@@ -1,0 +1,38 @@
+{
+  "$schema": "Sample UiPath Orchestrator OData payload — GET /odata/Jobs?$expand=Release,Robot",
+  "value": [
+    {
+      "Key": "9f2c1c40-0000-4000-8000-000000000001",
+      "Release": { "Key": "rel-invoice", "Name": "Invoice_Processing" },
+      "Robot": { "Name": "BOT-01" },
+      "MachineName": "RPA-RUNNER-01",
+      "State": "Successful",
+      "StartTime": "2026-10-13T08:00:00Z",
+      "EndTime": "2026-10-13T08:05:30Z",
+      "Info": null,
+      "ExitCode": 0
+    },
+    {
+      "Key": "9f2c1c40-0000-4000-8000-000000000002",
+      "Release": { "Key": "rel-kyc", "Name": "KYC_Onboarding" },
+      "Robot": { "Name": "BOT-02" },
+      "MachineName": "RPA-RUNNER-02",
+      "State": "Running",
+      "StartTime": "2026-10-13T08:01:00Z",
+      "EndTime": null,
+      "Info": null,
+      "ExitCode": null
+    },
+    {
+      "Key": "9f2c1c40-0000-4000-8000-000000000003",
+      "Release": { "Key": "rel-invoice", "Name": "Invoice_Processing" },
+      "Robot": { "Name": "BOT-01" },
+      "MachineName": "RPA-RUNNER-01",
+      "State": "Faulted",
+      "StartTime": "2026-10-13T07:30:00Z",
+      "EndTime": "2026-10-13T07:31:00Z",
+      "Info": { "Message": "SAP GUI timeout waiting for window" },
+      "ExitCode": 3
+    }
+  ]
+}

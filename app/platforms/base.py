@@ -77,6 +77,12 @@ _STATUS_ALIASES: Dict[str, CanonicalStatus] = {
     "paused": CanonicalStatus.SUSPENDED,
     "suspended": CanonicalStatus.SUSPENDED,
     "onhold": CanonicalStatus.SUSPENDED,
+    # Vendor extras (UiPath queue items / AA activities)
+    "abandoned": CanonicalStatus.FAILED,
+    "retried": CanonicalStatus.PENDING,
+    "deleted": CanonicalStatus.STOPPED,
+    "successfully": CanonicalStatus.COMPLETED,
+    "partiallysuccessful": CanonicalStatus.COMPLETED,
 }
 
 
@@ -85,11 +91,24 @@ def normalize_status(value: Any) -> CanonicalStatus:
 
     Unknown values degrade to ``UNKNOWN`` instead of raising, keeping the
     platform resilient to vendor upgrades.
+
+    Normalisation is separator-insensitive: ``"In Progress"``, ``"InProgress"``,
+    ``"IN_PROGRESS"`` and ``"in-progress"`` all collapse to the same key.
+    (UiPath queue items report ``InProgress`` while Automation Anywhere
+    activities report ``"In Progress"`` — a previous revision only stripped
+    plain spaces in *some* call sites, so ``"In Progress"`` silently failed
+    to match and running work was under-counted.)
     """
     if isinstance(value, CanonicalStatus):
         return value
-    key = str(value or "").strip().lower().replace(" ", "").replace("-", "_")
-    return _STATUS_ALIASES.get(key, CanonicalStatus.UNKNOWN)
+    return _STATUS_ALIASES.get(_status_key(value), CanonicalStatus.UNKNOWN)
+
+
+def _status_key(value: Any) -> str:
+    """Canonical lookup key for a vendor status (separators removed)."""
+    import re
+
+    return re.sub(r"[\s\-_]+", "", str(value or "").strip().lower())
 
 
 def to_utc(value: Any) -> Optional[datetime]:
@@ -277,6 +296,24 @@ class PlatformAdapter(abc.ABC):
     #: Human readable vendor name for the UI.
     display_name: str = "Abstract Platform"
 
+    #: Feature matrix surfaced to the UI (which buttons to enable).
+    #:
+    #: Declared at **class level** so the provider catalogue
+    #: (:func:`app.platforms.registry.available_providers`) can be built
+    #: *without instantiating an adapter* — HTTP adapters legitimately have
+    #: no credentials/base URL in the catalogue context, and instantiating
+    #: them there used to raise and silently empty their capability matrix.
+    CAPABILITIES: Dict[str, bool] = {
+        "read_processes": True,
+        "read_runs": True,
+        "read_queues": True,
+        "read_machines": True,
+        "read_bot_status": False,
+        "start_job": False,
+        "stop_job": False,
+        "queue_items": False,
+    }
+
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         self.config: Dict[str, Any] = config or {}
 
@@ -323,16 +360,7 @@ class PlatformAdapter(abc.ABC):
     # ----------------------------- meta ------------------------------- #
     def capabilities(self) -> Dict[str, bool]:
         """Feature matrix surfaced to the UI (which buttons to enable)."""
-        return {
-            "read_processes": True,
-            "read_runs": True,
-            "read_queues": True,
-            "read_machines": True,
-            "read_bot_status": False,
-            "start_job": False,
-            "stop_job": False,
-            "queue_items": False,
-        }
+        return dict(type(self).CAPABILITIES)
 
     def health(self) -> AdapterHealth:
         """Lightweight connectivity probe."""
@@ -375,7 +403,7 @@ class PlatformAdapter(abc.ABC):
 
 def register_status_alias(alias: str, status: CanonicalStatus) -> None:
     """Allow adapters (or clients) to extend the status dictionary at runtime."""
-    _STATUS_ALIASES[str(alias).strip().lower().replace(" ", "").replace("-", "_")] = status
+    _STATUS_ALIASES[_status_key(alias)] = status
 
 
 def summarize_runs(runs: Iterable[RunRecord]) -> Dict[str, int]:
