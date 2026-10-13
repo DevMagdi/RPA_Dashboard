@@ -6,7 +6,7 @@ telemetry is written into the Control Room database by the ingestion API
 the reference implementation for banks with in-house orchestrators: point the
 ``table_map`` at their schema and the platform works without new code.
 
-Configuration example (stored per tenant)::
+Configuration example (stored for the organization)::
 
     {
       "provider": "generic_sql",
@@ -53,9 +53,8 @@ class GenericSQLAdapter(PlatformAdapter):
     name = "generic_sql"
     display_name = "Native Control Room (SQL)"
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, tenant_id: int = 1) -> None:
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         super().__init__(config)
-        self.tenant_id = int((config or {}).get("tenant_id", tenant_id))
         self.table_map: Dict[str, str] = {
             "processes": "ProcessConfig",
             "runs": "ProcessRuns",
@@ -68,9 +67,9 @@ class GenericSQLAdapter(PlatformAdapter):
     # Reads
     # ------------------------------------------------------------------ #
     def get_processes(self, *, include_inactive: bool = False) -> List[ProcessDefinition]:
-        """Return processes configured for this tenant."""
+        """Return processes configured for the organization."""
         flavor = get_flavor()
-        where = "TenantID = :t AND IsDeleted = " + flavor.false_literal
+        where = "IsDeleted = " + flavor.false_literal
         if not include_inactive:
             where += " AND IsActive = " + flavor.true_literal
         with session_scope() as session:
@@ -82,7 +81,6 @@ class GenericSQLAdapter(PlatformAdapter):
                 WHERE {where}
                 ORDER BY ProcessName
                 """,
-                {"t": self.tenant_id},
                 operation="adapter.processes",
             )
         return [
@@ -107,8 +105,8 @@ class GenericSQLAdapter(PlatformAdapter):
     ) -> List[RunRecord]:
         """Return recent runs."""
         flavor = get_flavor()
-        where = ["TenantID = :t", f"IsDeleted = {flavor.false_literal}"]
-        params: Dict[str, Any] = {"t": self.tenant_id, "limit": int(min(limit, 5000))}
+        where = [f"IsDeleted = {flavor.false_literal}"]
+        params: Dict[str, Any] = {"limit": int(min(limit, 5000))}
         if process_key:
             where.append("ProcessName = :p")
             params["p"] = process_key
@@ -149,8 +147,8 @@ class GenericSQLAdapter(PlatformAdapter):
     def get_queue_stats(self, *, process_key: Optional[str] = None) -> List[QueueStats]:
         """Return queue depth for configured processes."""
         flavor = get_flavor()
-        where = ["q.TenantID = :t", f"q.IsDeleted = {flavor.false_literal}"]
-        params: Dict[str, Any] = {"t": self.tenant_id}
+        where = [f"q.IsDeleted = {flavor.false_literal}"]
+        params: Dict[str, Any] = {}
         if process_key:
             where.append("q.ProcessName = :p")
             params["p"] = process_key
@@ -186,11 +184,11 @@ class GenericSQLAdapter(PlatformAdapter):
             SELECT MachineName, AssignedProcess, Status, CPU_Usage, RAM_Usage, HDD_Usage, LastPing,
                    TotalRAM_GB, TotalHDD_GB, RunnerType, LastIP, OSName, AgentVersion, Platform, RobotCapacity
             FROM {self.table_map['machines']}
-            WHERE TenantID = :t AND IsDeleted = {flavor.false_literal}
+            WHERE IsDeleted = {flavor.false_literal}
             ORDER BY MachineName
         """
         with session_scope() as session:
-            rows = fetch_all(session, sql, {"t": self.tenant_id}, operation="adapter.machines")
+            rows = fetch_all(session, sql, {}, operation="adapter.machines")
         machines: List[MachineRecord] = []
         for row in rows:
             last_ping = row.get("LastPing")

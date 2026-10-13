@@ -5,7 +5,7 @@
 /* ==========================================================================
    Design system — tokens
    Light and dark are expressed with the same variable names so components
-   never branch on the theme.  Tenant branding overwrites --brand/--accent at
+   never branch on the theme.  Organization branding overwrites --brand/--accent at
    runtime (see BrandingProvider).
    ========================================================================== */
 :root {

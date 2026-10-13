@@ -160,9 +160,11 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description=(
-            "Multi-tenant, multi-vendor Intelligent Automation Control Room. "
-            "Vendor-neutral API over UiPath Orchestrator, Automation Anywhere A360, "
-            "Blue Prism and in-house SQL-based RPA estates."
+            "Enterprise-grade, single-tenant, On-Premises RPA CoE Control Room. "
+            "Designed to be deployed inside a bank's or large enterprise's own data center "
+            "or private cloud. Fully isolated, fully auditable, and fully compliant with "
+            "local regulatory requirements. Vendor-neutral control plane over UiPath, "
+            "Automation Anywhere, Blue Prism and in-house RPA platforms."
         ),
         lifespan=lifespan,
         docs_url="/docs" if docs_enabled else None,
@@ -186,7 +188,6 @@ def create_app() -> FastAPI:
             "Authorization",
             "Content-Type",
             "X-CSRF-Token",
-            "X-Tenant-Key",
             "X-Correlation-ID",
             "X-Agent-Token",
         ],
@@ -194,6 +195,12 @@ def create_app() -> FastAPI:
         max_age=600,
     )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts_list)
+    try:
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=",".join(settings.trusted_proxies_list) or "127.0.0.1")
+    except Exception:  # pragma: no cover - uvicorn always present with FastAPI stack
+        logger.debug("ProxyHeadersMiddleware unavailable", exc_info=True)
     app.add_middleware(CorrelationIdMiddleware)
 
     register_exception_handlers(app)
@@ -205,12 +212,14 @@ def create_app() -> FastAPI:
         return {
             "name": settings.APP_NAME,
             "version": settings.APP_VERSION,
-            "api_version": "3.0.0",
+            "api_version": "4.0.0",
             "environment": settings.ENV,
             "features": {
                 "mfa": settings.MFA_ENABLED,
-                "multi_tenant": True,
+                "single_organization": True,
+                "deployment": "on_premises",
                 "multi_vendor": True,
+                "alerting": True,
                 "capacity_advisor": True,
                 "realtime": settings.REALTIME_ENABLED,
                 "exports": True,

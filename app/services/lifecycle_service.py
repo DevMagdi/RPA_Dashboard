@@ -31,9 +31,11 @@ ENVIRONMENTS = ("Development", "UAT", "Production", "Retired")
 
 #: Allowed forward transitions (the state machine).
 TRANSITIONS: Dict[str, tuple[str, ...]] = {
+    # Strict forward-only pipeline. Rollback is a separate audited operation
+    # (``rollback_process``), never a free-form backward promotion.
     "Development": ("UAT", "Retired"),
-    "UAT": ("Production", "Development", "Retired"),
-    "Production": ("UAT", "Retired"),  # rollback path, always requires approval
+    "UAT": ("Production", "Retired"),
+    "Production": ("Retired",),
     "Retired": (),
 }
 
@@ -65,7 +67,7 @@ def _normalize_env(value: Optional[str]) -> str:
 def create_version(
     session: Session,
     *,
-    tenant_id: int,
+    
     process_name: str,
     version_tag: str,
     target_machine: Optional[str] = None,
@@ -79,8 +81,8 @@ def create_version(
 
     duplicate = fetch_one(
         session,
-        "SELECT VersionID FROM BotVersions WHERE TenantID = :t AND ProcessName = :p AND VersionTag = :v",
-        {"t": tenant_id, "p": process_name, "v": version_tag},
+        "SELECT VersionID FROM BotVersions WHERE ProcessName = :p AND VersionTag = :v",
+        {"p": process_name, "v": version_tag},
         operation="lifecycle.duplicate_version",
     )
     if duplicate:
@@ -90,7 +92,6 @@ def create_version(
         session,
         BotVersions,
         {
-            "TenantID": tenant_id,
             "ProcessName": process_name[:100],
             "VersionTag": version_tag[:40],
             "CurrentStatus": "Development",
@@ -103,24 +104,24 @@ def create_version(
     return {"version_id": int(version_id), "version_tag": version_tag, "status": "Development"}
 
 
-def get_version(session: Session, *, tenant_id: int, version_id: int) -> Optional[Dict[str, Any]]:
+def get_version(session: Session, *, version_id: int) -> Optional[Dict[str, Any]]:
     """Fetch a single version row."""
     row = fetch_one(
         session,
-        "SELECT * FROM BotVersions WHERE TenantID = :t AND VersionID = :v",
-        {"t": tenant_id, "v": version_id},
+        "SELECT * FROM BotVersions WHERE VersionID = :v",
+        {"v": version_id},
         operation="lifecycle.get_version",
     )
     return row
 
 
 def list_versions(
-    session: Session, *, tenant_id: int, process_name: Optional[str] = None, limit: int = 200
+    session: Session, *, process_name: Optional[str] = None, limit: int = 200
 ) -> List[Dict[str, Any]]:
     """Version history with credential counts and approval state."""
     flavor = get_flavor()
-    where = ["v.TenantID = :t", f"v.IsDeleted = {flavor.false_literal}"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 500))}
+    where = [f"v.IsDeleted = {flavor.false_literal}"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 500))}
     if process_name:
         where.append("v.ProcessName = :p")
         params["p"] = process_name
@@ -132,9 +133,9 @@ def list_versions(
                v.VersionID, v.ProcessName, v.VersionTag, v.CurrentStatus, v.TargetMachineName,
                v.CreatedBy, v.CreatedAt, v.LastPromotedAt, v.Notes, v.ArtifactUrl,
                u.Username AS CreatorName,
-               (SELECT COUNT(1) FROM BotVault b WHERE b.VersionID = v.VersionID AND b.TenantID = v.TenantID) AS CredentialsCount
+               (SELECT COUNT(1) FROM BotVault b WHERE b.VersionID = v.VersionID) AS CredentialsCount
         FROM BotVersions v
-        LEFT JOIN SystemUsers u ON u.UserID = v.CreatedBy AND u.TenantID = v.TenantID
+        LEFT JOIN SystemUsers u ON u.UserID = v.CreatedBy
         WHERE {' AND '.join(where)}
         ORDER BY v.CreatedAt DESC, v.VersionID DESC{flavor.limit(params['limit'])}
         """,
@@ -147,7 +148,7 @@ def list_versions(
     return rows
 
 
-def lifecycle_overview(session: Session, *, tenant_id: int) -> Dict[str, Any]:
+def lifecycle_overview(session: Session) -> Dict[str, Any]:
     """Environment counters + recent promotions (Lifecycle hub header)."""
     flavor = get_flavor()
     counts = fetch_one(
@@ -159,16 +160,16 @@ def lifecycle_overview(session: Session, *, tenant_id: int) -> Dict[str, Any]:
             COALESCE(SUM(CASE WHEN CurrentStatus = 'Development' THEN 1 ELSE 0 END), 0) AS development,
             COALESCE(SUM(CASE WHEN CurrentStatus = 'Retired' THEN 1 ELSE 0 END), 0) AS retired,
             COUNT(1) AS total
-        FROM BotVersions WHERE TenantID = :t
+        FROM BotVersions WHERE 1 = 1
         """,
-        {"t": tenant_id},
+        {},
         operation="lifecycle.counts",
     ) or {}
 
     pending = fetch_one(
         session,
-        "SELECT COUNT(1) AS pending FROM ApprovalRequests WHERE TenantID = :t AND Status = 'Pending'",
-        {"t": tenant_id},
+        "SELECT COUNT(1) AS pending FROM ApprovalRequests WHERE Status = 'Pending'",
+        {},
         operation="lifecycle.pending_approvals",
     ) or {}
 
@@ -179,11 +180,11 @@ def lifecycle_overview(session: Session, *, tenant_id: int) -> Dict[str, Any]:
                p.PromotedAt, p.Comment, u.Username
         FROM PromotionAuditLog p
         JOIN BotVersions v ON v.VersionID = p.VersionID
-        LEFT JOIN SystemUsers u ON u.UserID = p.PromotedBy AND u.TenantID = p.TenantID
-        WHERE p.TenantID = :t
+        LEFT JOIN SystemUsers u ON u.UserID = p.PromotedBy
+        WHERE 1 = 1
         ORDER BY p.PromotedAt DESC{flavor.limit(20)}
         """,
-        {"t": tenant_id},
+        {},
         operation="lifecycle.recent_promotions",
     )
 
@@ -193,10 +194,10 @@ def lifecycle_overview(session: Session, *, tenant_id: int) -> Dict[str, Any]:
         f"""
         SELECT {flavor.top(200)} ProcessName, VersionTag, CurrentStatus, LastPromotedAt
         FROM BotVersions
-        WHERE TenantID = :t AND CurrentStatus IN ('Production','UAT')
+        WHERE CurrentStatus IN ('Production','UAT')
         ORDER BY ProcessName, LastPromotedAt DESC{flavor.limit(200)}
         """,
-        {"t": tenant_id},
+        {},
         operation="lifecycle.live",
     )
 
@@ -241,7 +242,7 @@ def requires_approval(target_environment: str) -> bool:
 def promote_version(
     session: Session,
     *,
-    tenant_id: int,
+    
     version_id: int,
     target_environment: str,
     promoted_by: Optional[int],
@@ -255,7 +256,7 @@ def promote_version(
     Production promotions require an approved :class:`ApprovalRequests` row
     unless ``force`` is used by a break-glass administrator (still audited).
     """
-    version = get_version(session, tenant_id=tenant_id, version_id=version_id)
+    version = get_version(session, version_id=version_id)
     if not version:
         raise LifecycleError("النسخة غير موجودة")
 
@@ -268,31 +269,33 @@ def promote_version(
             raise LifecycleError("الترقية إلى الإنتاج تتطلب طلب موافقة معتمد (Four-eyes)")
         approval = fetch_one(
             session,
-            "SELECT * FROM ApprovalRequests WHERE TenantID = :t AND ApprovalID = :a",
-            {"t": tenant_id, "a": approval_id},
+            "SELECT * FROM ApprovalRequests WHERE ApprovalID = :a",
+            {"a": approval_id},
             operation="lifecycle.approval_lookup",
         )
         if not approval or str(approval.get("Status")) != "Approved":
             raise LifecycleError("طلب الموافقة غير معتمد")
         if int(approval.get("VersionID")) != int(version_id):
             raise LifecycleError("طلب الموافقة لا يخص هذه النسخة")
-        if approval.get("ApprovedBy") and promoted_by and int(approval["ApprovedBy"]) == int(promoted_by):
-            raise LifecycleError("لا يمكن لمقدّم الطلب اعتماد طلبه بنفسه (فصل المهام)")
+        # Four-eyes: the approver must be a different person from the requester.
+        if approval.get("RequestedBy") and approval.get("ApprovedBy") and int(approval["RequestedBy"]) == int(approval["ApprovedBy"]):
+            raise LifecycleError("لا يمكن لمقدّم الطلب اعتماد طلبه بنفسه (فصل المهام — Four-eyes)")
 
-    if target_environment == "Production" and not _has_credentials_for(session, tenant_id=tenant_id, version_id=version_id):
-        raise LifecycleError("لا يمكن النشر للإنتاج بدون أسرار بيئة الإنتاج (أضف بيانات الاعتماد أولاً)")
+    if target_environment in ("UAT", "Production") and not _has_credentials_for(
+        session, version_id=version_id, environment=target_environment
+    ):
+        raise LifecycleError(f"لا يمكن النشر إلى {target_environment} بدون أسرار تلك البيئة (أضف بيانات الاعتماد أولاً)")
 
     update_rows(
         session,
         BotVersions,
         {"CurrentStatus": target_environment, "LastPromotedAt": _now()},
-        [BotVersions.c.VersionID == version_id, BotVersions.c.TenantID == tenant_id],
+        [BotVersions.c.VersionID == version_id],
     )
     insert_row(
         session,
         PromotionAuditLog,
         {
-            "TenantID": tenant_id,
             "VersionID": version_id,
             "PreviousStatus": current[:40],
             "NewStatus": target_environment[:40],
@@ -319,32 +322,32 @@ def promote_version(
     }
 
 
-def _has_credentials_for(session: Session, *, tenant_id: int, version_id: int, environment: str = "Production") -> bool:
+def _has_credentials_for(session: Session, *, version_id: int, environment: str = "Production") -> bool:
     """Guard: production releases must ship with production credentials."""
     row = fetch_one(
         session,
         """
         SELECT COUNT(1) AS c FROM BotVault
-        WHERE TenantID = :t AND VersionID = :v AND Environment = :e AND (IsDeleted = 0 OR IsDeleted IS NULL)
+        WHERE VersionID = :v AND Environment = :e AND (IsDeleted = 0 OR IsDeleted IS NULL)
         """,
-        {"t": tenant_id, "v": version_id, "e": environment},
+        {"v": version_id, "e": environment},
         operation="lifecycle.credentials_present",
     )
     return bool(row and int(row.get("c") or 0) > 0)
 
 
 def rollback_process(
-    session: Session, *, tenant_id: int, process_name: str, to_version_id: int, performed_by: Optional[int], reason: str = ""
+    session: Session, *, process_name: str, to_version_id: int, performed_by: Optional[int], reason: str = ""
 ) -> Dict[str, Any]:
     """Roll a process back to a previous production build (audited)."""
-    target = get_version(session, tenant_id=tenant_id, version_id=to_version_id)
+    target = get_version(session, version_id=to_version_id)
     if not target or str(target.get("ProcessName")) != process_name:
         raise LifecycleError("النسخة المطلوب الرجوع إليها غير صحيحة")
 
     current_prod = fetch_one(
         session,
-        "SELECT VersionID, VersionTag FROM BotVersions WHERE TenantID = :t AND ProcessName = :p AND CurrentStatus = 'Production'",
-        {"t": tenant_id, "p": process_name},
+        "SELECT VersionID, VersionTag FROM BotVersions WHERE ProcessName = :p AND CurrentStatus = 'Production'",
+        {"p": process_name},
         operation="lifecycle.current_production",
     )
 
@@ -360,13 +363,12 @@ def rollback_process(
         session,
         BotVersions,
         {"CurrentStatus": "Production", "LastPromotedAt": _now()},
-        [BotVersions.c.VersionID == to_version_id, BotVersions.c.TenantID == tenant_id],
+        [BotVersions.c.VersionID == to_version_id],
     )
     insert_row(
         session,
         PromotionAuditLog,
         {
-            "TenantID": tenant_id,
             "VersionID": to_version_id,
             "PreviousStatus": str(current_prod.get("VersionTag")) if current_prod else "None",
             "NewStatus": "Production (Rollback)",
@@ -387,7 +389,7 @@ def rollback_process(
 def request_approval(
     session: Session,
     *,
-    tenant_id: int,
+    
     version_id: int,
     target_environment: str,
     requested_by: int,
@@ -395,15 +397,15 @@ def request_approval(
     risk_notes: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a pending approval request (four-eyes principle)."""
-    version = get_version(session, tenant_id=tenant_id, version_id=version_id)
+    version = get_version(session, version_id=version_id)
     if not version:
         raise LifecycleError("النسخة غير موجودة")
     validate_transition(str(version.get("CurrentStatus")), target_environment)
 
     existing = fetch_one(
         session,
-        "SELECT ApprovalID FROM ApprovalRequests WHERE TenantID = :t AND VersionID = :v AND Status = 'Pending'",
-        {"t": tenant_id, "v": version_id},
+        "SELECT ApprovalID FROM ApprovalRequests WHERE VersionID = :v AND Status = 'Pending'",
+        {"v": version_id},
         operation="lifecycle.pending_request",
     )
     if existing:
@@ -413,7 +415,6 @@ def request_approval(
         session,
         ApprovalRequests,
         {
-            "TenantID": tenant_id,
             "VersionID": version_id,
             "ProcessName": str(version.get("ProcessName"))[:100],
             "TargetEnvironment": target_environment[:40],
@@ -429,7 +430,7 @@ def request_approval(
 def decide_approval(
     session: Session,
     *,
-    tenant_id: int,
+    
     approval_id: int,
     approved: bool,
     decided_by: int,
@@ -438,8 +439,8 @@ def decide_approval(
     """Approve or reject a pending request (self-approval is rejected)."""
     row = fetch_one(
         session,
-        "SELECT * FROM ApprovalRequests WHERE TenantID = :t AND ApprovalID = :a",
-        {"t": tenant_id, "a": approval_id},
+        "SELECT * FROM ApprovalRequests WHERE ApprovalID = :a",
+        {"a": approval_id},
         operation="lifecycle.approval",
     )
     if not row:
@@ -458,7 +459,7 @@ def decide_approval(
             "DecidedAt": _now(),
             "Comment": (comment or row.get("Comment"))[:500] if comment or row.get("Comment") else None,
         },
-        [ApprovalRequests.c.ApprovalID == approval_id, ApprovalRequests.c.TenantID == tenant_id],
+        [ApprovalRequests.c.ApprovalID == approval_id],
     )
     return {
         "approval_id": approval_id,
@@ -468,11 +469,11 @@ def decide_approval(
     }
 
 
-def list_approvals(session: Session, *, tenant_id: int, status: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+def list_approvals(session: Session, *, status: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
     """Approval queue for the governance screen."""
     flavor = get_flavor()
-    where = ["a.TenantID = :t"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 300))}
+    where = ["1 = 1"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 300))}
     if status:
         where.append("a.Status = :s")
         params["s"] = status
@@ -485,8 +486,8 @@ def list_approvals(session: Session, *, tenant_id: int, status: Optional[str] = 
                v.VersionTag, ru.Username AS RequestedByName, au.Username AS ApprovedByName
         FROM ApprovalRequests a
         LEFT JOIN BotVersions v ON v.VersionID = a.VersionID
-        LEFT JOIN SystemUsers ru ON ru.UserID = a.RequestedBy AND ru.TenantID = a.TenantID
-        LEFT JOIN SystemUsers au ON au.UserID = a.ApprovedBy AND au.TenantID = a.TenantID
+        LEFT JOIN SystemUsers ru ON ru.UserID = a.RequestedBy
+        LEFT JOIN SystemUsers au ON au.UserID = a.ApprovedBy
         WHERE {' AND '.join(where)}
         ORDER BY a.RequestedAt DESC{flavor.limit(params['limit'])}
         """,
@@ -501,7 +502,7 @@ def list_approvals(session: Session, *, tenant_id: int, status: Optional[str] = 
 def add_credential(
     session: Session,
     *,
-    tenant_id: int,
+    
     version_id: int,
     credential_name: str,
     environment: str,
@@ -518,7 +519,6 @@ def add_credential(
         session,
         BotVault,
         {
-            "TenantID": tenant_id,
             "VersionID": version_id,
             "CredentialName": credential_name[:100],
             "Environment": environment,
@@ -530,17 +530,17 @@ def add_credential(
     return {"vault_id": int(vault_id), "credential_name": credential_name, "environment": environment}
 
 
-def list_credentials(session: Session, *, tenant_id: int, version_id: int) -> List[Dict[str, Any]]:
+def list_credentials(session: Session, *, version_id: int) -> List[Dict[str, Any]]:
     """List credential *metadata* — values are never returned here."""
     return fetch_all(
         session,
         """
         SELECT VaultID, CredentialName, Environment, KeyVersion, CreatedAt, LastAccessedAt, AccessCount
         FROM BotVault
-        WHERE TenantID = :t AND VersionID = :v AND (IsDeleted = 0 OR IsDeleted IS NULL)
+        WHERE VersionID = :v AND (IsDeleted = 0 OR IsDeleted IS NULL)
         ORDER BY Environment, CredentialName
         """,
-        {"t": tenant_id, "v": version_id},
+        {"v": version_id},
         operation="lifecycle.list_credentials",
     )
 
@@ -548,7 +548,7 @@ def list_credentials(session: Session, *, tenant_id: int, version_id: int) -> Li
 def read_credential(
     session: Session,
     *,
-    tenant_id: int,
+    
     vault_id: int,
     version_id: int,
     user_id: Optional[int],
@@ -565,8 +565,8 @@ def read_credential(
 
     row = fetch_one(
         session,
-        "SELECT * FROM BotVault WHERE TenantID = :t AND VaultID = :v AND VersionID = :vid",
-        {"t": tenant_id, "v": vault_id, "vid": version_id},
+        "SELECT * FROM BotVault WHERE VaultID = :v AND VersionID = :vid",
+        {"v": vault_id, "vid": version_id},
         operation="lifecycle.read_credential",
     )
     if not row:
@@ -574,7 +574,7 @@ def read_credential(
 
     audit_service.record_strict(
         session,
-        tenant_id=tenant_id,
+        
         action_type="Vault_Decrypt",
         user_id=user_id,
         process_name=None,
@@ -609,13 +609,13 @@ def read_credential(
     }
 
 
-def rotate_vault_key(session: Session, *, tenant_id: int, dry_run: bool = True) -> Dict[str, Any]:
+def rotate_vault_key(session: Session, *, dry_run: bool = True) -> Dict[str, Any]:
     """Re-encrypt every credential with the newest FERNET key (key rotation)."""
     cipher = get_vault_cipher()
     rows = fetch_all(
         session,
-        "SELECT VaultID, EncryptedValue FROM BotVault WHERE TenantID = :t",
-        {"t": tenant_id},
+        "SELECT VaultID, EncryptedValue FROM BotVault WHERE 1 = 1",
+        {},
         operation="lifecycle.rotate_scan",
     )
     rotated, failed = 0, 0
@@ -630,17 +630,17 @@ def rotate_vault_key(session: Session, *, tenant_id: int, dry_run: bool = True) 
     return {"scanned": len(rows), "rotated": rotated, "failed": failed, "dry_run": dry_run}
 
 
-def soft_delete_credential(session: Session, *, tenant_id: int, vault_id: int) -> int:
+def soft_delete_credential(session: Session, *, vault_id: int) -> int:
     """Logically delete a credential (secret history preserved for audit)."""
     return update_rows(
         session,
         BotVault,
         {"IsDeleted": True, "DeletedAt": _now()},
-        [BotVault.c.VaultID == vault_id, BotVault.c.TenantID == tenant_id],
+        [BotVault.c.VaultID == vault_id],
     )
 
 
-def vault_statistics(session: Session, *, tenant_id: int) -> Dict[str, Any]:
+def vault_statistics(session: Session) -> Dict[str, Any]:
     """Vault hygiene metrics shown on the security screen."""
     row = fetch_one(
         session,
@@ -649,9 +649,9 @@ def vault_statistics(session: Session, *, tenant_id: int) -> Dict[str, Any]:
                COALESCE(SUM(AccessCount), 0) AS reads,
                COALESCE(SUM(CASE WHEN Environment = 'Production' THEN 1 ELSE 0 END), 0) AS production_secrets,
                COALESCE(SUM(CASE WHEN LastAccessedAt IS NULL THEN 1 ELSE 0 END), 0) AS never_read
-        FROM BotVault WHERE TenantID = :t AND (IsDeleted = 0 OR IsDeleted IS NULL)
+        FROM BotVault WHERE (IsDeleted = 0 OR IsDeleted IS NULL)
         """,
-        {"t": tenant_id},
+        {},
         operation="lifecycle.vault_stats",
     ) or {}
     flavor = get_flavor()
@@ -661,11 +661,11 @@ def vault_statistics(session: Session, *, tenant_id: int) -> Dict[str, Any]:
         SELECT {flavor.top(20)}
                a.ActionDate, COALESCE(u.Username, 'System') AS Username, a.EntityID, a.IPAddress, a.NewValues
         FROM AuditLogs a
-        LEFT JOIN SystemUsers u ON u.UserID = a.UserID AND u.TenantID = a.TenantID
-        WHERE a.TenantID = :t AND a.ActionType = 'Vault_Decrypt'
+        LEFT JOIN SystemUsers u ON u.UserID = a.UserID
+        WHERE a.ActionType = 'Vault_Decrypt'
         ORDER BY a.ActionDate DESC{flavor.limit(20)}
         """,
-        {"t": tenant_id},
+        {},
         operation="lifecycle.vault_reads",
     )
     return {

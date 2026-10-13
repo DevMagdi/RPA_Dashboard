@@ -12,7 +12,7 @@ Transport matrix
 * **WebSocket** (``/ws/realtime``) — bidirectional; used for the control console
   (command acknowledgements) and for agents.
 
-Both are tenant-scoped and permission-filtered: a viewer never receives events
+Both are permission-filtered: a viewer never receives events outside their department scope
 outside their department scope.
 """
 
@@ -47,7 +47,6 @@ class Subscriber:
     """A connected dashboard client (SSE queue or WebSocket)."""
 
     id: str
-    tenant_id: int
     user_id: int
     department: str
     role: str
@@ -73,16 +72,16 @@ class RealtimeHub:
     # Dashboard clients
     # ------------------------------------------------------------------ #
     async def subscribe_sse(
-        self, *, subscriber_id: str, tenant_id: int, user_id: int, department: str, role: str
+        self, *, subscriber_id: str, user_id: int, department: str, role: str
     ) -> AsyncIterator[str]:
         """Yield SSE-formatted events for one client."""
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         subscriber = Subscriber(
-            id=subscriber_id, tenant_id=tenant_id, user_id=user_id, department=department, role=role, queue=queue
+            id=subscriber_id, user_id=user_id, department=department, role=role, queue=queue
         )
         async with self._lock:
             self._subscribers[subscriber_id] = subscriber
-        logger.info("SSE subscriber connected: %s (tenant=%s)", subscriber_id, tenant_id)
+        logger.info("SSE subscriber connected: %s", subscriber_id)
 
         try:
             yield _sse_event("connected", {"subscriber_id": subscriber_id, "server_time": time.time()})
@@ -131,6 +130,20 @@ class RealtimeHub:
         track_agent_count(absolute=len(self._agent_sockets))
         logger.info("Agent disconnected: %s (total=%s)", machine_name, len(self._agent_sockets))
 
+    async def disconnect_agent(self, machine_name: str, *, code: int = 1008) -> bool:
+        """Force-close a runner's control channel (token revocation)."""
+        async with self._lock:
+            websocket = self._agent_sockets.pop(machine_name, None)
+        if websocket is None:
+            return False
+        try:
+            await websocket.close(code=code)
+        except Exception:  # pragma: no cover - already gone
+            pass
+        track_agent_count(absolute=len(self._agent_sockets))
+        logger.warning("Agent force-disconnected: %s", machine_name)
+        return True
+
     def agent_connected(self, machine_name: str) -> bool:
         """True when a runner currently has a live control channel."""
         return machine_name in self._agent_sockets
@@ -156,7 +169,7 @@ class RealtimeHub:
     # Publishing
     # ------------------------------------------------------------------ #
     async def deliver_local(
-        self, event: str, data: Dict[str, Any], *, tenant_id: Optional[int] = None, department: Optional[str] = None
+        self, event: str, data: Dict[str, Any], *, department: Optional[str] = None
     ) -> int:
         """Fan out an event to this process's subscribers only.
 
@@ -168,9 +181,7 @@ class RealtimeHub:
             targets = list(self._subscribers.values())
 
         for subscriber in targets:
-            if tenant_id is not None and subscriber.tenant_id != tenant_id:
-                continue
-            if department and subscriber.department not in ("ALL", department):
+            if department is not None and subscriber.department not in ("ALL", department):
                 continue
             message = {"event": event, "data": data}
             try:
@@ -187,28 +198,28 @@ class RealtimeHub:
         return delivered
 
     async def publish(
-        self, event: str, data: Dict[str, Any], *, tenant_id: Optional[int] = None, department: Optional[str] = None
+        self, event: str, data: Dict[str, Any], *, department: Optional[str] = None
     ) -> int:
         """Deliver locally then bridge to the other workers through Redis."""
-        delivered = await self.deliver_local(event, data, tenant_id=tenant_id, department=department)
+        delivered = await self.deliver_local(event, data, department=department)
         get_cache().publish(
             CHANNEL_REALTIME,
-            {"event": event, "data": data, "tenant_id": tenant_id, "department": department, "origin": INSTANCE_ID},
+            {"event": event, "data": data, "department": department, "origin": INSTANCE_ID},
         )
         return delivered
 
-    def publish_background(self, event: str, data: Dict[str, Any], *, tenant_id: Optional[int] = None) -> None:
+    def publish_background(self, event: str, data: Dict[str, Any], *, department: Optional[str] = None) -> None:
         """Fire-and-forget publish from a synchronous context (threads, jobs)."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
         if loop and loop.is_running():
-            loop.create_task(self.publish(event, data, tenant_id=tenant_id))
+            loop.create_task(self.publish(event, data, department=department))
         else:
             get_cache().publish(
                 CHANNEL_REALTIME,
-                {"event": event, "data": data, "tenant_id": tenant_id, "department": None, "origin": INSTANCE_ID},
+                {"event": event, "data": data, "department": None, "origin": INSTANCE_ID},
             )
 
     def subscriber_count(self) -> int:
@@ -289,7 +300,7 @@ def start_redis_bridge(loop: Optional[asyncio.AbstractEventLoop] = None) -> bool
                 await hub.deliver_local(
                     str(payload.get("event") or "message"),
                     payload.get("data") or {},
-                    tenant_id=payload.get("tenant_id"),
+                    
                     department=payload.get("department"),
                 )
             except Exception as exc:  # pragma: no cover - defensive

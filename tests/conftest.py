@@ -65,10 +65,8 @@ def admin_token(admin_headers):
 def login(client):
     """Callable fixture: login(username, password) -> headers dict."""
 
-    def _login(username: str, password: str, tenant_key: str = None) -> dict:
+    def _login(username: str, password: str) -> dict:
         payload = {"username": username, "password": password}
-        if tenant_key:
-            payload["tenant_key"] = tenant_key
         response = client.post("/api/auth/login", json=payload)
         assert response.status_code == 200, response.text
         return {"Authorization": f"Bearer {response.json()['access_token']}"}

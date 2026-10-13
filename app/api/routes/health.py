@@ -74,7 +74,7 @@ def health_detail(
     try:
         from app.platforms.registry import platform_health
 
-        providers.append(platform_health(principal.tenant_id))
+        providers.append(platform_health())
     except Exception as exc:  # pragma: no cover - vendor dependent
         providers.append({"ok": False, "error": str(exc)[:200]})
 
@@ -107,7 +107,7 @@ def health_detail(
             "opentelemetry": settings.OTEL_ENABLED,
             "notifications": settings.NOTIFY_ENABLED,
             "multi_vendor": True,
-            "multi_tenant": True,
+            "single_organization": True,
         },
     }
 

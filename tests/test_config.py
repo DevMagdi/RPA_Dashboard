@@ -16,7 +16,7 @@ def test_settings_defaults_are_test_environment():
     settings = get_settings()
     assert settings.is_test
     assert not settings.is_prod
-    assert settings.APP_VERSION == "3.0.0"
+    assert settings.APP_VERSION == "4.0.0"
 
 
 def test_database_url_sqlite_memory():
@@ -98,12 +98,12 @@ def test_list_splitting_helpers():
 
 
 def test_env_example_covers_every_setting():
-    """The shipped .env.example must document every Settings field (80 keys)."""
+    """The shipped .env.example must document every Settings field (86 keys)."""
     source = (REPO_ROOT / "app" / "core" / "config.py").read_text()
     fields = set(re.findall(r"^\s{4}([A-Z][A-Z0-9_]+):", source, re.M))
     env_keys = set(re.findall(r"^([A-Z][A-Z0-9_]+)=", (REPO_ROOT / ".env.example").read_text(), re.M))
     assert fields == env_keys, f"missing={sorted(fields - env_keys)} extra={sorted(env_keys - fields)}"
-    assert len(env_keys) == 80
+    assert len(env_keys) == 86
 
 
 # --------------------------------------------------------------------------- #
@@ -190,5 +190,5 @@ def test_configure_tracing_disabled_is_noop(client):
 def test_logging_correlation_context():
     from app.core.logging import get_correlation_id, set_request_actor
 
-    set_request_actor(tenant_id=1, username="pytest")
+    set_request_actor(username="pytest")
     assert get_correlation_id()  # never empty inside a request-ish context

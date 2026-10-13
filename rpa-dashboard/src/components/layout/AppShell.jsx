@@ -30,8 +30,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthProvider'
 import { useBranding } from '../../context/BrandingProvider'
 import { useTheme } from '../../context/ThemeProvider'
-import { useToast } from '../../context/ToastProvider'
-import { useProcessOptions, useRealtimeSync } from '../../hooks/api'
+import { useAlertCount, useProcessOptions, useRealtimeSync } from '../../hooks/api'
 import { useHotkey, useIsMobile, useRealtimeStatus } from '../../hooks/ui'
 import { applyLanguage } from '../../i18n'
 import { relative } from '../../lib/format'
@@ -62,7 +61,8 @@ const NAV_CONFIG = [
     section: 'nav.sections.administration',
     items: [
       { to: '/users', label: 'nav.users', icon: Users, permission: 'users:read' },
-      { to: '/tenants', label: 'nav.tenants', icon: KeyRound, permission: '*' },
+      { to: '/organization', label: 'nav.organization', icon: KeyRound, permission: '*' },
+      { to: '/alerts', label: 'nav.alerts', icon: Bell, permission: null },
       { to: '/settings', label: 'nav.settings', icon: SettingsIcon, permission: null },
     ],
   },
@@ -102,6 +102,26 @@ function LivePill() {
       <StatusDot color={tone} pulse={status === 'open'} />
       {label}
     </span>
+  )
+}
+
+function AlertBell() {
+  const { t } = useTranslation()
+  const { data } = useAlertCount()
+  const count = data?.open || 0
+  return (
+    <NavLink
+      to="/alerts"
+      aria-label={t('nav.alerts')}
+      className="focus-ring relative inline-flex rounded-xl p-2 text-muted transition hover:bg-surface-2 hover:text-text"
+    >
+      <Bell className="h-4 w-4" />
+      {count > 0 ? (
+        <span className="absolute -end-0.5 -top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-bold text-white">
+          {count > 99 ? '99+' : count}
+        </span>
+      ) : null}
+    </NavLink>
   )
 }
 
@@ -210,7 +230,6 @@ export default function AppShell() {
   const { has, user } = useAuth()
   const { companyName } = useBranding()
   const { toggleTheme, isDark } = useTheme()
-  const toast = useToast()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -355,15 +374,7 @@ export default function AppShell() {
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t('actions.toggleTheme')}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => toast.info(t('errors.notFound'), t('nav.audit'))}
-            aria-label={t('nav.audit')}
-            className="hidden sm:inline-flex"
-          >
-            <Bell className="h-4 w-4" />
-          </Button>
+          <AlertBell />
           <UserMenu onOpenMfa={() => setMfaOpen(true)} />
         </header>
 

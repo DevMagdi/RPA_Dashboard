@@ -67,15 +67,15 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def load_cost_model(session: Session, *, tenant_id: int, process_name: str) -> CostModel:
+def load_cost_model(session: Session, *, process_name: str) -> CostModel:
     """Load the ROI parameters used to compute savings on write."""
     row = fetch_one(
         session,
         """
         SELECT EmpMinutesPerRequest, EmpCostPerRequest, BotCostPerRequest
-        FROM ProcessConfig WHERE TenantID = :t AND ProcessName = :p
+        FROM ProcessConfig WHERE ProcessName = :p
         """,
-        {"t": tenant_id, "p": process_name},
+        {"p": process_name},
         operation="runs.cost_model",
     ) or {}
     return CostModel(
@@ -88,7 +88,7 @@ def load_cost_model(session: Session, *, tenant_id: int, process_name: str) -> C
 def start_run(
     session: Session,
     *,
-    tenant_id: int,
+    
     process_name: str,
     request_id: Optional[str] = None,
     idempotency_key: Optional[str] = None,
@@ -110,15 +110,14 @@ def start_run(
     if idempotency_key:
         existing = fetch_one(
             session,
-            "SELECT RunID FROM ProcessRuns WHERE TenantID = :t AND IdempotencyKey = :k",
-            {"t": tenant_id, "k": idempotency_key[:120]},
+            "SELECT RunID FROM ProcessRuns WHERE IdempotencyKey = :k",
+            {"k": idempotency_key[:120]},
             operation="runs.idempotency_lookup",
         )
         if existing:
             return int(existing["RunID"]), False
 
     values: Dict[str, Any] = {
-        "TenantID": tenant_id,
         "ProcessName": process_name[:100],
         "RequestID": (request_id or "")[:100] or None,
         "Status": "Running",
@@ -144,8 +143,8 @@ def start_run(
         # Concurrent duplicate — return the winner
         existing = fetch_one(
             session,
-            "SELECT RunID FROM ProcessRuns WHERE TenantID = :t AND IdempotencyKey = :k",
-            {"t": tenant_id, "k": idempotency_key or ""},
+            "SELECT RunID FROM ProcessRuns WHERE IdempotencyKey = :k",
+            {"k": idempotency_key or ""},
             operation="runs.idempotency_race",
         )
         if existing:
@@ -160,7 +159,7 @@ def start_run(
 def complete_run(
     session: Session,
     *,
-    tenant_id: int,
+    
     run_id: int,
     status: str = "Completed",
     transactions_count: Optional[int] = None,
@@ -178,8 +177,8 @@ def complete_run(
 
     row = fetch_one(
         session,
-        "SELECT * FROM ProcessRuns WHERE TenantID = :t AND RunID = :id",
-        {"t": tenant_id, "id": run_id},
+        "SELECT * FROM ProcessRuns WHERE RunID = :id",
+        {"id": run_id},
         operation="runs.get_for_complete",
     )
     if not row:
@@ -199,7 +198,7 @@ def complete_run(
     start = row.get("StartTime") or end
     duration_minutes = round(max(0.0, (end - start).total_seconds() / 60.0), 2)
     transactions = int(transactions_count if transactions_count is not None else (row.get("TransactionsCount") or 0))
-    cost_model = load_cost_model(session, tenant_id=tenant_id, process_name=str(row["ProcessName"]))
+    cost_model = load_cost_model(session, process_name=str(row["ProcessName"]))
 
     values: Dict[str, Any] = {
         "Status": status,
@@ -214,11 +213,11 @@ def complete_run(
         "ExitCode": (exit_code or "")[:40] or None,
         "UpdatedAt": _now(),
     }
-    update_rows(session, ProcessRuns, values, [ProcessRuns.c.RunID == run_id, ProcessRuns.c.TenantID == tenant_id])
+    update_rows(session, ProcessRuns, values, [ProcessRuns.c.RunID == run_id])
 
     RUNS_INGESTED.labels(event="complete", status=status).inc()
-    get_cache().delete_prefix(f"dash:v3:{tenant_id}:")
-    get_cache().delete_prefix(f"capacity:v2:{tenant_id}:")
+    get_cache().delete_prefix("dash:v4:")
+    get_cache().delete_prefix("capacity:v4:")
 
     logger.info("Run finalised: id=%s status=%s transactions=%s", run_id, status, transactions)
     return {
@@ -233,13 +232,13 @@ def complete_run(
 
 
 def update_progress(
-    session: Session, *, tenant_id: int, run_id: int, transactions_count: int, failure_reason: Optional[str] = None
+    session: Session, *, run_id: int, transactions_count: int, failure_reason: Optional[str] = None
 ) -> Dict[str, Any]:
     """Live progress update for long-running jobs (also refreshes ``EndTime``)."""
     row = fetch_one(
         session,
-        "SELECT Status, StartTime FROM ProcessRuns WHERE TenantID = :t AND RunID = :id",
-        {"t": tenant_id, "id": run_id},
+        "SELECT Status, StartTime FROM ProcessRuns WHERE RunID = :id",
+        {"id": run_id},
         operation="runs.get_for_progress",
     )
     if not row:
@@ -253,20 +252,20 @@ def update_progress(
     }
     if failure_reason is not None:
         values["FailureReason"] = failure_reason[:500]
-    update_rows(session, ProcessRuns, values, [ProcessRuns.c.RunID == run_id, ProcessRuns.c.TenantID == tenant_id])
+    update_rows(session, ProcessRuns, values, [ProcessRuns.c.RunID == run_id])
     return {"run_id": run_id, "transactions_count": values["TransactionsCount"]}
 
 
-def reap_stale_runs(session: Session, *, tenant_id: int, older_than_hours: int = 24) -> int:
+def reap_stale_runs(session: Session, *, older_than_hours: int = 24) -> int:
     """Mark abandoned ``Running`` rows as ``Stopped`` (agent crash recovery)."""
     flavor = get_flavor()
     stale = fetch_all(
         session,
         f"""
         SELECT RunID, ProcessName, StartTime FROM ProcessRuns
-        WHERE TenantID = :t AND Status = 'Running' AND StartTime < {flavor.days_ago(1)}
+        WHERE Status = 'Running' AND StartTime < {flavor.days_ago(1)}
         """,
-        {"t": tenant_id},
+        {},
         operation="runs.stale",
     )
     count = 0
@@ -284,14 +283,14 @@ def reap_stale_runs(session: Session, *, tenant_id: int, older_than_hours: int =
         )
         count += 1
     if count:
-        logger.warning("Reaped %s stale running jobs for tenant %s", count, tenant_id)
+        logger.warning("Reaped %s stale running jobs", count)
     return count
 
 
 def list_runs(
     session: Session,
     *,
-    tenant_id: int,
+    
     department_scope: str = "ALL",
     process_name: Optional[str] = None,
     status: Optional[str] = None,
@@ -303,8 +302,8 @@ def list_runs(
 ) -> Dict[str, Any]:
     """Paginated run history with filters (used by the Runs explorer)."""
     flavor = get_flavor()
-    where = ["r.TenantID = :t", f"r.IsDeleted = {flavor.false_literal}"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 1000)), "offset": int(offset)}
+    where = [f"r.IsDeleted = {flavor.false_literal}"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 1000)), "offset": int(offset)}
 
     if department_scope and department_scope.upper() != "ALL":
         where.append("c.Department = :dept")
@@ -333,7 +332,7 @@ def list_runs(
                r.FailureReason, r.MachineName, r.RobotName, r.Trigger, r.TriggeredBy, r.ExitCode,
                c.Department, c.Criticality
         FROM ProcessRuns r
-        JOIN ProcessConfig c ON c.ProcessName = r.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON c.ProcessName = r.ProcessName
         WHERE {' AND '.join(where)}
         ORDER BY r.StartTime DESC, r.RunID DESC
         {flavor.paginate(params['limit'], params['offset'])}
@@ -346,7 +345,7 @@ def list_runs(
         session,
         f"""
         SELECT COUNT(1) AS total FROM ProcessRuns r
-        JOIN ProcessConfig c ON c.ProcessName = r.ProcessName AND c.TenantID = r.TenantID
+        JOIN ProcessConfig c ON c.ProcessName = r.ProcessName
         WHERE {' AND '.join(where)}
         """,
         {k: v for k, v in params.items() if k not in ("limit", "offset")},
@@ -356,7 +355,7 @@ def list_runs(
     return {"items": rows, "total": int((count_row or {}).get("total") or 0), "limit": params["limit"], "offset": params["offset"]}
 
 
-def top_failure_reasons(session: Session, *, tenant_id: int, days: int = 7, limit: int = 10) -> List[Dict[str, Any]]:
+def top_failure_reasons(session: Session, *, days: int = 7, limit: int = 10) -> List[Dict[str, Any]]:
     """Most frequent failure reasons — drives targeted fixes."""
     flavor = get_flavor()
     return fetch_all(
@@ -368,16 +367,16 @@ def top_failure_reasons(session: Session, *, tenant_id: int, days: int = 7, limi
                COUNT(DISTINCT r.ProcessName) AS processes,
                MAX(r.StartTime) AS last_seen
         FROM ProcessRuns r
-        WHERE r.TenantID = :t AND r.Status IN ('Failed','Stopped') AND r.StartTime >= {flavor.days_ago(int(days))}
+        WHERE r.Status IN ('Failed','Stopped') AND r.StartTime >= {flavor.days_ago(int(days))}
         GROUP BY COALESCE(NULLIF(r.FailureReason, ''), 'Unknown')
         ORDER BY occurrences DESC{flavor.limit(int(limit))}
         """,
-        {"t": tenant_id},
+        {},
         operation="runs.top_failures",
     )
 
 
-def run_statistics(session: Session, *, tenant_id: int, days: int = 30) -> Dict[str, Any]:
+def run_statistics(session: Session, *, days: int = 30) -> Dict[str, Any]:
     """Hourly/daily distribution statistics for the insights panel."""
     flavor = get_flavor()
     daily = fetch_all(
@@ -388,11 +387,11 @@ def run_statistics(session: Session, *, tenant_id: int, days: int = 30) -> Dict[
                COALESCE(SUM(CASE WHEN Status = 'Completed' THEN 1 ELSE 0 END), 0) AS completed,
                COALESCE(SUM(CASE WHEN Status IN ('Failed','Stopped') THEN 1 ELSE 0 END), 0) AS failed
         FROM ProcessRuns
-        WHERE TenantID = :t AND StartTime >= {flavor.days_ago(int(days))}
+        WHERE StartTime >= {flavor.days_ago(int(days))}
         GROUP BY {flavor.cast_date('StartTime')}
         ORDER BY 1
         """,
-        {"t": tenant_id},
+        {},
         operation="runs.daily_stats",
     )
     return {
@@ -407,3 +406,13 @@ def run_statistics(session: Session, *, tenant_id: int, days: int = 30) -> Dict[
         ],
         "window_days": int(days),
     }
+
+
+def heartbeat_run(
+    session: Session, *, run_id: int, transactions_count: int = 0, failure_reason: Optional[str] = None
+) -> Dict[str, Any]:
+    """Record a liveness heartbeat for a running job."""
+    result = update_progress(session, run_id=run_id, transactions_count=transactions_count, failure_reason=failure_reason)
+    update_rows(session, ProcessRuns, {"LastHeartbeatAt": _now()}, [ProcessRuns.c.RunID == run_id])
+    result["last_heartbeat_at"] = _now().isoformat() + "Z"
+    return result

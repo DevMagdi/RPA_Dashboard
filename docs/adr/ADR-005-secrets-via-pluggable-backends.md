@@ -1,16 +1,16 @@
-# ADR-005: Secrets via pluggable backends, never in git or the tenant blob
+# ADR-005: Secrets via pluggable backends, never in git or the organization blob
 
 - **Status:** Accepted (3.0.0)
 - **Date:** 2026-10-13
 
 ## Context
 Vendor credentials and platform secrets must never be committed, nor stored
-in clear text in the tenant configuration JSON.
+in clear text in the organization configuration JSON.
 
 ## Decision
 `app/core/secrets.py` defines a `SecretStore` abstraction with env, Azure Key
 Vault and HashiCorp Vault backends (plus an in-process caching wrapper).
-Tenant platform configs store `vault:NAME` references only; the registry
+Organization platform configs store `vault:NAME` references only; the registry
 resolves them at adapter-build time and never writes resolved values back.
 Bot credentials live in a Fernet-encrypted vault (`FERNET_KEY`), with key
 rotation support. `.env.example` documents all 80 settings; real values are

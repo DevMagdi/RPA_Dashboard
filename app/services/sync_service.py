@@ -1,12 +1,12 @@
 """Platform synchronisation service.
 
-Pulls telemetry from the tenant's configured RPA platform (UiPath Orchestrator,
+Pulls telemetry from the configured RPA platform (UiPath Orchestrator,
 Automation Anywhere, …) into the Control Room database so that KPIs, ROI, SLA
 and the Capacity Advisor all work from a single normalised model.
 
 Key properties
 --------------
-* **Idempotent** — runs are matched by ``ProviderRunId`` (unique per tenant) so
+* **Idempotent** — runs are matched by ``ProviderRunId`` so
   repeated syncs never duplicate history.
 * **Incremental** — each sync only asks the vendor for data since the last
   successful sync (watermark stored in ``PlatformSyncLog``).
@@ -26,7 +26,7 @@ from app.db.repository import fetch_all, fetch_one, insert_row, update_rows
 from app.db.session import session_scope
 from app.db.tables import BotInfrastructure, PlatformSyncLog, ProcessConfig, ProcessRuns
 from app.platforms.base import MachineRecord, ProcessDefinition, RunRecord
-from app.platforms.registry import get_adapter_for_tenant
+from app.platforms.registry import get_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -38,24 +38,24 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _last_successful_sync(tenant_id: int, provider: str) -> Optional[datetime]:
+def _last_successful_sync(provider: str) -> Optional[datetime]:
     """Watermark: when did we last pull data successfully for this provider?"""
     with session_scope() as session:
         row = fetch_one(
             session,
             """
             SELECT StartedAt FROM PlatformSyncLog
-            WHERE TenantID = :t AND Provider = :p AND Status = 'Success'
+            WHERE Provider = :p AND Status = 'Success'
             ORDER BY StartedAt DESC
             """,
-            {"t": tenant_id, "p": provider},
+            {"p": provider},
             operation="sync.watermark",
         )
     return row.get("StartedAt") if row else None
 
 
 def _log_sync(
-    tenant_id: int,
+    
     *,
     provider: str,
     operation: str,
@@ -71,7 +71,6 @@ def _log_sync(
                 session,
                 PlatformSyncLog,
                 {
-                    "TenantID": tenant_id,
                     "Provider": provider[:40],
                     "Operation": operation[:60],
                     "Status": status[:20],
@@ -87,14 +86,14 @@ def _log_sync(
 # --------------------------------------------------------------------------- #
 # Mapping helpers
 # --------------------------------------------------------------------------- #
-def upsert_process(session, tenant_id: int, provider: str, definition: ProcessDefinition) -> int:
+def upsert_process(session, provider: str, definition: ProcessDefinition) -> int:
     """Create/refresh a ProcessConfig row from a vendor process definition."""
     from app.db.repository import insert_row as _insert
 
     existing = fetch_one(
         session,
-        "SELECT ConfigID, PlatformProcessKey FROM ProcessConfig WHERE TenantID = :t AND ProcessName = :p",
-        {"t": tenant_id, "p": definition.name[:100]},
+        "SELECT ConfigID, PlatformProcessKey FROM ProcessConfig WHERE ProcessName = :p",
+        {"p": definition.name[:100]},
         operation="sync.process_lookup",
     )
     if existing:
@@ -116,7 +115,6 @@ def upsert_process(session, tenant_id: int, provider: str, definition: ProcessDe
             session,
             ProcessConfig,
             {
-                "TenantID": tenant_id,
                 "ProcessName": definition.name[:100],
                 "Department": (definition.department or "Operations")[:50],
                 "Provider": provider[:40],
@@ -131,15 +129,15 @@ def upsert_process(session, tenant_id: int, provider: str, definition: ProcessDe
     )
 
 
-def upsert_run(session, tenant_id: int, provider: str, process_name: str, run: RunRecord) -> bool:
+def upsert_run(session, provider: str, process_name: str, run: RunRecord) -> bool:
     """Insert a vendor run once (matched by ``ProviderRunId``)."""
     existing = fetch_one(
         session,
         """
         SELECT RunID FROM ProcessRuns
-        WHERE TenantID = :t AND Provider = :p AND ProviderRunId = :pid
+        WHERE Provider = :p AND ProviderRunId = :pid
         """,
-        {"t": tenant_id, "p": provider, "pid": str(run.external_id)[:200]},
+        {"p": provider, "pid": str(run.external_id)[:200]},
         operation="sync.run_lookup",
     )
     if existing:
@@ -159,7 +157,7 @@ def upsert_run(session, tenant_id: int, provider: str, process_name: str, run: R
         )
         return False
 
-    cost_model = _cost_model(session, tenant_id, process_name)
+    cost_model = _cost_model(session, process_name)
     transactions = int(run.transactions_count or 0)
     is_success = run.status.value == "Completed"
     time_saved = round(transactions * cost_model["emp_minutes"] / 60.0, 2) if is_success else 0.0
@@ -168,7 +166,6 @@ def upsert_run(session, tenant_id: int, provider: str, process_name: str, run: R
         session,
         ProcessRuns,
         {
-            "TenantID": tenant_id,
             "ProcessName": process_name[:100],
             "RequestID": (run.external_id or "")[:100],
             "Status": run.status.value,
@@ -193,15 +190,15 @@ def upsert_run(session, tenant_id: int, provider: str, process_name: str, run: R
     return True
 
 
-def _cost_model(session, tenant_id: int, process_name: str) -> Dict[str, float]:
+def _cost_model(session, process_name: str) -> Dict[str, float]:
     """Load the ROI parameters used to price synced runs (server-side maths)."""
     row = fetch_one(
         session,
         """
         SELECT EmpMinutesPerRequest, EmpCostPerRequest, BotCostPerRequest
-        FROM ProcessConfig WHERE TenantID = :t AND ProcessName = :p
+        FROM ProcessConfig WHERE ProcessName = :p
         """,
-        {"t": tenant_id, "p": process_name},
+        {"p": process_name},
         operation="sync.cost_model",
     ) or {}
 
@@ -218,12 +215,12 @@ def _cost_model(session, tenant_id: int, process_name: str) -> Dict[str, float]:
     }
 
 
-def upsert_machine(session, tenant_id: int, provider: str, machine: MachineRecord) -> bool:
+def upsert_machine(session, provider: str, machine: MachineRecord) -> bool:
     """Create/refresh a runner record from vendor telemetry."""
     existing = fetch_one(
         session,
-        "SELECT MachineID FROM BotInfrastructure WHERE TenantID = :t AND MachineName = :m",
-        {"t": tenant_id, "m": machine.name[:100]},
+        "SELECT MachineID FROM BotInfrastructure WHERE MachineName = :m",
+        {"m": machine.name[:100]},
         operation="sync.machine_lookup",
     )
     values = {
@@ -245,23 +242,23 @@ def upsert_machine(session, tenant_id: int, provider: str, machine: MachineRecor
     if existing:
         update_rows(session, BotInfrastructure, values, [BotInfrastructure.c.MachineID == int(existing["MachineID"])])
         return False
-    insert_row(session, BotInfrastructure, {"TenantID": tenant_id, "MachineName": machine.name[:100], **values})
+    insert_row(session, BotInfrastructure, {"MachineName": machine.name[:100], **values})
     return True
 
 
 # --------------------------------------------------------------------------- #
 # Sync orchestration
 # --------------------------------------------------------------------------- #
-def sync_tenant(tenant_id: int, *, lookback_days: int = DEFAULT_LOOKBACK_DAYS, force: bool = False) -> Dict[str, Any]:
-    """Synchronise one tenant from its configured platform."""
-    adapter = get_adapter_for_tenant(tenant_id)
+def sync_organization(*, lookback_days: int = DEFAULT_LOOKBACK_DAYS, force: bool = False) -> Dict[str, Any]:
+    """Synchronise the organization from its configured platform."""
+    adapter = get_adapter()
     provider = adapter.name
 
     if provider == "generic_sql":
         return {"ok": True, "provider": provider, "skipped": "native provider — data already local"}
 
     started = _now()
-    watermark = _last_successful_sync(tenant_id, provider)
+    watermark = _last_successful_sync(provider)
     since = watermark - timedelta(minutes=5) if watermark and not force else _now() - timedelta(days=lookback_days)
 
     summary: Dict[str, Any] = {"ok": True, "provider": provider, "since": since.isoformat(), "processes": 0, "runs_created": 0, "machines_created": 0}
@@ -271,13 +268,13 @@ def sync_tenant(tenant_id: int, *, lookback_days: int = DEFAULT_LOOKBACK_DAYS, f
         processes = adapter.get_processes()
         with session_scope() as session:
             for definition in processes:
-                upsert_process(session, tenant_id, provider, definition)
+                upsert_process(session, provider, definition)
         summary["processes"] = len(processes)
-        _log_sync(tenant_id, provider=provider, operation="processes", status="Success", items=len(processes))
+        _log_sync(provider=provider, operation="processes", status="Success", items=len(processes))
     except Exception as exc:
         summary["ok"] = False
         summary["process_error"] = str(exc)[:200]
-        _log_sync(tenant_id, provider=provider, operation="processes", status="Failed", error=str(exc))
+        _log_sync(provider=provider, operation="processes", status="Failed", error=str(exc))
 
     # 2) Runs (incremental)
     try:
@@ -285,16 +282,16 @@ def sync_tenant(tenant_id: int, *, lookback_days: int = DEFAULT_LOOKBACK_DAYS, f
         created = 0
         with session_scope() as session:
             for run in runs:
-                process_name = _resolve_process_name(session, tenant_id, run.process_key)
-                if process_name and upsert_run(session, tenant_id, provider, process_name, run):
+                process_name = _resolve_process_name(session, run.process_key)
+                if process_name and upsert_run(session, provider, process_name, run):
                     created += 1
         summary["runs_created"] = created
         summary["runs_seen"] = len(runs)
-        _log_sync(tenant_id, provider=provider, operation="runs", status="Success", items=created)
+        _log_sync(provider=provider, operation="runs", status="Success", items=created)
     except Exception as exc:
         summary["ok"] = False
         summary["runs_error"] = str(exc)[:200]
-        _log_sync(tenant_id, provider=provider, operation="runs", status="Failed", error=str(exc))
+        _log_sync(provider=provider, operation="runs", status="Failed", error=str(exc))
 
     # 3) Machines
     try:
@@ -302,15 +299,15 @@ def sync_tenant(tenant_id: int, *, lookback_days: int = DEFAULT_LOOKBACK_DAYS, f
         created = 0
         with session_scope() as session:
             for machine in machines:
-                if upsert_machine(session, tenant_id, provider, machine):
+                if upsert_machine(session, provider, machine):
                     created += 1
         summary["machines_created"] = created
         summary["machines_seen"] = len(machines)
-        _log_sync(tenant_id, provider=provider, operation="machines", status="Success", items=created)
+        _log_sync(provider=provider, operation="machines", status="Success", items=created)
     except Exception as exc:
         summary["ok"] = False
         summary["machines_error"] = str(exc)[:200]
-        _log_sync(tenant_id, provider=provider, operation="machines", status="Failed", error=str(exc))
+        _log_sync(provider=provider, operation="machines", status="Failed", error=str(exc))
 
     # 4) Queues
     try:
@@ -319,44 +316,44 @@ def sync_tenant(tenant_id: int, *, lookback_days: int = DEFAULT_LOOKBACK_DAYS, f
         queues = adapter.get_queue_stats()
         with session_scope() as session:
             for stats in queues:
-                process_name = _resolve_process_name(session, tenant_id, stats.process_key)
+                process_name = _resolve_process_name(session, stats.process_key)
                 if not process_name:
                     continue
                 update_queue_telemetry(
                     session,
-                    tenant_id=tenant_id,
+                    
                     process_name=process_name,
                     pending_items=stats.pending,
                     active_items=stats.active,
                     avg_item_processing_seconds=int(stats.avg_processing_seconds or 30),
                 )
         summary["queues_synced"] = len(queues)
-        _log_sync(tenant_id, provider=provider, operation="queues", status="Success", items=len(queues))
+        _log_sync(provider=provider, operation="queues", status="Success", items=len(queues))
     except Exception as exc:
         summary["ok"] = False
         summary["queues_error"] = str(exc)[:200]
-        _log_sync(tenant_id, provider=provider, operation="queues", status="Failed", error=str(exc))
+        _log_sync(provider=provider, operation="queues", status="Failed", error=str(exc))
 
     summary["duration_ms"] = int((_now() - started).total_seconds() * 1000)
-    logger.info("Platform sync finished for tenant %s: %s", tenant_id, summary)
+    logger.info("Platform sync finished: %s", summary)
     return summary
 
 
-def _resolve_process_name(session, tenant_id: int, process_key: str) -> Optional[str]:
+def _resolve_process_name(session, process_key: str) -> Optional[str]:
     """Map a vendor process key to the local ``ProcessName`` (identity first)."""
     row = fetch_one(
         session,
         """
         SELECT ProcessName FROM ProcessConfig
-        WHERE TenantID = :t AND (PlatformProcessKey = :k OR ProcessName = :k)
+        WHERE (PlatformProcessKey = :k OR ProcessName = :k)
         """,
-        {"t": tenant_id, "k": str(process_key)[:200]},
+        {"k": str(process_key)[:200]},
         operation="sync.resolve_process",
     )
     return row.get("ProcessName") if row else None
 
 
-def sync_history(tenant_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+def sync_history(limit: int = 20) -> List[Dict[str, Any]]:
     """Recent sync operations (health page / diagnostics)."""
     from app.db.dialect import get_flavor
 
@@ -367,9 +364,9 @@ def sync_history(tenant_id: int, limit: int = 20) -> List[Dict[str, Any]]:
             f"""
             SELECT {flavor.top(int(limit))} SyncID, Provider, Operation, Status, ItemsSynced, DurationMs, Error, StartedAt
             FROM PlatformSyncLog
-            WHERE TenantID = :t
+            WHERE 1 = 1
             ORDER BY StartedAt DESC{flavor.limit(int(limit))}
             """,
-            {"t": tenant_id},
+            {},
             operation="sync.history",
         )

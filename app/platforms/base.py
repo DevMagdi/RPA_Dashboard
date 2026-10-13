@@ -12,7 +12,7 @@ Design principles
 * **Canonical domain model** — adapters translate vendor payloads into the
   dataclasses below (ISO-8601 UTC timestamps, normalised statuses).
 * **Config-driven** — a new client is onboarded by storing a provider key plus
-  credentials in the tenant configuration; **zero code change**.
+  credentials in the organization configuration; **zero code change**.
 * **Read + write** — adapters expose both telemetry reads and control actions
   (``start_job`` / ``stop_job``) so the dashboard can act, not just observe.
 """
@@ -286,11 +286,11 @@ class AdapterHealth:
 class PlatformAdapter(abc.ABC):
     """Interface every vendor integration must implement.
 
-    Implementations must be *pure translators*: no business rules, no tenant
-    filtering, no persistence.  The service layer owns those concerns.
+    Implementations must be *pure translators*: no business rules,
+    no persistence.  The service layer owns those concerns.
     """
 
-    #: Stable identifier persisted in ``Tenants.PlatformProvider``.
+    #: Stable identifier persisted in ``Organization.PlatformProvider``.
     name: str = "abstract"
 
     #: Human readable vendor name for the UI.

@@ -58,31 +58,31 @@ def test_password_policy(password, ok):
 
 
 def test_access_token_claims():
-    token = create_access_token("alice", role="Operator", tenant_id=3, user_id=7, department="Finance")
+    token = create_access_token("alice", role="Operator", user_id=7, department="Finance")
     payload = decode_token(token, expected_type="access")
     assert payload["sub"] == "alice"
     assert payload["role"] == "Operator"
-    assert payload["tenant_id"] == 3
+    assert payload["user_id"] == 7
     assert payload["user_id"] == 7
     assert payload["department"] == "Finance"
 
 
 def test_refresh_token_type_enforced():
-    token = create_refresh_token("alice", user_id=7, tenant_id=3, token_id="tok-1")
+    token = create_refresh_token("alice", user_id=7, token_id="tok-1")
     with pytest.raises(jwt.InvalidTokenError):
         decode_token(token, expected_type="access")
 
 
 def test_expired_token_rejected():
     token = create_access_token(
-        "alice", role="Viewer", tenant_id=1, user_id=1, expires_delta=timedelta(seconds=-10)
+        "alice", role="Viewer", user_id=1, expires_delta=timedelta(seconds=-10)
     )
     with pytest.raises(jwt.PyJWTError):
         decode_token(token)
 
 
 def test_tampered_token_rejected():
-    token = create_access_token("alice", role="Viewer", tenant_id=1, user_id=1)
+    token = create_access_token("alice", role="Viewer", user_id=1)
     with pytest.raises(jwt.PyJWTError):
         decode_token(token + "tampered")
 

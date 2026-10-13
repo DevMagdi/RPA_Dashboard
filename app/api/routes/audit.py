@@ -38,7 +38,7 @@ def audit_logs(
     since = datetime.utcnow() - timedelta(days=days) if days else None
     items = audit_service.query_logs(
         db,
-        tenant_id=principal.tenant_id,
+        
         limit=limit,
         offset=offset,
         action_type=action_type,
@@ -65,14 +65,14 @@ def audit_summary(
 ) -> Dict[str, Any]:
     """Daily activity histogram + recent failed/denied actions."""
     return {
-        "activity": audit_service.summarise_activity(db, tenant_id=principal.tenant_id, days=days),
-        "recent_failures": audit_service.recent_critical_events(db, tenant_id=principal.tenant_id, limit=20),
+        "activity": audit_service.summarise_activity(db, days=days),
+        "recent_failures": audit_service.recent_critical_events(db, limit=20),
         "window_days": days,
     }
 
 
 # --------------------------------------------------------------------------- #
-# Exports (Excel / PDF, tenant-branded)
+# Exports (Excel / PDF, organization-branded)
 # --------------------------------------------------------------------------- #
 @router.get("/exports/audit.xlsx", summary="Export the audit trail to Excel")
 def export_audit_excel(
@@ -83,14 +83,14 @@ def export_audit_excel(
     """Branded XLSX export of the audit trail for the caller's scope."""
     rows = audit_service.query_logs(
         db,
-        tenant_id=principal.tenant_id,
+        
         limit=1000,
         allowed_department=principal.department,
         since=datetime.utcnow() - timedelta(days=days),
     )
     columns = ["LogID", "ActionDate", "Username", "ActionType", "ProcessName", "EntityType", "IPAddress", "IsSuccess"]
     payload = export_service.build_excel(
-        tenant_id=principal.tenant_id,
+        
         title="Audit Trail",
         columns=columns,
         rows=rows,
@@ -115,7 +115,7 @@ def export_runs_excel(
     """Branded XLSX export of runs (with realised savings) for the caller's scope."""
     result = run_service.list_runs(
         db,
-        tenant_id=principal.tenant_id,
+        
         department_scope=principal.department,
         process_name=process,
         since=datetime.utcnow() - timedelta(days=days),
@@ -136,7 +136,7 @@ def export_runs_excel(
         "FailureReason",
     ]
     payload = export_service.build_excel(
-        tenant_id=principal.tenant_id,
+        
         title="Run History",
         columns=columns,
         rows=result["items"],
@@ -158,13 +158,13 @@ def export_roi_pdf(
     principal: AuthenticatedUser = Depends(require_permission("export:read", "*")),
 ) -> Response:
     """Branded PDF ROI pack (executive summary + per-process table)."""
-    roi = process_service.roi_summary(db, tenant_id=principal.tenant_id, department_scope=principal.department, days=days)
+    roi = process_service.roi_summary(db, department_scope=principal.department, days=days)
     total_cost = sum(float(row.get("cost_saved") or 0) for row in roi)
     total_hours = sum(float(row.get("hours_saved") or 0) for row in roi)
     total_transactions = sum(int(row.get("transactions") or 0) for row in roi)
 
     payload = export_service.build_pdf(
-        tenant_id=principal.tenant_id,
+        
         title=f"ROI & Value Realisation Report — last {days} days",
         summary_lines=[
             f"Total cost saved: {total_cost:,.2f} EGP",
@@ -204,12 +204,12 @@ def export_capacity_pdf(
     """Branded PDF capacity pack: utilisation, SLA risk and recommendations."""
     from app.services.capacity_service import get_capacity_summary, list_recommendations
 
-    summary = get_capacity_summary(db, tenant_id=principal.tenant_id, department_scope=principal.department)
-    recommendations = list_recommendations(db, tenant_id=principal.tenant_id, status="Open", limit=50)
+    summary = get_capacity_summary(db, department_scope=principal.department)
+    recommendations = list_recommendations(db, status="Open", limit=50)
 
     metrics = summary.get("summary", {})
     payload = export_service.build_pdf(
-        tenant_id=principal.tenant_id,
+        
         title="Capacity & SLA Advisor Report",
         summary_lines=[
             f"Processes analysed: {metrics.get('total_processes', 0)} · Online runners: {metrics.get('online_runners', 0)}",
@@ -264,7 +264,7 @@ def list_notifications(
 ) -> List[Dict[str, Any]]:
     """History of Slack/Teams/Email alerts issued by the platform."""
     return notification_service.list_notifications(
-        db, tenant_id=principal.tenant_id, limit=limit, status=status_filter
+        db, limit=limit, status=status_filter
     )
 
 
@@ -275,7 +275,7 @@ def notification_stats(
     principal: AuthenticatedUser = Depends(require_permission("audit:read", "*")),
 ) -> Dict[str, Any]:
     """Delivery success rate and configured channels."""
-    return notification_service.notification_statistics(db, tenant_id=principal.tenant_id, days=days)
+    return notification_service.notification_statistics(db, days=days)
 
 
 @router.post("/notifications/test", summary="Send a test notification")
@@ -286,11 +286,11 @@ def send_test_notification(
 ) -> Dict[str, Any]:
     """Verify Slack/Teams/Email configuration from the admin screen."""
     result = notification_service.send_test_notification(
-        db, tenant_id=principal.tenant_id, severity=payload.Severity
+        db, severity=payload.Severity
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Notification_Test",
         user_id=principal.user_id,
         new_values=result,

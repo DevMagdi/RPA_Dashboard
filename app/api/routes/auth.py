@@ -71,7 +71,7 @@ class ChangePasswordRequest(BaseModel):
     """Self-service password change."""
 
     current_password: str = Field(..., min_length=1, max_length=256)
-    new_password: str = Field(..., min_length=8, max_length=256)
+    new_password: str = Field(..., min_length=12, max_length=256)
 
 
 class RefreshRequest(BaseModel):
@@ -107,7 +107,6 @@ class LoginCredentials(BaseModel):
 
     username: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=1, max_length=512)
-    tenant_key: Optional[str] = Field(None, max_length=50)
     remember: bool = False
 
 
@@ -124,20 +123,18 @@ async def login_credentials(request: Request) -> LoginCredentials:
             raise AuthError("صيغة الطلب غير صحيحة", code="invalid_request")
         username = str(data.get("username") or data.get("Username") or "").strip()
         password = str(data.get("password") or data.get("Password") or "")
-        tenant_key = data.get("tenant_key") or data.get("TenantKey") or request.headers.get("x-tenant-key")
         remember = bool(data.get("remember"))
     else:
         form = await request.form()
         username = str(form.get("username") or form.get("Username") or "").strip()
         password = str(form.get("password") or form.get("Password") or "")
-        tenant_key = form.get("tenant_key") or request.headers.get("x-tenant-key")
         remember = str(form.get("remember") or "").lower() in ("1", "true", "yes", "on")
 
     if not username or not password:
         raise AuthError("اسم المستخدم وكلمة المرور مطلوبان", code="missing_credentials")
 
     return LoginCredentials(
-        username=username, password=password, tenant_key=str(tenant_key) if tenant_key else None, remember=remember
+        username=username, password=password, remember=remember
     )
 
 
@@ -191,28 +188,9 @@ def login(
     _limit=Depends(rate_limit(10, 60, "login")),
 ) -> Dict[str, Any]:
     """Verify the password and either issue tokens or an MFA challenge."""
-    from app.db.repository import fetch_one
 
-    tenant_key = credentials.tenant_key or request.headers.get("x-tenant-key") or "default"
-    tenant = fetch_one(
-        db,
-        "SELECT TenantID, TenantKey, Name FROM Tenants WHERE TenantKey = :k AND IsActive = 1",
-        {"k": tenant_key},
-        operation="auth.tenant_lookup",
-    )
-    if not tenant:
-        # Fall back to the first active tenant so a fresh install still works
-        tenant = fetch_one(
-            db,
-            "SELECT TenantID, TenantKey, Name FROM Tenants WHERE IsActive = 1 ORDER BY TenantID",
-            operation="auth.default_tenant",
-        )
-    if not tenant:
-        raise AuthError("لم يتم تهيئة النظام بعد — راجع مسؤول المنصة", code="no_tenant", status_code=503)
-
-    tenant_id = int(tenant["TenantID"])
     challenge = auth_service.authenticate(
-        db, tenant_id=tenant_id, username=credentials.username, password=credentials.password
+        db, username=credentials.username, password=credentials.password
     )
 
     # MFA challenge — the password was correct but a second factor is required.
@@ -222,7 +200,6 @@ def login(
     if challenge.mfa_required:
         AUTH_EVENTS.labels(event="login", result="mfa_challenge").inc()
         audit_service.record_standalone(
-            tenant_id=tenant_id,
             action_type="Login_MFA_Challenge",
             user_id=challenge.user.user_id if challenge.user else None,
             new_values={"username": credentials.username},
@@ -238,7 +215,6 @@ def login(
 
     if challenge.error:
         audit_service.record_standalone(
-            tenant_id=tenant_id,
             action_type="Login_Failed" if challenge.error_code not in ("locked",) else "Login_Locked",
             user_id=challenge.user.user_id if challenge.user else None,
             new_values={"username": credentials.username, "reason": challenge.error_code},
@@ -257,7 +233,6 @@ def login(
     _set_auth_cookies(response, tokens.pop("refresh_token"))
     audit_service.record(
         db,
-        tenant_id=tenant_id,
         action_type="Login_Success",
         user_id=principal.user_id,
         new_values={"role": principal.role, "mfa": principal.mfa_enabled},
@@ -266,7 +241,6 @@ def login(
     )
     AUTH_EVENTS.labels(event="login", result="success").inc()
     tokens["mfa_required"] = False
-    tokens["tenant"] = {"key": tenant["TenantKey"], "name": tenant["Name"]}
     return tokens
 
 
@@ -287,14 +261,12 @@ def verify_mfa(
     except Exception as exc:
         raise AuthError("انتهت صلاحية خطوة التحقق، أعد تسجيل الدخول", code="mfa_token_invalid") from exc
 
-    tenant_id = int(claims.get("tenant_id") or 0)
     try:
         principal = auth_service.verify_mfa_challenge(
-            db, tenant_id=tenant_id, mfa_token=payload.mfa_token, code=payload.code
+            db, mfa_token=payload.mfa_token, code=payload.code
         )
     except AuthError as exc:
         audit_service.record_standalone(
-            tenant_id=tenant_id,
             action_type="MFA_Failed",
             user_id=int(claims.get("user_id") or 0) or None,
             new_values={"reason": exc.code},
@@ -309,7 +281,6 @@ def verify_mfa(
     _set_auth_cookies(response, tokens.pop("refresh_token"))
     audit_service.record(
         db,
-        tenant_id=tenant_id,
         action_type="Login_Success",
         user_id=principal.user_id,
         new_values={"role": principal.role, "mfa": True},
@@ -357,7 +328,6 @@ def logout(
     if principal:
         audit_service.record(
             db,
-            tenant_id=principal.tenant_id,
             action_type="Logout",
             user_id=principal.user_id,
             ip_address=meta.ip_address,
@@ -377,7 +347,7 @@ def mfa_setup(
     _limit=Depends(rate_limit(10, 300, "mfa_setup")),
 ) -> Dict[str, Any]:
     """Generate a TOTP secret and a provisioning QR code for the current user."""
-    return auth_service.begin_mfa_setup(db, user_id=principal.user_id, tenant_id=principal.tenant_id)
+    return auth_service.begin_mfa_setup(db, user_id=principal.user_id)
 
 
 @router.post("/mfa/confirm", summary="Activate MFA and get backup codes")
@@ -390,11 +360,10 @@ def mfa_confirm(
 ) -> Dict[str, Any]:
     """Verify the first code, enable MFA and return one-time backup codes."""
     codes = auth_service.confirm_mfa_setup(
-        db, user_id=principal.user_id, tenant_id=principal.tenant_id, code=payload.code
+        db, user_id=principal.user_id, code=payload.code
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="MFA_Enabled",
         user_id=principal.user_id,
         ip_address=meta.ip_address,
@@ -416,10 +385,9 @@ def mfa_disable(
     meta=Depends(request_meta),
 ) -> Dict[str, Any]:
     """Turn MFA off after re-authenticating with the account password."""
-    auth_service.disable_mfa(db, user_id=principal.user_id, tenant_id=principal.tenant_id, password=payload.password)
+    auth_service.disable_mfa(db, user_id=principal.user_id, password=payload.password)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="MFA_Disabled",
         user_id=principal.user_id,
         ip_address=meta.ip_address,
@@ -437,11 +405,10 @@ def mfa_backup_codes(
 ) -> Dict[str, Any]:
     """Issue a fresh set of recovery codes (previous set is invalidated)."""
     codes = auth_service.regenerate_backup_codes(
-        db, user_id=principal.user_id, tenant_id=principal.tenant_id, password=payload.password
+        db, user_id=principal.user_id, password=payload.password
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="MFA_BackupCodes_Regenerated",
         user_id=principal.user_id,
         ip_address=meta.ip_address,
@@ -458,7 +425,7 @@ def me(principal: AuthenticatedUser = Depends(current_principal)) -> Dict[str, A
     """Return the authenticated principal with its effective permissions."""
     return {
         **principal.to_public_dict(),
-        "session_count": token_service.count_active_sessions(principal.tenant_id, principal.user_id),
+        "session_count": token_service.count_active_sessions(principal.user_id),
     }
 
 
@@ -473,13 +440,11 @@ def change_password(
     auth_service.change_password(
         db,
         user_id=principal.user_id,
-        tenant_id=principal.tenant_id,
         current_password=payload.current_password,
         new_password=payload.new_password,
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="Password_Changed",
         user_id=principal.user_id,
         ip_address=meta.ip_address,
@@ -494,7 +459,7 @@ def sessions(
     principal: AuthenticatedUser = Depends(current_principal),
 ) -> List[Dict[str, Any]]:
     """List the user's active refresh-token sessions."""
-    return token_service.list_active_sessions(db, tenant_id=principal.tenant_id, user_id=principal.user_id)
+    return token_service.list_active_sessions(db, user_id=principal.user_id)
 
 
 @router.delete("/sessions/{session_id}", summary="Remote logout a device")
@@ -506,11 +471,10 @@ def revoke_session(
 ) -> Dict[str, Any]:
     """Revoke a specific session (stolen laptop, shared device…)."""
     revoked = token_service.revoke_session_by_id(
-        db, tenant_id=principal.tenant_id, user_id=principal.user_id, token_id=session_id
+        db, user_id=principal.user_id, token_id=session_id
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="Session_Revoked",
         user_id=principal.user_id,
         entity_type="RefreshToken",
@@ -530,8 +494,8 @@ def list_users(
     db: Session = Depends(get_db),
     principal: AuthenticatedUser = Depends(require_permission("users:read")),
 ) -> List[Dict[str, Any]]:
-    """Return every user of the tenant (no password material)."""
-    return auth_service.list_users(db, tenant_id=principal.tenant_id)
+    """Return every user (no password material)."""
+    return auth_service.list_users(db)
 
 
 @users_router.post("", status_code=status.HTTP_201_CREATED, summary="Create a user (admin)")
@@ -547,7 +511,6 @@ def create_user(
     password = payload.password or token_urlsafe(12) + "Aa1!"
     user_id = auth_service.create_user(
         db,
-        tenant_id=principal.tenant_id,
         username=payload.username,
         password=password,
         role=payload.role,
@@ -558,7 +521,6 @@ def create_user(
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="Create_User",
         user_id=principal.user_id,
         entity_type="SystemUsers",
@@ -587,11 +549,10 @@ def set_user_active(
         raise AuthError("لا يمكنك تعطيل حسابك الحالي", code="self_disable", status_code=400)
 
     affected = auth_service.set_user_active(
-        db, tenant_id=principal.tenant_id, user_id=user_id, is_active=payload.is_active
+        db, user_id=user_id, is_active=payload.is_active
     )
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="User_Activation_Changed",
         user_id=principal.user_id,
         entity_type="SystemUsers",
@@ -615,10 +576,9 @@ def delete_user(
     if user_id == principal.user_id:
         raise AuthError("لا يمكنك حذف حسابك الحالي", code="self_delete", status_code=400)
 
-    affected = auth_service.soft_delete_user(db, tenant_id=principal.tenant_id, user_id=user_id)
+    affected = auth_service.soft_delete_user(db, user_id=user_id)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
         action_type="Delete_User",
         user_id=principal.user_id,
         entity_type="SystemUsers",

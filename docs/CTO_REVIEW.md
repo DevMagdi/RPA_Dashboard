@@ -11,7 +11,7 @@ tracked items — none blocks launch, each has an owner-level mitigation.
 | Previous finding | Status in 3.0.0 |
 |---|---|
 | No tests / no CI / no Docker | ✅ 257 tests + 80 % gate, GitHub Actions (backend/frontend/security), Docker + compose |
-| Tenant admin could reach other tenants | ✅ `require_platform_admin` + regression tests |
+| Cross-scope administration | ✅ `require_organization_admin` (installation SuperAdmin only) + regression tests |
 | Vendor status `"In Progress"` uncounted | ✅ separator-insensitive normalisation + tests |
 | Provider catalogue empty without credentials | ✅ class-level `CAPABILITIES` |
 | SSE unusable from the browser | ✅ `?token=` fallback (ADR-003) |
@@ -26,13 +26,13 @@ tracked items — none blocks launch, each has an owner-level mitigation.
 | R3 | In-process scheduler runs in the API process; >1 worker with `SCHEDULER_ENABLED=true` duplicates jobs | Medium | Documented: exactly one scheduler worker (compose default `WEB_CONCURRENCY=1`). Jobs are idempotent. Plan: leader election via Redis lock. |
 | R4 | SQLite is supported for tests/demos but not for multi-user production | Low | Deployment docs mandate MSSQL/PostgreSQL in prod; startup warns on SQLite outside test/dev. |
 | R5 | Vendor adapters depend on UiPath/AA payload shapes that change between vendor releases | Medium | Adapters are defensive (`_first` key lookup, UNKNOWN status fallback); samples in `docs/samples/` pin current shapes. Add contract tests per vendor upgrade. |
-| R6 | Fernet vault: a single `FERNET_KEY` protects all bot credentials | High | Key held in Key Vault/Vault in prod; rotation endpoint exists (`/api/vault/rotate-key`). Plan: per-tenant keys + envelope encryption. |
+| R6 | Fernet vault: a single `FERNET_KEY` protects all bot credentials | High | Key held in Key Vault/Vault in prod; rotation endpoint exists (`/api/vault/rotate-key`). Plan: envelope encryption with per-secret data keys. |
 | R7 | Rate limiting falls back to in-memory buckets when Redis is down — limits become per-worker | Low | Fail-open by design for availability; alert on Redis health in `/health/detail`. |
 | R8 | Demo seed ships a well-known bootstrap password (`ChangeMe_Admin1!`) | High if misused | Only seeded with `DB_SEED_DEMO`/test or first bootstrap; `must_change_password` flow exists. Prod runbook: rotate immediately, prefer `BOOTSTRAP_ADMIN_PASSWORD` injection. |
 | R9 | Notifications (SMTP/Slack/Teams) are synchronous best-effort with cooldown; no delivery queue | Low | Cooldown + NotificationLog audit; plan: outbox table + worker. |
 | R10 | Frontend bundle has no E2E browser tests in CI yet (Playwright is a dev-dependency only) | Medium | API surface is contract-tested; add Playwright smoke (login → dashboard → capacity) as a follow-up. |
 | R11 | `pyodbc`/MS ODBC driver adds image weight and a Microsoft apt dependency | Low | Only the API image carries it; PostgreSQL deployments may strip it in a slimmer variant. |
-| R12 | Audit log grows unbounded within the retention window (730 d default) | Low | Retention job + `/api/tenants/{id}/retention/run`; partition/archive strategy at scale. |
+| R12 | Audit log grows unbounded within the retention window (730 d default) | Low | Retention job + `/api/organization/retention/run`; partition/archive strategy at scale. |
 
 ## Sign-off checklist
 

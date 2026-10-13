@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 
-// Design tokens live in CSS variables (see src/index.css) so that a tenant can
+// Design tokens live in CSS variables (see src/index.css) so the organization can
 // be re-branded at runtime — the API returns primary/accent colours in
 // `GET /api/branding` and the SPA writes them onto :root.  Tailwind therefore
 // references the variables instead of fixed hex values.

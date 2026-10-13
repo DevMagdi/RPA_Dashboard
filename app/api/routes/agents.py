@@ -83,22 +83,20 @@ def agent_enroll(
 
     machine = fetch_one(
         db,
-        "SELECT TenantID, MachineName FROM BotInfrastructure WHERE MachineName = :m",
+        "SELECT MachineName FROM BotInfrastructure WHERE MachineName = :m",
         {"m": payload.MachineName},
         operation="agents.enroll_lookup",
     )
     if not machine:
         raise HTTPException(status_code=404, detail="الجهاز غير مسجل — أضفه من لوحة التحكم أولاً")
 
-    tenant_id = int(machine["TenantID"])
     try:
         result = infra_service.enroll_agent(
-            db, tenant_id=tenant_id, machine_name=payload.MachineName, enrollment_code=payload.EnrollmentCode
+            db, machine_name=payload.MachineName, enrollment_code=payload.EnrollmentCode
         )
     except InfraError as exc:
         audit_service.record(
             db,
-            tenant_id=tenant_id,
             action_type="Agent_Enroll_Failed",
             entity_type="BotInfrastructure",
             entity_id=payload.MachineName,
@@ -110,7 +108,6 @@ def agent_enroll(
 
     audit_service.record(
         db,
-        tenant_id=tenant_id,
         action_type="Agent_Enroll",
         entity_type="BotInfrastructure",
         entity_id=payload.MachineName,
@@ -136,7 +133,6 @@ def agent_heartbeat(
 
     infra_service.record_heartbeat(
         db,
-        tenant_id=int(machine["TenantID"]),
         machine_name=payload.MachineName,
         cpu_usage=payload.CPU_Usage,
         ram_usage=payload.RAM_Usage,
@@ -159,13 +155,11 @@ async def acknowledge_command(
     if not machine:
         raise HTTPException(status_code=401, detail="توكن الجهاز غير صحيح")
 
-    tenant_id = int(machine["TenantID"])
     affected = infra_service.acknowledge_command(
-        db, tenant_id=tenant_id, command_id=payload.CommandID, success=payload.Success, result=payload.Result
+        db, command_id=payload.CommandID, success=payload.Success, result=payload.Result
     )
     audit_service.record(
         db,
-        tenant_id=tenant_id,
         action_type="Command_Acknowledged",
         entity_type="BotCommand",
         entity_id=str(payload.CommandID),
@@ -175,7 +169,6 @@ async def acknowledge_command(
     await hub.publish(
         "command_ack",
         {"command_id": payload.CommandID, "machine": payload.MachineName, "success": payload.Success},
-        tenant_id=tenant_id,
     )
     return {"status": "success", "affected": affected}
 
@@ -183,16 +176,23 @@ async def acknowledge_command(
 # --------------------------------------------------------------------------- #
 # WebSocket control channel
 # --------------------------------------------------------------------------- #
-def _extract_agent_token(websocket: WebSocket) -> tuple[Optional[str], bool]:
-    """Return ``(token, from_query)`` supporting the modern and legacy transports."""
+def _extract_agent_token(websocket: WebSocket) -> Optional[str]:
+    """Extract the agent token from headers only.
+
+    Query-string tokens are **rejected**: URLs are recorded in proxy and
+    access logs, which would leak a long-lived machine credential. Agents
+    must use the ``X-Agent-Token`` header or the
+    ``Sec-WebSocket-Protocol: agent-token.<token>`` subprotocol.
+    """
     header_token = websocket.headers.get("x-agent-token")
     if header_token:
-        return header_token, False
-    protocol = websocket.headers.get("sec-websocket-protocol")
-    if protocol and protocol.lower().startswith("agent-token."):
-        return protocol.split(".", 1)[1], False
-    query_token = websocket.query_params.get("token")
-    return query_token, bool(query_token)
+        return header_token
+    protocol = websocket.headers.get("sec-websocket-protocol") or ""
+    for part in protocol.split(","):
+        part = part.strip()
+        if part.lower().startswith("agent-token."):
+            return part.split(".", 1)[1]
+    return None
 
 
 @router.websocket("/ws/agent/{machine_name}")
@@ -202,14 +202,7 @@ async def agent_socket(websocket: WebSocket, machine_name: str) -> None:
     The connection is authenticated *before* ``accept()`` and the machine's
     status is always reset in a ``finally`` block.
     """
-    token, from_query = _extract_agent_token(websocket)
-    if from_query:
-        logger.warning(
-            "Agent %s authenticated with a query-string token — migrate to the X-Agent-Token header "
-            "(query strings are recorded in proxy access logs)",
-            machine_name,
-        )
-
+    token = _extract_agent_token(websocket)
     if not token:
         await websocket.close(code=1008)
         return
@@ -223,12 +216,11 @@ async def agent_socket(websocket: WebSocket, machine_name: str) -> None:
             logger.warning("Agent authentication failed for %s", machine_name)
             await websocket.close(code=1008)
             return
-        tenant_id = int(machine["TenantID"])
-        infra_service.set_machine_status(session, tenant_id=tenant_id, machine_name=machine_name, status="Online")
+        infra_service.set_machine_status(session, machine_name=machine_name, status="Online")
 
     await websocket.accept()
     await hub.register_agent(machine_name, websocket)
-    logger.info("Agent socket opened: %s (tenant=%s)", machine_name, tenant_id)
+    logger.info("Agent socket opened: %s", machine_name)
 
     settings = get_settings()
     try:
@@ -246,7 +238,6 @@ async def agent_socket(websocket: WebSocket, machine_name: str) -> None:
                 with session_scope() as session:
                     infra_service.record_heartbeat(
                         session,
-                        tenant_id=tenant_id,
                         machine_name=machine_name,
                         cpu_usage=int(data.get("CPU_Usage") or 0),
                         ram_usage=int(data.get("RAM_Usage") or 0),
@@ -263,26 +254,24 @@ async def agent_socket(websocket: WebSocket, machine_name: str) -> None:
                         "ram": int(data.get("RAM_Usage") or 0),
                         "hdd": int(data.get("HDD_Usage") or 0),
                     },
-                    tenant_id=tenant_id,
                 )
             elif kind == "command_ack":
                 with session_scope() as session:
                     infra_service.acknowledge_command(
                         session,
-                        tenant_id=tenant_id,
                         command_id=int(data.get("command_id") or 0),
                         success=bool(data.get("success", True)),
                         result=str(data.get("result") or "")[:500],
                     )
-                await hub.publish("command_ack", {"machine": machine_name, **data}, tenant_id=tenant_id)
+                await hub.publish("command_ack", {"machine": machine_name, **data} )
             elif kind == "run_event":
                 # Agents may stream run lifecycle events over the socket
                 with session_scope() as session:
                     event = str(data.get("event") or "").lower()
                     if event == "start":
-                        run_service_start(session, tenant_id, machine_name, data)
+                        run_service_start(session, machine_name, data)
                     elif event == "complete":
-                        run_service_complete(session, tenant_id, data)
+                        run_service_complete(session, data)
     except WebSocketDisconnect:
         logger.info("Agent socket closed by peer: %s", machine_name)
     except asyncio.CancelledError:  # pragma: no cover - server shutdown
@@ -294,21 +283,20 @@ async def agent_socket(websocket: WebSocket, machine_name: str) -> None:
         try:
             with session_scope() as session:
                 infra_service.set_machine_status(
-                    session, tenant_id=tenant_id, machine_name=machine_name, status="Offline"
+                    session, machine_name=machine_name, status="Offline"
                 )
         except Exception as exc:  # pragma: no cover - DB down during shutdown
             logger.error("Failed to mark %s offline: %s", machine_name, exc)
         logger.info("Agent socket cleanup complete: %s (stale threshold %ss)", machine_name, settings.AGENT_STALE_SECONDS)
 
 
-def run_service_start(session: Session, tenant_id: int, machine_name: str, data: Dict[str, Any]) -> None:
+def run_service_start(session: Session, machine_name: str, data: Dict[str, Any]) -> None:
     """Handle a run-start event streamed by an agent (best effort)."""
     from app.services import run_service
 
     try:
         run_service.start_run(
             session,
-            tenant_id=tenant_id,
             process_name=str(data.get("process_name") or ""),
             request_id=data.get("request_id"),
             idempotency_key=data.get("idempotency_key"),
@@ -319,7 +307,7 @@ def run_service_start(session: Session, tenant_id: int, machine_name: str, data:
         logger.warning("Agent run-start rejected: %s", exc)
 
 
-def run_service_complete(session: Session, tenant_id: int, data: Dict[str, Any]) -> None:
+def run_service_complete(session: Session, data: Dict[str, Any]) -> None:
     """Handle a run-complete event streamed by an agent (best effort)."""
     from app.services import run_service
 
@@ -329,7 +317,6 @@ def run_service_complete(session: Session, tenant_id: int, data: Dict[str, Any])
     try:
         run_service.complete_run(
             session,
-            tenant_id=tenant_id,
             run_id=int(run_id),
             status=str(data.get("status") or "Completed"),
             transactions_count=int(data.get("transactions_count") or 0),

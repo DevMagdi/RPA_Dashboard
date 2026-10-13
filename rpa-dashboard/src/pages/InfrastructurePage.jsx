@@ -90,7 +90,7 @@ export default function InfrastructurePage() {
 
   const canWrite = has('infrastructure:write') || has('commands:write') || has('*')
   const rows = machines.data || []
-  // `/api/platform/health` returns the tenant's provider (an object) — normalise
+  // `/api/platform/health` returns the configured provider (an object) — normalise
   const providers = Array.isArray(platformHealth.data) ? platformHealth.data : platformHealth.data ? [platformHealth.data] : []
 
   const stats = summary.data || EMPTY_STATS

@@ -21,7 +21,8 @@ const LifecyclePage = lazy(() => import('./pages/LifecyclePage'))
 const AuditPage = lazy(() => import('./pages/AuditPage'))
 const HealthPage = lazy(() => import('./pages/HealthPage'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
-const TenantsPage = lazy(() => import('./pages/TenantsPage'))
+const OrganizationPage = lazy(() => import('./pages/OrganizationPage'))
+const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 function PageFallback() {
@@ -89,7 +90,8 @@ export default function App() {
                       <Route path="audit" element={<AuditPage />} />
                       <Route path="health" element={<HealthPage />} />
                       <Route path="users" element={<RequireAuth permission="users:read"><UsersPage /></RequireAuth>} />
-                      <Route path="tenants" element={<RequireAuth permission="*"><TenantsPage /></RequireAuth>} />
+                      <Route path="organization" element={<RequireAuth permission="*"><OrganizationPage /></RequireAuth>} />
+                      <Route path="alerts" element={<AlertsPage />} />
                       <Route path="settings" element={<SettingsPage />} />
                       <Route path="*" element={<NotFound />} />
                     </Route>

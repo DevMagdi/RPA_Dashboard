@@ -1,0 +1,8 @@
+# Ruff — deliberately scoped to correctness rules (pyflakes + syntax errors).
+# Style/formatting stays with the existing codebase conventions; CI gates on
+# real defects (unused imports, undefined names) without a mass reformat.
+line-length = 140
+target-version = "py311"
+
+[lint]
+select = ["F", "E9"]

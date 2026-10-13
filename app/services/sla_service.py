@@ -32,12 +32,12 @@ def _classify(estimated_minutes: float, sla_minutes: float, warning_ratio: float
 
 
 def get_workload(
-    session: Session, *, tenant_id: int, department_scope: str = "ALL", process_name: Optional[str] = None
+    session: Session, *, department_scope: str = "ALL", process_name: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """Queue workload with predicted completion and SLA verdict per process."""
     flavor = get_flavor()
-    where = ["q.TenantID = :t", f"q.IsDeleted = {flavor.false_literal}", f"c.IsDeleted = {flavor.false_literal}"]
-    params: Dict[str, Any] = {"t": tenant_id}
+    where = [f"q.IsDeleted = {flavor.false_literal}", f"c.IsDeleted = {flavor.false_literal}"]
+    params: Dict[str, Any] = {}
 
     if department_scope and department_scope.upper() != "ALL":
         where.append("c.Department = :dept")
@@ -53,7 +53,7 @@ def get_workload(
                q.LastUpdatedAt, c.SLATargetMinutes, c.SLAWarningRatio, c.Department, c.Criticality,
                c.ExpectedRunsPerDay, c.BotName
         FROM ProcessQueues q
-        JOIN ProcessConfig c ON q.ProcessName = c.ProcessName AND c.TenantID = q.TenantID
+        JOIN ProcessConfig c ON q.ProcessName = c.ProcessName
         WHERE {' AND '.join(where)}
         ORDER BY q.PendingItems DESC
         """,
@@ -67,10 +67,10 @@ def get_workload(
         f"""
         SELECT AssignedProcess AS process_name, COUNT(1) AS online
         FROM BotInfrastructure
-        WHERE TenantID = :t AND Status = 'Online' AND IsDeleted = {flavor.false_literal}
+        WHERE Status = 'Online' AND IsDeleted = {flavor.false_literal}
         GROUP BY AssignedProcess
         """,
-        {"t": tenant_id},
+        {},
         operation="sla.runners",
     )
     online_by_process = {str(r.get("process_name") or ""): int(r.get("online") or 0) for r in runners}
@@ -111,7 +111,7 @@ def get_workload(
 def update_queue_telemetry(
     session: Session,
     *,
-    tenant_id: int,
+    
     process_name: str,
     pending_items: int,
     active_items: int,
@@ -121,8 +121,8 @@ def update_queue_telemetry(
     """Upsert queue depth (called by the queues telemetry API or the sync job)."""
     existing = fetch_one(
         session,
-        "SELECT QueueID FROM ProcessQueues WHERE TenantID = :t AND ProcessName = :p",
-        {"t": tenant_id, "p": process_name},
+        "SELECT QueueID FROM ProcessQueues WHERE ProcessName = :p",
+        {"p": process_name},
         operation="sla.queue_lookup",
     )
 
@@ -139,17 +139,16 @@ def update_queue_telemetry(
             session,
             ProcessQueues,
             values,
-            [ProcessQueues.c.ProcessName == process_name, ProcessQueues.c.TenantID == tenant_id],
+            [ProcessQueues.c.ProcessName == process_name],
         )
     else:
-        insert_row(session, ProcessQueues, {"TenantID": tenant_id, "ProcessName": process_name, **values})
+        insert_row(session, ProcessQueues, {"ProcessName": process_name, **values})
 
     if write_snapshot:
         insert_row(
             session,
             QueueSnapshots,
             {
-                "TenantID": tenant_id,
                 "ProcessName": process_name,
                 "PendingItems": values["PendingItems"],
                 "ActiveItems": values["ActiveItems"],
@@ -161,12 +160,12 @@ def update_queue_telemetry(
 
 
 def backlog_trend(
-    session: Session, *, tenant_id: int, process_name: Optional[str] = None, hours: int = 48
+    session: Session, *, process_name: Optional[str] = None, hours: int = 48
 ) -> List[Dict[str, Any]]:
     """Backlog trend from queue snapshots (used by the workload chart)."""
     flavor = get_flavor()
-    where = ["TenantID = :t", f"CapturedAt >= {flavor.days_ago(2)}"]
-    params: Dict[str, Any] = {"t": tenant_id}
+    where = [f"CapturedAt >= {flavor.days_ago(2)}"]
+    params: Dict[str, Any] = {}
     if process_name:
         where.append("ProcessName = :p")
         params["p"] = process_name
@@ -196,9 +195,9 @@ def backlog_trend(
     ]
 
 
-def sla_summary(session: Session, *, tenant_id: int, department_scope: str = "ALL") -> Dict[str, Any]:
+def sla_summary(session: Session, *, department_scope: str = "ALL") -> Dict[str, Any]:
     """Headline SLA numbers for dashboard widgets."""
-    workloads = get_workload(session, tenant_id=tenant_id, department_scope=department_scope)
+    workloads = get_workload(session, department_scope=department_scope)
     return {
         "processes": len(workloads),
         "healthy": len([w for w in workloads if w["SLAStatus"] == STATUS_HEALTHY]),

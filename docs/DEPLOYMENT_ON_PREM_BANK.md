@@ -76,8 +76,41 @@ scale read capacity later by adding scheduler-less workers behind the proxy.
 ## 6. Go-live checklist
 
 1. Rotate the bootstrap admin password; enable MFA for all operators.
-2. Create tenants per business unit; point each at its UiPath/AA platform
+2. Configure the single organization (branding + platform provider) from the
+   Organization page; department scoping separates business units.
    with `vault:` secret references.
 3. Enrol runner agents (one-time enrolment code → permanent hashed token).
 4. Run `python scripts/verify_dashboard.py https://coe.bank.local` (58 checks).
 5. Schedule DB backups; test a restore; set the retention window per policy.
+
+## 7. Windows Service (alternative to Docker/systemd)
+
+```powershell
+# As Administrator, with Python 3.12 + NSSM installed:
+powershell -ExecutionPolicy Bypass -File deploy\install-windows-service.ps1
+```
+
+The service binds `127.0.0.1:8000`; IIS with ARR (or nginx for Windows)
+terminates TLS in front of it. All secrets are injected into the service
+account environment from the bank vault — never into files in the repo.
+
+## 8. Backup & restore
+
+- **SQL Server**: nightly full backup + hourly transaction-log backups of
+  `RPA_Dashboard` to the bank backup share; test-restore quarterly into a
+  staging VM and run `scripts/verify_dashboard.py` against it.
+- **Configuration**: all runtime configuration is environment variables —
+  keep the (secret-free) variable *names* in the change record; values stay
+  in Azure Key Vault / HashiCorp Vault (private endpoints only).
+- **Vault keys**: back up `FERNET_KEY` (and previous keys for MultiFernet
+  rotation) in the vault with dual control; losing it makes stored bot
+  credentials unrecoverable by design.
+
+## 9. Health & monitoring
+
+- `GET /health` (liveness), `GET /health/detail` (DB, Redis, scheduler,
+  security posture), `GET /metrics` (Prometheus; restrict to monitoring VLAN).
+- Point the bank NMS at `/health/detail` every 60 s; alert on
+  `database != ok`, scheduler stalls, and the in-app alert engine's
+  `/api/alerts/count` for operational alerts.
+- Logs are structured (correlation IDs); ship them to the bank SIEM.

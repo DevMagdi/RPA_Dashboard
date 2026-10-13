@@ -52,7 +52,7 @@ def issue_refresh_token(
     session: Session,
     *,
     user_id: int,
-    tenant_id: int,
+    
     username: str,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
@@ -69,7 +69,6 @@ def issue_refresh_token(
         session,
         RefreshTokens,
         {
-            "TenantID": tenant_id,
             "UserID": user_id,
             "TokenHash": f"pending-{_now().timestamp()}",
             "ExpiresAt": expires_at,
@@ -79,7 +78,7 @@ def issue_refresh_token(
     )
 
     raw = create_refresh_token(
-        username, user_id=user_id, tenant_id=tenant_id, token_id=str(token_id), expires_delta=timedelta(days=expires_days or settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        username, user_id=user_id, token_id=str(token_id), expires_delta=timedelta(days=expires_days or settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     update_rows(
         session,
@@ -116,7 +115,7 @@ def validate_refresh_token(session: Session, raw_token: str) -> Dict[str, Any]:
         revoke_all_for_user(
             session,
             user_id=int(row["UserID"]),
-            tenant_id=int(row["TenantID"]),
+            
             reason="refresh_token_reuse_detected",
         )
         raise TokenError("refresh token already used — all sessions revoked for safety")
@@ -141,7 +140,7 @@ def rotate_refresh_token(
     issued = issue_refresh_token(
         session,
         user_id=int(current["UserID"]),
-        tenant_id=int(current["TenantID"]),
+        
         username=username,
         ip_address=ip_address,
         user_agent=user_agent,
@@ -174,7 +173,7 @@ def revoke_token(session: Session, raw_token: str, *, reason: str = "logout") ->
     )
 
 
-def revoke_all_for_user(session: Session, *, user_id: int, tenant_id: int, reason: str = "revoke_all") -> int:
+def revoke_all_for_user(session: Session, *, user_id: int, reason: str = "revoke_all") -> int:
     """Revoke every active session of a user (panic button / password change)."""
     return update_rows(
         session,
@@ -182,13 +181,12 @@ def revoke_all_for_user(session: Session, *, user_id: int, tenant_id: int, reaso
         {"RevokedAt": _now(), "RevokedReason": reason[:200]},
         [
             RefreshTokens.c.UserID == user_id,
-            RefreshTokens.c.TenantID == tenant_id,
             RefreshTokens.c.RevokedAt.is_(None),
         ],
     )
 
 
-def list_active_sessions(session: Session, *, tenant_id: int, user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+def list_active_sessions(session: Session, *, user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     """Return the user's active sessions (for the *Security* screen)."""
     flavor = get_flavor()
     return fetch_all(
@@ -196,15 +194,15 @@ def list_active_sessions(session: Session, *, tenant_id: int, user_id: int, limi
         f"""
         SELECT {flavor.top(int(limit))} TokenID, IPAddress, UserAgent, CreatedAt, ExpiresAt, LastUsedAt
         FROM RefreshTokens
-        WHERE TenantID = :t AND UserID = :u AND RevokedAt IS NULL AND ExpiresAt > {flavor.now()}
+        WHERE UserID = :u AND RevokedAt IS NULL AND ExpiresAt > {flavor.now()}
         ORDER BY CreatedAt DESC{flavor.limit(int(limit))}
         """,
-        {"t": tenant_id, "u": user_id},
+        {"u": user_id},
         operation="token.sessions",
     )
 
 
-def revoke_session_by_id(session: Session, *, tenant_id: int, user_id: int, token_id: int) -> int:
+def revoke_session_by_id(session: Session, *, user_id: int, token_id: int) -> int:
     """Remote-logout a specific device."""
     return update_rows(
         session,
@@ -213,7 +211,6 @@ def revoke_session_by_id(session: Session, *, tenant_id: int, user_id: int, toke
         [
             RefreshTokens.c.TokenID == token_id,
             RefreshTokens.c.UserID == user_id,
-            RefreshTokens.c.TenantID == tenant_id,
         ],
     )
 
@@ -228,13 +225,13 @@ def purge_expired(session: Session, *, older_than_days: int = 30) -> int:
     )
 
 
-def count_active_sessions(tenant_id: int, user_id: int) -> int:
+def count_active_sessions(user_id: int) -> int:
     """Active session counter used by the dashboard security widget."""
     with session_scope() as session:
         row = fetch_one(
             session,
-            "SELECT COUNT(1) AS c FROM RefreshTokens WHERE TenantID = :t AND UserID = :u AND RevokedAt IS NULL",
-            {"t": tenant_id, "u": user_id},
+            "SELECT COUNT(1) AS c FROM RefreshTokens WHERE UserID = :u AND RevokedAt IS NULL",
+            {"u": user_id},
             operation="token.count",
         )
     return int((row or {}).get("c") or 0)

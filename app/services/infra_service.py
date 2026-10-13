@@ -41,11 +41,11 @@ def _now() -> datetime:
 # --------------------------------------------------------------------------- #
 # Fleet registry
 # --------------------------------------------------------------------------- #
-def list_machines(session: Session, *, tenant_id: int, include_deleted: bool = False) -> List[Dict[str, Any]]:
+def list_machines(session: Session, *, include_deleted: bool = False) -> List[Dict[str, Any]]:
     """Fleet inventory enriched with health status and utilisation."""
     flavor = get_flavor()
     settings = get_settings()
-    where = ["TenantID = :t"]
+    where = ["1 = 1"]
     if not include_deleted:
         where.append(f"IsDeleted = {flavor.false_literal}")
 
@@ -59,7 +59,7 @@ def list_machines(session: Session, *, tenant_id: int, include_deleted: bool = F
         WHERE {' AND '.join(where)}
         ORDER BY MachineName
         """,
-        {"t": tenant_id},
+        {},
         operation="infra.list",
     )
 
@@ -90,9 +90,9 @@ def list_machines(session: Session, *, tenant_id: int, include_deleted: bool = F
     return rows
 
 
-def fleet_summary(session: Session, *, tenant_id: int) -> Dict[str, Any]:
+def fleet_summary(session: Session) -> Dict[str, Any]:
     """Aggregate fleet KPIs for the infrastructure header cards."""
-    machines = list_machines(session, tenant_id=tenant_id)
+    machines = list_machines(session)
     online = [m for m in machines if m.get("Status") == "Online"]
     return {
         "total": len(machines),
@@ -111,7 +111,7 @@ def fleet_summary(session: Session, *, tenant_id: int) -> Dict[str, Any]:
 def register_machine(
     session: Session,
     *,
-    tenant_id: int,
+    
     machine_name: str,
     assigned_process: Optional[str],
     runner_type: str,
@@ -128,8 +128,8 @@ def register_machine(
 
     existing = fetch_one(
         session,
-        "SELECT MachineID FROM BotInfrastructure WHERE TenantID = :t AND MachineName = :m",
-        {"t": tenant_id, "m": machine_name},
+        "SELECT MachineID FROM BotInfrastructure WHERE MachineName = :m",
+        {"m": machine_name},
         operation="infra.exists",
     )
     if existing:
@@ -138,8 +138,8 @@ def register_machine(
     if assigned_process:
         process = fetch_one(
             session,
-            "SELECT 1 AS x FROM ProcessConfig WHERE TenantID = :t AND ProcessName = :p",
-            {"t": tenant_id, "p": assigned_process},
+            "SELECT 1 AS x FROM ProcessConfig WHERE ProcessName = :p",
+            {"p": assigned_process},
             operation="infra.validate_process",
         )
         if not process:
@@ -149,7 +149,6 @@ def register_machine(
         session,
         BotInfrastructure,
         {
-            "TenantID": tenant_id,
             "MachineName": machine_name[:100],
             "AssignedProcess": (assigned_process or "")[:100] or None,
             "Status": "Offline",
@@ -164,14 +163,14 @@ def register_machine(
         },
     )
 
-    code = issue_enrollment_code(session, tenant_id=tenant_id, machine_name=machine_name)
+    code = issue_enrollment_code(session, machine_name=machine_name)
     return {"machine_id": int(machine_id), **code}
 
 
 def update_machine(
     session: Session,
     *,
-    tenant_id: int,
+    
     machine_name: str,
     assigned_process: Optional[str] = None,
     runner_type: Optional[str] = None,
@@ -199,14 +198,14 @@ def update_machine(
         session,
         BotInfrastructure,
         values,
-        [BotInfrastructure.c.MachineName == machine_name, BotInfrastructure.c.TenantID == tenant_id],
+        [BotInfrastructure.c.MachineName == machine_name],
     )
 
 
 def record_heartbeat(
     session: Session,
     *,
-    tenant_id: int,
+    
     machine_name: str,
     cpu_usage: int,
     ram_usage: int,
@@ -235,41 +234,41 @@ def record_heartbeat(
         session,
         BotInfrastructure,
         values,
-        [BotInfrastructure.c.MachineName == machine_name, BotInfrastructure.c.TenantID == tenant_id],
+        [BotInfrastructure.c.MachineName == machine_name],
     )
     if not affected:
-        logger.warning("Heartbeat from unknown machine %s (tenant=%s)", machine_name, tenant_id)
+        logger.warning("Heartbeat from unknown machine %s", machine_name)
     return affected
 
 
-def set_machine_status(session: Session, *, tenant_id: int, machine_name: str, status: str) -> int:
+def set_machine_status(session: Session, *, machine_name: str, status: str) -> int:
     """Force a status transition (used by the WebSocket connect/disconnect hooks)."""
     return update_rows(
         session,
         BotInfrastructure,
         {"Status": status, "LastPing": _now(), "UpdatedAt": _now()},
-        [BotInfrastructure.c.MachineName == machine_name, BotInfrastructure.c.TenantID == tenant_id],
+        [BotInfrastructure.c.MachineName == machine_name],
     )
 
 
-def soft_delete_machine(session: Session, *, tenant_id: int, machine_name: str) -> int:
+def soft_delete_machine(session: Session, *, machine_name: str) -> int:
     """Remove a runner from the fleet without losing its telemetry history."""
     return update_rows(
         session,
         BotInfrastructure,
         {"IsDeleted": True, "DeletedAt": _now(), "Status": "Offline", "AgentToken": None},
-        [BotInfrastructure.c.MachineName == machine_name, BotInfrastructure.c.TenantID == tenant_id],
+        [BotInfrastructure.c.MachineName == machine_name],
     )
 
 
 # --------------------------------------------------------------------------- #
 # Agent tokens & enrolment
 # --------------------------------------------------------------------------- #
-def issue_enrollment_code(session: Session, *, tenant_id: int, machine_name: str) -> Dict[str, Any]:
+def issue_enrollment_code(session: Session, *, machine_name: str) -> Dict[str, Any]:
     """Create a one-time enrolment code (previous unused codes are invalidated)."""
     settings = get_settings()
     # SQL Server has no portable DELETE...RETURNING, so delete then insert
-    delete_rows(session, AgentEnrollmentCodes, [AgentEnrollmentCodes.c.MachineName == machine_name, AgentEnrollmentCodes.c.TenantID == tenant_id])
+    delete_rows(session, AgentEnrollmentCodes, [AgentEnrollmentCodes.c.MachineName == machine_name])
 
     code = generate_enrollment_code()
     expires_at = _now() + timedelta(minutes=settings.ENROLLMENT_TTL_MINUTES)
@@ -277,7 +276,6 @@ def issue_enrollment_code(session: Session, *, tenant_id: int, machine_name: str
         session,
         AgentEnrollmentCodes,
         {
-            "TenantID": tenant_id,
             "MachineName": machine_name[:100],
             "EnrollmentCode": code,
             "ExpiresAt": expires_at,
@@ -291,17 +289,17 @@ def issue_enrollment_code(session: Session, *, tenant_id: int, machine_name: str
     }
 
 
-def enroll_agent(session: Session, *, tenant_id: int, machine_name: str, enrollment_code: str) -> Dict[str, Any]:
+def enroll_agent(session: Session, *, machine_name: str, enrollment_code: str) -> Dict[str, Any]:
     """Exchange a valid enrolment code for a permanent (hashed) agent token."""
     settings = get_settings()
     code_row = fetch_one(
         session,
         f"""
         SELECT CodeID FROM AgentEnrollmentCodes
-        WHERE TenantID = :t AND MachineName = :m AND EnrollmentCode = :c AND IsUsed = 0
+        WHERE MachineName = :m AND EnrollmentCode = :c AND IsUsed = 0
           AND ExpiresAt >= {get_flavor().now()}
         """,
-        {"t": tenant_id, "m": machine_name, "c": enrollment_code},
+        {"m": machine_name, "c": enrollment_code},
         operation="infra.enroll_lookup",
     )
     if not code_row:
@@ -309,8 +307,8 @@ def enroll_agent(session: Session, *, tenant_id: int, machine_name: str, enrollm
 
     machine = fetch_one(
         session,
-        "SELECT MachineID FROM BotInfrastructure WHERE TenantID = :t AND MachineName = :m",
-        {"t": tenant_id, "m": machine_name},
+        "SELECT MachineID FROM BotInfrastructure WHERE MachineName = :m",
+        {"m": machine_name},
         operation="infra.enroll_machine",
     )
     if not machine:
@@ -321,7 +319,7 @@ def enroll_agent(session: Session, *, tenant_id: int, machine_name: str, enrollm
         session,
         BotInfrastructure,
         {"AgentToken": token_hash(raw_token), "AgentTokenIssuedAt": _now(), "Status": "Online", "LastPing": _now()},
-        [BotInfrastructure.c.MachineName == machine_name, BotInfrastructure.c.TenantID == tenant_id],
+        [BotInfrastructure.c.MachineName == machine_name],
     )
     update_rows(
         session,
@@ -329,11 +327,11 @@ def enroll_agent(session: Session, *, tenant_id: int, machine_name: str, enrollm
         {"IsUsed": True},
         [AgentEnrollmentCodes.c.CodeID == int(code_row["CodeID"])],
     )
-    logger.info("Agent enrolled: %s (tenant=%s)", machine_name, tenant_id)
+    logger.info("Agent enrolled: %s", machine_name)
     return {"agent_token": raw_token, "heartbeat_interval_seconds": settings.AGENT_STALE_SECONDS // 6 or 5}
 
 
-def verify_agent_token(session: Session, *, machine_name: str, token: str, tenant_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def verify_agent_token(session: Session, *, machine_name: str, token: str) -> Optional[Dict[str, Any]]:
     """Validate an agent token (constant-time) and return the machine row.
 
     The token is stored hashed with a pepper; a machine whose token was rotated
@@ -344,16 +342,10 @@ def verify_agent_token(session: Session, *, machine_name: str, token: str, tenan
     if not token:
         return None
 
-    where = "MachineName = :m"
-    params: Dict[str, Any] = {"m": machine_name}
-    if tenant_id is not None:
-        where += " AND TenantID = :t"
-        params["t"] = tenant_id
-
     row = fetch_one(
         session,
-        f"SELECT MachineID, TenantID, MachineName, AgentToken FROM BotInfrastructure WHERE {where}",
-        params,
+        "SELECT MachineID, MachineName, AgentToken FROM BotInfrastructure WHERE MachineName = :m",
+        {"m": machine_name},
         operation="infra.verify_agent",
     )
     if not row or not row.get("AgentToken"):
@@ -366,13 +358,13 @@ def verify_agent_token(session: Session, *, machine_name: str, token: str, tenan
     return row
 
 
-def revoke_agent_token(session: Session, *, tenant_id: int, machine_name: str) -> int:
+def revoke_agent_token(session: Session, *, machine_name: str) -> int:
     """Revoke a runner's credentials (stolen VM / decommission)."""
     affected = update_rows(
         session,
         BotInfrastructure,
         {"AgentToken": None, "AgentTokenIssuedAt": None, "Status": "Offline", "UpdatedAt": _now()},
-        [BotInfrastructure.c.MachineName == machine_name, BotInfrastructure.c.TenantID == tenant_id],
+        [BotInfrastructure.c.MachineName == machine_name],
     )
     if affected:
         # Any queued command for that machine is now undeliverable
@@ -391,7 +383,7 @@ def revoke_agent_token(session: Session, *, tenant_id: int, machine_name: str) -
 def issue_command(
     session: Session,
     *,
-    tenant_id: int,
+    
     machine_name: str,
     command: str,
     payload: Optional[Dict[str, Any]] = None,
@@ -404,26 +396,56 @@ def issue_command(
 
     machine = fetch_one(
         session,
-        "SELECT MachineName, Status, AgentToken FROM BotInfrastructure WHERE TenantID = :t AND MachineName = :m",
-        {"t": tenant_id, "m": machine_name},
+        "SELECT MachineName, Status, AgentToken, AssignedProcess FROM BotInfrastructure WHERE MachineName = :m",
+        {"m": machine_name},
         operation="infra.command_machine",
     )
     if not machine:
         raise InfraError("الجهاز غير مسجل")
 
+    settings = get_settings()
+    process_name = (payload or {}).get("process_name")
+    if command in ("RUN_BOT", "STOP_BOT"):
+        if not process_name:
+            raise InfraError("اسم العملية مطلوب لتشغيل/إيقاف بوت")
+        allowed = {p.strip() for p in (settings.COMMAND_ALLOWED_PROCESSES or "").split(",") if p.strip()}
+        if allowed:
+            if process_name not in allowed:
+                raise InfraError(f"العملية {process_name} ليست ضمن القائمة البيضاء للأوامر")
+        else:
+            exists = fetch_one(
+                session,
+                "SELECT 1 AS x FROM ProcessConfig WHERE ProcessName = :p AND (IsDeleted = 0 OR IsDeleted IS NULL)",
+                {"p": process_name},
+                operation="infra.command_whitelist",
+            )
+            assigned = machine.get("AssignedProcess")
+            if not exists or (assigned and assigned != process_name):
+                raise InfraError(f"العملية {process_name} غير مسموح بتشغيلها على هذا الجهاز")
+
+    import hashlib
+    import hmac as _hmac
     import json
+
+    signature_secret = settings.AGENT_COMMAND_HMAC_SECRET or settings.AGENT_TOKEN_PEPPER
+    payload_json = json.dumps(payload or {}, default=str, sort_keys=True)
+    signature = (
+        _hmac.new(signature_secret.encode(), f"{machine_name}|{command}|{payload_json}".encode(), hashlib.sha256).hexdigest()
+        if signature_secret
+        else None
+    )
 
     command_id = insert_row(
         session,
         BotCommands,
         {
-            "TenantID": tenant_id,
             "MachineName": machine_name[:100],
             "Command": command,
-            "PayloadJson": json.dumps(payload or {}, default=str),
+            "PayloadJson": payload_json,
             "Status": "Queued",
             "IssuedBy": issued_by,
             "TimeoutSeconds": max(5, int(timeout_seconds)),
+            "Signature": signature,
         },
     )
     logger.info("Command %s queued for %s (id=%s)", command, machine_name, command_id)
@@ -434,21 +456,22 @@ def issue_command(
         "status": "Queued",
         "delivered": False,
         "machine_status": machine.get("Status"),
+        "signature": signature,
     }
 
 
-def mark_command_delivered(session: Session, *, tenant_id: int, command_id: int) -> int:
+def mark_command_delivered(session: Session, *, command_id: int) -> int:
     """Record that the command reached the agent socket."""
     return update_rows(
         session,
         BotCommands,
         {"Status": "Sent", "SentAt": _now()},
-        [BotCommands.c.CommandID == command_id, BotCommands.c.TenantID == tenant_id],
+        [BotCommands.c.CommandID == command_id],
     )
 
 
 def acknowledge_command(
-    session: Session, *, tenant_id: int, command_id: int, success: bool, result: Optional[str] = None
+    session: Session, *, command_id: int, success: bool, result: Optional[str] = None
 ) -> int:
     """Agent-side acknowledgement (success/failure + free-text result)."""
     return update_rows(
@@ -459,17 +482,17 @@ def acknowledge_command(
             "AckedAt": _now(),
             "Result": (result or "")[:500] or None,
         },
-        [BotCommands.c.CommandID == command_id, BotCommands.c.TenantID == tenant_id],
+        [BotCommands.c.CommandID == command_id],
     )
 
 
 def list_commands(
-    session: Session, *, tenant_id: int, machine_name: Optional[str] = None, status: Optional[str] = None, limit: int = 100
+    session: Session, *, machine_name: Optional[str] = None, status: Optional[str] = None, limit: int = 100
 ) -> List[Dict[str, Any]]:
     """Command history for the control console."""
     flavor = get_flavor()
-    where = ["c.TenantID = :t"]
-    params: Dict[str, Any] = {"t": tenant_id, "limit": int(min(limit, 500))}
+    where = ["1 = 1"]
+    params: Dict[str, Any] = {"limit": int(min(limit, 500))}
     if machine_name:
         where.append("c.MachineName = :m")
         params["m"] = machine_name
@@ -483,7 +506,7 @@ def list_commands(
         SELECT {flavor.top(params['limit'])} c.CommandID, c.MachineName, c.Command, c.PayloadJson, c.Status,
                c.IssuedBy, c.IssuedAt, c.SentAt, c.AckedAt, c.Result, u.Username AS IssuedByUsername
         FROM BotCommands c
-        LEFT JOIN SystemUsers u ON u.UserID = c.IssuedBy AND u.TenantID = c.TenantID
+        LEFT JOIN SystemUsers u ON u.UserID = c.IssuedBy
         WHERE {' AND '.join(where)}
         ORDER BY c.IssuedAt DESC{flavor.limit(params['limit'])}
         """,
@@ -492,15 +515,15 @@ def list_commands(
     )
 
 
-def timeout_stale_commands(session: Session, *, tenant_id: int) -> int:
+def timeout_stale_commands(session: Session) -> int:
     """Mark commands that were never acknowledged within their timeout."""
     rows = fetch_all(
         session,
         """
         SELECT CommandID, TimeoutSeconds, IssuedAt FROM BotCommands
-        WHERE TenantID = :t AND Status IN ('Queued','Sent')
+        WHERE Status IN ('Queued','Sent')
         """,
-        {"t": tenant_id},
+        {},
         operation="infra.stale_commands",
     )
     count = 0

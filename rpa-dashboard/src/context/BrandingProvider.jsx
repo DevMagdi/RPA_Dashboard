@@ -3,12 +3,10 @@ import { createContext, useContext, useEffect, useMemo } from 'react'
 
 import api from '../lib/api'
 import { qk } from '../lib/queryClient'
-import storage from '../lib/storage'
 
 const BrandingContext = createContext(null)
 
 const FALLBACK = {
-  tenant_key: 'default',
   name: 'RPA CoE Control Room',
   company_name: '',
   primary_color: '#4b367c',
@@ -45,16 +43,14 @@ function shade(hex, amount) {
 /**
  * White-label branding.
  *
- * Fetches the tenant's colours/logo/name (public endpoint, needed before login)
- * and injects them as CSS variables — the whole UI, including charts, follows
- * the tenant brand without a rebuild.
+ * Fetches the organization's colours/logo/name (public endpoint, needed before
+ * login) so an On-Premises install can rebrand without a rebuild.
  */
 export function BrandingProvider({ children }) {
-  const tenantKey = storage.get('tenant', '')
 
   const { data } = useQuery({
     queryKey: qk.branding,
-    queryFn: () => api.get('/api/branding', { headers: tenantKey ? { 'X-Tenant-Key': tenantKey } : {} }).catch(() => FALLBACK),
+    queryFn: () => api.get('/api/branding').catch(() => FALLBACK),
     staleTime: 5 * 60_000,
   })
 
@@ -79,15 +75,10 @@ export function BrandingProvider({ children }) {
   const value = useMemo(
     () => ({
       branding,
-      tenantKey,
-      setTenantKey: (key) => {
-        if (key) storage.set('tenant', key)
-        else storage.remove('tenant')
-      },
       companyName: branding.company_name || branding.name || FALLBACK.name,
       features: branding.features || {},
     }),
-    [branding, tenantKey],
+    [branding],
   )
 
   return <BrandingContext.Provider value={value}>{children}</BrandingContext.Provider>

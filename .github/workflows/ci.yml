@@ -29,8 +29,9 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip uninstall -y playwright || true
-      - name: Lint (pyflakes)
-        run: python -m pyflakes app tests
+      - name: Lint (ruff)
+        run: |
+          python -m ruff check app tests scripts
       - name: Test (coverage gate 80% via .coveragerc)
         run: python -m pytest
       - name: API smoke (62 checks, in-process)

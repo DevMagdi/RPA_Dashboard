@@ -19,11 +19,16 @@
     "infrastructure": "البنية التحتية",
     "lifecycle": "دورة الحياة والخزينة",
     "audit": "سجل التدقيق",
-    "tenants": "المستأجرون",
     "users": "المستخدمون والأدوار",
     "health": "صحة غرفة التحكم",
     "settings": "الإعدادات",
-    "sections": { "operations": "التشغيل", "governance": "الحوكمة", "administration": "الإدارة" }
+    "sections": {
+      "operations": "التشغيل",
+      "governance": "الحوكمة",
+      "administration": "الإدارة"
+    },
+    "organization": "المنظمة",
+    "alerts": "التنبيهات"
   },
   "actions": {
     "refresh": "تحديث",
@@ -67,8 +72,6 @@
     "signingIn": "جارٍ تسجيل الدخول…",
     "username": "اسم المستخدم",
     "password": "كلمة المرور",
-    "tenantKey": "المستأجر",
-    "tenantHint": "اتركه فارغًا للمستأجر الافتراضي",
     "welcome": "مرحبًا بك مجددًا",
     "subtitle": "سجّل الدخول إلى غرفة تحكم الأتمتة",
     "mfaTitle": "التحقق الثنائي",
@@ -112,7 +115,13 @@
     "savingsTrend": "تحقيق القيمة (١٤ يومًا)",
     "healthDonut": "توزيع النتائج",
     "departmentBreakdown": "حسب الإدارة",
-    "filters": { "department": "الإدارة", "process": "العملية", "range": "الفترة", "all": "الكل", "days": "{{count}} يومًا" },
+    "filters": {
+      "department": "الإدارة",
+      "process": "العملية",
+      "range": "الفترة",
+      "all": "الكل",
+      "days": "{{count}} يومًا"
+    },
     "empty": {
       "runs": "لا توجد تشغيلات في الفترة المحددة",
       "chart": "لا توجد بيانات كافية بعد — ستظهر التشغيلات في هذا الرسم",
@@ -139,7 +148,11 @@
     "status": "الحالة",
     "openRecommendations": "التوصيات المفتوحة",
     "history": "سجل الطابور و SLA",
-    "severity": { "Info": "معلومة", "Warning": "تحذير", "Critical": "حرِج" },
+    "severity": {
+      "Info": "معلومة",
+      "Warning": "تحذير",
+      "Critical": "حرِج"
+    },
     "statuses": {
       "Open": "مفتوحة",
       "Acknowledged": "تم الإقرار",
@@ -148,7 +161,11 @@
       "Dismissed": "تم التجاهل",
       "Resolved": "تم الحل"
     },
-    "metrics": { "utilization": "الاستخدام", "throughputGap": "فجوة الإنتاجية", "failureRate": "نسبة الفشل" }
+    "metrics": {
+      "utilization": "الاستخدام",
+      "throughputGap": "فجوة الإنتاجية",
+      "failureRate": "نسبة الفشل"
+    }
   },
   "processes": {
     "title": "العمليات والعائد",
@@ -178,7 +195,7 @@
     "subtitle": "سجل التنفيذ مع القيمة المُحققة",
     "status": "الحالة",
     "machine": "المشغّل",
-    "started": "البداية",
+    "started": "تم قبول المهمة",
     "finished": "النهاية",
     "duration": "المدة",
     "transactions": "الطلبات",
@@ -187,7 +204,6 @@
     "statistics": "الإحصاءات",
     "topFailures": "أكثر أسباب الفشل",
     "startRun": "بدء مهمة",
-    "started": "تم قبول المهمة",
     "stop": "إيقاف",
     "stoppped": "تم طلب الإيقاف",
     "reapStale": "إغلاق التشغيلات المعلّقة",
@@ -262,8 +278,16 @@
     "lastAccessed": "آخر وصول",
     "rotation": "تدوير مفتاح التشفير",
     "rotationDryRun": "تجربة بدون تطبيق",
-    "env": { "Development": "التطوير", "UAT": "الاختبار UAT", "Production": "الإنتاج", "Retired": "متقاعد" },
-    "workflow": { "fourEyes": "تغييرات الإنتاج تتطلب موافقة شخص آخر", "breakGlass": "ترقية طارئة (مسؤول أعلى — مُدقّقة)" }
+    "env": {
+      "Development": "التطوير",
+      "UAT": "الاختبار UAT",
+      "Production": "الإنتاج",
+      "Retired": "متقاعد"
+    },
+    "workflow": {
+      "fourEyes": "تغييرات الإنتاج تتطلب موافقة شخص آخر",
+      "breakGlass": "ترقية طارئة (مسؤول أعلى — مُدقّقة)"
+    }
   },
   "audit": {
     "title": "سجل التدقيق",
@@ -280,28 +304,6 @@
     "success": "ناجح",
     "failed": "فاشل",
     "empty": "لا توجد سجلات مطابقة"
-  },
-  "tenants": {
-    "title": "المستأجرون",
-    "subtitle": "تهيئة العلامة البيضاء لكل إدارة أو بنك",
-    "tenantKey": "مفتاح المستأجر",
-    "companyName": "اسم الشركة",
-    "primaryColor": "اللون الأساسي",
-    "accentColor": "اللون الثانوي",
-    "locale": "اللغة الافتراضية",
-    "provider": "منصة الأتمتة",
-    "createTenant": "إضافة مستأجر",
-    "branding": "العلامة التجارية",
-    "platformConfig": "إعدادات المنصة",
-    "configHint": "تُخزَّن الأسرار في Key Vault/Vault — استخدم vault:NAME ولا تكتب كلمة مرور مباشرة.",
-    "testConnection": "اختبار الاتصال",
-    "activation": "نشط",
-    "retention": "الاحتفاظ بالبيانات",
-    "runRetention": "تنفيذ سياسة الاحتفاظ",
-    "stats": "الاستخدام",
-    "users": "المستخدمون",
-    "processes": "العمليات",
-    "runs": "التشغيلات"
   },
   "users": {
     "title": "المستخدمون والأدوار",
@@ -400,5 +402,33 @@
     "never": "أبدًا",
     "justNow": "الآن",
     "unknown": "غير معروف"
+  },
+  "organization": {
+    "title": "المنظمة",
+    "subtitle": "هذا التثبيت المحلي يخدم منظمة واحدة فقط",
+    "name": "اسم المنظمة",
+    "companyName": "اسم الشركة",
+    "primaryColor": "اللون الأساسي",
+    "accentColor": "لون التمييز",
+    "locale": "اللغة الافتراضية",
+    "provider": "منصة الأتمتة",
+    "branding": "الهوية البصرية",
+    "platformConfig": "إعدادات المنصة",
+    "configHint": "الأسرار تبقى في مدير أسرار البنك — مرّر مراجع vault:NAME ولا تمرر كلمة مرور نصية أبدًا.",
+    "testConnection": "اختبار الاتصال",
+    "retention": "تشغيل الاحتفاظ الآن",
+    "singleOrgNotice": "نشر محلي أحادي المنظمة: تثبيت واحد = بنك/مؤسسة واحدة. معزول بالكامل وقابل للتدقيق."
+  },
+  "alerts": {
+    "title": "التنبيهات",
+    "subtitle": "تنبيهات تشغيلية على الوكلاء واتفاقيات الخدمة وأنماط الفشل",
+    "alert": "التنبيه",
+    "rule": "القاعدة",
+    "severity": "الخطورة",
+    "lastSeen": "آخر ظهور",
+    "acknowledge": "إقرار",
+    "resolve": "حلّ",
+    "evaluate": "تقييم القواعد الآن",
+    "empty": "لا توجد تنبيهات — كل شيء سليم"
   }
 }

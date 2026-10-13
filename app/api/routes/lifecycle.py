@@ -89,7 +89,7 @@ def list_versions(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:read", "*")),
 ) -> List[Dict[str, Any]]:
     """List versions with credential counts and environment status."""
-    return lifecycle_service.list_versions(db, tenant_id=principal.tenant_id, process_name=process)
+    return lifecycle_service.list_versions(db, process_name=process)
 
 
 @router.post("/bot-versions", status_code=201, summary="Register a bot version")
@@ -99,10 +99,10 @@ def create_version(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:write", "*")),
 ) -> Dict[str, Any]:
     """Create a version in ``Development`` (upserts the process if needed)."""
-    if not process_service.process_exists(db, tenant_id=principal.tenant_id, process_name=payload.ProcessName):
+    if not process_service.process_exists(db, process_name=payload.ProcessName):
         process_service.ensure_process(
             db,
-            tenant_id=principal.tenant_id,
+            
             process_name=payload.ProcessName,
             department=payload.Department or "Operations",
         )
@@ -110,7 +110,7 @@ def create_version(
     try:
         result = lifecycle_service.create_version(
             db,
-            tenant_id=principal.tenant_id,
+            
             process_name=payload.ProcessName,
             version_tag=payload.VersionTag,
             target_machine=payload.TargetMachineName,
@@ -123,7 +123,7 @@ def create_version(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Version_Created",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
@@ -141,7 +141,7 @@ def version_history(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:read", "*")),
 ) -> List[Dict[str, Any]]:
     """All versions of a process, newest first."""
-    return lifecycle_service.list_versions(db, tenant_id=principal.tenant_id, process_name=process_name)
+    return lifecycle_service.list_versions(db, process_name=process_name)
 
 
 @router.get("/bot-versions/live-status", summary="Lifecycle dashboard counters")
@@ -150,7 +150,7 @@ def live_status(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:read", "*")),
 ) -> Dict[str, Any]:
     """Environment counters, recent promotions and live deployments."""
-    return lifecycle_service.lifecycle_overview(db, tenant_id=principal.tenant_id)
+    return lifecycle_service.lifecycle_overview(db)
 
 
 # --------------------------------------------------------------------------- #
@@ -176,7 +176,7 @@ def promote_version(
     try:
         result = lifecycle_service.promote_version(
             db,
-            tenant_id=principal.tenant_id,
+            
             version_id=version_id,
             target_environment=payload.TargetEnvironment,
             promoted_by=principal.user_id,
@@ -190,7 +190,7 @@ def promote_version(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Version_Promote_Forced" if payload.Force else "Version_Promote",
         user_id=principal.user_id,
         process_name=result.get("process_name"),
@@ -216,7 +216,7 @@ def list_approvals(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Pending and historical approval requests."""
-    return lifecycle_service.list_approvals(db, tenant_id=principal.tenant_id, status=status_filter)
+    return lifecycle_service.list_approvals(db, status=status_filter)
 
 
 @router.post("/approvals", status_code=201, summary="Request a promotion approval")
@@ -229,7 +229,7 @@ def request_approval(
     try:
         result = lifecycle_service.request_approval(
             db,
-            tenant_id=principal.tenant_id,
+            
             version_id=payload.VersionID,
             target_environment=payload.TargetEnvironment,
             requested_by=principal.user_id,
@@ -241,7 +241,7 @@ def request_approval(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Approval_Requested",
         user_id=principal.user_id,
         entity_type="BotVersion",
@@ -262,7 +262,7 @@ def decide_approval(
     try:
         result = lifecycle_service.decide_approval(
             db,
-            tenant_id=principal.tenant_id,
+            
             approval_id=approval_id,
             approved=payload.Approved,
             decided_by=principal.user_id,
@@ -273,7 +273,7 @@ def decide_approval(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Approval_Granted" if payload.Approved else "Approval_Rejected",
         user_id=principal.user_id,
         entity_type="ApprovalRequest",
@@ -294,7 +294,7 @@ def rollback(
     try:
         result = lifecycle_service.rollback_process(
             db,
-            tenant_id=principal.tenant_id,
+            
             process_name=payload.ProcessName,
             to_version_id=payload.ToVersionID,
             performed_by=principal.user_id,
@@ -305,7 +305,7 @@ def rollback(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Version_Rollback",
         user_id=principal.user_id,
         process_name=payload.ProcessName,
@@ -326,7 +326,7 @@ def list_credentials(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:read", "*")),
 ) -> List[Dict[str, Any]]:
     """Names/environments only — values are never returned by the list call."""
-    return lifecycle_service.list_credentials(db, tenant_id=principal.tenant_id, version_id=version_id)
+    return lifecycle_service.list_credentials(db, version_id=version_id)
 
 
 @router.post("/bot-versions/{version_id}/credentials", status_code=201, summary="Store a credential")
@@ -337,14 +337,14 @@ def add_credential(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:write", "*")),
 ) -> Dict[str, Any]:
     """Encrypt and store a secret in the vault (Fernet, Key Vault-backed key)."""
-    version = lifecycle_service.get_version(db, tenant_id=principal.tenant_id, version_id=version_id)
+    version = lifecycle_service.get_version(db, version_id=version_id)
     if not version:
         raise HTTPException(status_code=404, detail="النسخة غير موجودة")
 
     try:
         result = lifecycle_service.add_credential(
             db,
-            tenant_id=principal.tenant_id,
+            
             version_id=version_id,
             credential_name=payload.CredentialName,
             environment=payload.Environment,
@@ -356,7 +356,7 @@ def add_credential(
 
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Vault_Add_Cred",
         user_id=principal.user_id,
         process_name=version.get("ProcessName"),
@@ -380,7 +380,7 @@ def read_credential(
     try:
         result = lifecycle_service.read_credential(
             db,
-            tenant_id=principal.tenant_id,
+            
             vault_id=vault_id,
             version_id=version_id,
             user_id=principal.user_id,
@@ -400,12 +400,12 @@ def delete_credential(
     principal: AuthenticatedUser = Depends(require_permission("lifecycle:write", "*")),
 ) -> Dict[str, Any]:
     """Logically delete a secret (history preserved for audits)."""
-    affected = lifecycle_service.soft_delete_credential(db, tenant_id=principal.tenant_id, vault_id=vault_id)
+    affected = lifecycle_service.soft_delete_credential(db, vault_id=vault_id)
     if not affected:
         raise HTTPException(status_code=404, detail="السر غير موجود")
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Vault_Delete_Cred",
         user_id=principal.user_id,
         entity_type="BotVault",
@@ -420,7 +420,7 @@ def vault_statistics(
     principal: AuthenticatedUser = Depends(require_permission("audit:read", "*")),
 ) -> Dict[str, Any]:
     """Credential counts, reads and the most recent access events."""
-    return lifecycle_service.vault_statistics(db, tenant_id=principal.tenant_id)
+    return lifecycle_service.vault_statistics(db)
 
 
 @router.post("/vault/rotate-key", summary="Re-encrypt secrets with the newest key")
@@ -430,10 +430,10 @@ def rotate_key(
     principal: AuthenticatedUser = Depends(require_permission("*")),
 ) -> Dict[str, Any]:
     """Rotate ``FERNET_KEY`` (run ``dry_run=true`` first in production)."""
-    result = lifecycle_service.rotate_vault_key(db, tenant_id=principal.tenant_id, dry_run=dry_run)
+    result = lifecycle_service.rotate_vault_key(db, dry_run=dry_run)
     audit_service.record(
         db,
-        tenant_id=principal.tenant_id,
+        
         action_type="Vault_Key_Rotation",
         user_id=principal.user_id,
         new_values=result,

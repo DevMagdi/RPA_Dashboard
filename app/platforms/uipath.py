@@ -19,7 +19,7 @@ stop job              ``POST /odata/Jobs({id})/UiPath.Server.Configuration.OData
 ====================  ====================================================
 
 Auth: OAuth2 client-credentials (Cloud) or PAT / personal access token
-(on-prem).  ``X-UIPATH-TenantName`` and ``X-UIPATH-OrganizationUnitId``
+(on-prem).  ``X-UIPATH-OrganizationUnitId``
 (folder) headers are injected from configuration.
 
 The adapter is **read-mostly + control**: it never writes business data into

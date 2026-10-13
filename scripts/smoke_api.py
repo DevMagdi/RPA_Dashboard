@@ -6,7 +6,6 @@ Run:  DB_DIALECT=sqlite DB_NAME=/tmp/smoke.sqlite3 ENV=test DB_SEED_DEMO=true \
 
 from __future__ import annotations
 
-import os
 import sys
 import time
 import warnings
@@ -191,6 +190,12 @@ with TestClient(app, raise_server_exceptions=False) as client:
                 headers=H,
             )
             check("read credential returns plaintext", r.status_code == 200 and r.json().get("value") == "s3cr3t-value", r.text[:120])
+        r = client.post(
+            f"/api/bot-versions/{version_id}/credentials",
+            json={"CredentialName": "SAP_UAT", "Environment": "UAT", "Value": "uat-secret"},
+            headers=H,
+        )
+        check("store UAT credential", r.status_code == 201, r.text[:140])
         r = client.post(f"/api/bot-versions/{version_id}/promote", json={"TargetEnvironment": "UAT"}, headers=H)
         check("promote to UAT", r.status_code == 200, r.text[:140])
         r = client.post(f"/api/bot-versions/{version_id}/promote", json={"TargetEnvironment": "Production"}, headers=H)
@@ -214,27 +219,23 @@ with TestClient(app, raise_server_exceptions=False) as client:
     r = client.get("/api/exports/capacity.pdf", headers=H)
     check("capacity pdf export", r.status_code == 200 and r.content[:4] == b"%PDF", f"{len(r.content)} bytes")
 
-    # ------------------------------------------------------------- tenants
+    # ------------------------------------------------------- organization
+    r = client.get("/api/organization", headers=H)
+    check("organization singleton", r.status_code == 200 and r.json().get("OrganizationID") == 1, r.text[:160])
+    r = client.patch("/api/organization/branding", json={"PrimaryColor": "#123456"}, headers=H)
+    check("organization branding", r.status_code == 200, r.text[:120])
     r = client.post(
-        "/api/tenants",
-        json={"TenantKey": "smoke-bank", "Name": "Smoke Bank", "CompanyName": "Smoke Bank", "Provider": "generic_sql"},
+        "/api/organization/platform",
+        json={"Provider": "uipath", "Config": {"base_url": "https://orchestrator.example.com", "auth_mode": "oauth_client_credentials"}},
         headers=H,
     )
-    check("create tenant", r.status_code == 201, r.text[:160])
-    tenant_id = r.json().get("tenant_id") if r.status_code == 201 else None
-    if tenant_id:
-        r = client.patch(f"/api/tenants/{tenant_id}/branding", json={"PrimaryColor": "#123456"}, headers=H)
-        check("tenant branding", r.status_code == 200, r.text[:120])
-        r = client.post(
-            f"/api/tenants/{tenant_id}/platform",
-            json={"Provider": "uipath", "Config": {"base_url": "https://orchestrator.example.com", "auth_mode": "oauth_client_credentials"}},
-            headers=H,
-        )
-        check("tenant platform config", r.status_code == 200, r.text[:120])
-        r = client.post(f"/api/tenants/{tenant_id}/platform/test", headers=H)
-        check("platform connectivity test responds", r.status_code == 200, r.text[:120])
-        r = client.post(f"/api/tenants/{tenant_id}/retention/run?retention_days=730", headers=H)
-        check("retention run", r.status_code == 200, r.text[:140])
+    check("organization platform config", r.status_code == 200, r.text[:120])
+    r = client.post("/api/organization/platform/test", headers=H)
+    check("platform connectivity test responds", r.status_code == 200, r.text[:120])
+    r = client.post("/api/organization/retention/run?retention_days=730", headers=H)
+    check("retention run", r.status_code == 200, r.text[:140])
+    r = client.post("/api/alerts/evaluate", headers=H)
+    check("alert evaluation", r.status_code == 200 and "touched" in r.json(), r.text[:140])
 
     # --------------------------------------------------------------- users
     r = client.post(

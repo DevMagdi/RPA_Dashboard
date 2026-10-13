@@ -37,7 +37,6 @@ import platform
 import shutil
 import socket
 import sys
-import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -97,7 +96,7 @@ def collect_telemetry() -> Dict[str, Any]:
         "HDD_Usage": _disk_usage(),
         "MachineIP": socket.gethostbyname(socket.gethostname()),
         "OSName": f"{platform.system()} {platform.release()}",
-        "AgentVersion": "3.0.0",
+        "AgentVersion": "4.0.0",
     }
 
 
@@ -128,6 +127,7 @@ class RpaAgent:
         self.verify: Any = ca_bundle or verify
         self.on_run = on_run or self._default_run
         self.on_stop = on_stop or self._default_stop
+        self._processes: Dict[str, Any] = {}
         self._client = httpx.Client(base_url=self.base_url, timeout=DEFAULT_TIMEOUT, verify=self.verify)
         self._stopping = asyncio.Event()
 
@@ -174,21 +174,129 @@ class RpaAgent:
         )
 
     # -- command handlers ------------------------------------------------
+    def _verify_signature(self, command: Dict[str, Any]) -> bool:
+        """Verify the Control Room's HMAC over the command (fail closed).
+
+        The server signs ``machine|command|payload_json``; the secret is
+        shared via the ``AGENT_COMMAND_HMAC_SECRET`` environment variable.
+        When no secret is configured (dev only) verification is skipped.
+        """
+        import hashlib
+        import hmac as _hmac
+        import os
+
+        secret = os.getenv("AGENT_COMMAND_HMAC_SECRET", "")
+        signature = command.get("signature")
+        if not secret:
+            return True
+        if not signature:
+            LOG.error("unsigned command rejected (HMAC secret configured)")
+            return False
+        payload = {
+            "process_name": command.get("process_name") or command.get("ProcessName"),
+            "run_id": command.get("run_id") or command.get("RunID"),
+            "parameters": command.get("parameters") or {},
+            "reason": command.get("reason"),
+            "issued_by": command.get("issued_by"),
+        }
+        payload_json = json.dumps(payload, default=str, sort_keys=True)
+        name = str(command.get("command") or command.get("Command", "")).upper()
+        expected = _hmac.new(
+            secret.encode(), f"{self.machine_name}|{name}|{payload_json}".encode(), hashlib.sha256
+        ).hexdigest()
+        return _hmac.compare_digest(expected, str(signature))
+
+    def _bot_command_line(self, process: str) -> Optional[list]:
+        """Resolve how to start ``process`` on this runner.
+
+        Configuration (environment only — never hard-code vendor paths):
+        ``RPA_BOT_COMMANDS_JSON`` maps process → command template, and
+        ``RPA_BOT_COMMAND`` is the fallback template. Templates may use
+        ``{process}``, ``{machine}`` and ``{run_id}`` placeholders, e.g.
+        UiPath: ``"C:\\UiPath\\UiRobot.exe" execute --process {process}``.
+        """
+        import os
+        import shlex
+
+        template = None
+        raw_map = os.getenv("RPA_BOT_COMMANDS_JSON", "")
+        if raw_map:
+            try:
+                template = json.loads(raw_map).get(process)
+            except json.JSONDecodeError:
+                LOG.error("RPA_BOT_COMMANDS_JSON is not valid JSON")
+        template = template or os.getenv("RPA_BOT_COMMAND", "")
+        if not template:
+            return None
+        rendered = template.format(process=process, machine=self.machine_name, run_id="")
+        return shlex.split(rendered, posix=False)
+
+    def _report_run_start(self, process: str, command_id: Any) -> Optional[int]:
+        try:
+            response = self._client.post(
+                "/api/runs/start",
+                json={"ProcessName": process, "MachineName": self.machine_name, "Trigger": "agent"},
+                headers={**self._headers, "Idempotency-Key": f"cmd-{command_id}"},
+            )
+            response.raise_for_status()
+            return response.json().get("run_id")
+        except Exception as error:  # noqa: BLE001
+            LOG.warning("run start report failed: %s", error)
+            return None
+
+    def _report_run_complete(self, run_id: Optional[int], success: bool, detail: str = "") -> None:
+        if not run_id:
+            return
+        try:
+            self._client.post(
+                f"/api/runs/{run_id}/complete",
+                json={"Status": "Success" if success else "Failed", "FailureReason": detail or None},
+                headers=self._headers,
+            )
+        except Exception as error:  # noqa: BLE001
+            LOG.warning("run complete report failed: %s", error)
+
     def _default_run(self, command: Dict[str, Any]) -> str:
-        """Placeholder runner — replace with the UiPath/AA command line."""
-        process = command.get("ProcessName") or self.process or "unknown"
-        LOG.info("would start %s (RunID=%s)", process, command.get("RunID"))
-        return f"accepted {process}"
+        """Actually start the bot process and report the run lifecycle."""
+        import subprocess
+        import threading
+
+        process = command.get("process_name") or command.get("ProcessName") or self.process or "unknown"
+        command_id = command.get("command_id") or command.get("CommandID")
+        argv = self._bot_command_line(str(process))
+        if not argv:
+            raise RuntimeError(
+                "no bot command configured on this runner (set RPA_BOT_COMMAND or RPA_BOT_COMMANDS_JSON)"
+            )
+        LOG.info("starting %s: %s", process, argv)
+        proc = subprocess.Popen(argv)  # noqa: S603 - argv from local admin config, list form
+        self._processes[str(process)] = proc
+        run_id = self._report_run_start(str(process), command_id)
+
+        def _watch() -> None:
+            code = proc.wait()
+            self._report_run_complete(run_id, code == 0, "" if code == 0 else f"exit code {code}")
+            LOG.info("bot %s finished (exit=%s, run_id=%s)", process, code, run_id)
+
+        threading.Thread(target=_watch, daemon=True).start()
+        return f"started {process} pid={proc.pid} run_id={run_id}"
 
     def _default_stop(self, command: Dict[str, Any]) -> str:
-        LOG.info("would stop run %s", command.get("RunID"))
-        return "stop requested"
+        process = command.get("process_name") or command.get("ProcessName") or self.process
+        proc = self._processes.get(str(process))
+        if proc and proc.poll() is None:
+            proc.terminate()
+            return f"stop requested for {process}"
+        return f"no running bot for {process}"
 
     def _handle(self, command: Dict[str, Any]) -> None:
-        name = str(command.get("Command", "")).upper()
-        command_id = command.get("CommandID")
+        name = str(command.get("command") or command.get("Command", "")).upper()
+        command_id = command.get("command_id") or command.get("CommandID")
         LOG.info("command received: %s", name)
         try:
+            if not self._verify_signature(command):
+                self.acknowledge(command_id, False, "signature verification failed")
+                return
             if name in {"RUN_BOT", "START_BOT"}:
                 result = self.on_run(command)
             elif name in {"STOP_BOT", "STOP"}:
@@ -233,7 +341,7 @@ class RpaAgent:
                             message = json.loads(raw)
                         except json.JSONDecodeError:
                             continue
-                        if message.get("event") == "command":
+                        if message.get("type") == "command" or message.get("event") == "command":
                             self._handle(message.get("data", message))
             except Exception as error:  # noqa: BLE001
                 LOG.warning("command channel error: %s (retrying in 10 s)", error)

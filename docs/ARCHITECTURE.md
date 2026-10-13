@@ -16,7 +16,7 @@
                         │  middleware: correlation-id → TrustedHost →  │
                         │  CORS → IP allowlist → security headers →    │
                         │  CSRF → metrics                              │
-                        │  routers: auth · tenants · dashboard ·       │
+                        │  routers: auth · organization · dashboard ·       │
                         │  processes · runs · machines/agents ·        │
                         │  capacity · lifecycle/vault · audit/exports  │
                         │  services: dashboard · capacity · lifecycle ·│
@@ -48,21 +48,21 @@
 
 ## 3. Tenancy model
 
-- Every business row carries `TenantID`; repositories always scope by it.
-- Users belong to exactly one tenant; JWTs embed `tenant_id` + `user_id` and
+- One installation = one organization (single seeded `Organization` row);
+  business rows carry no organization discriminator.
+- JWTs embed `user_id` + `department` only; visibility is department-scoped.
   the principal is re-loaded from the DB per request (disabled users fail
   immediately).
-- The **platform tenant** (`TenantKey="default"`) hosts the operator's
-  SuperAdmin — the only principal allowed to administer other tenants
-  (ADR-002). Tenant-local SuperAdmins are powerful *inside* their tenant only.
+- The installation SuperAdmin administers the single organization
+  (branding, platform, retention) via `require_organization_admin` (ADR-002).
 
 ## 4. Vendor adapter model
 
 Adapters translate vendor payloads into canonical records; statuses are
 normalised separator-insensitively (`In Progress` ≡ `InProgress`), timestamps
 to naive-UTC. Capabilities are class-level (`CAPABILITIES`) so catalogues and
-UI affordances work with zero credentials. Per-tenant provider + config lives
-in `Tenants.PlatformProvider/PlatformConfigJson`, with secret values replaced
+UI affordances work with zero credentials. The organization provider + config lives
+in `Organization.PlatformProvider/PlatformConfigJson`, with secret values replaced
 by `vault:` references resolved at build time (ADR-001, ADR-005).
 
 Control actions (`start_job`/`stop_job`) flow through the same adapter

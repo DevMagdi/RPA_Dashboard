@@ -13,7 +13,7 @@ Every integration implements `PlatformAdapter` (`app/platforms/base.py`) and
 translates vendor payloads into canonical records (`RunRecord`, `QueueStats`,
 `MachineRecord`…) with normalised statuses/timestamps. Adapters are pure
 translators: no business rules, no persistence. The registry
-(`app/platforms/registry.py`) resolves an adapter per tenant from stored
+(`app/platforms/registry.py`) resolves the adapter for the organization from stored
 configuration — onboarding a client is a **configuration** operation, and new
 vendors can be supplied out-of-tree via `RPA_PLATFORM_PLUGINS`.
 
