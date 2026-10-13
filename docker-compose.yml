@@ -1,0 +1,98 @@
+# ============================================================================
+# RPA CoE Control Room — local / single-host deployment
+#
+#   docker compose up -d                 -> PostgreSQL + Redis + API + Web
+#   docker compose --profile mssql up -d -> also starts SQL Server; set
+#                                           DB_DIALECT=mssql in .env to use it
+#
+# Production (bank on-prem / cloud): see docs/DEPLOYMENT_ON_PREM_BANK.md and
+# docs/DEPLOYMENT_CLOUD.md — prefer a managed database + secret manager and
+# put TLS in front of `web`.
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-RPA_Dashboard}
+      POSTGRES_USER: ${DB_USER:-coe}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-coe}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    profiles: ["mssql"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD for the mssql profile}
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssqldata:/var/opt/mssql
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV:-prod}
+      DB_DIALECT: ${DB_DIALECT:-postgresql}
+      DB_SERVER: ${DB_SERVER:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-RPA_Dashboard}
+      DB_USER: ${DB_USER:-coe}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+      FERNET_KEY: ${FERNET_KEY:?set FERNET_KEY in .env}
+      AGENT_TOKEN_PEPPER: ${AGENT_TOKEN_PEPPER:?set AGENT_TOKEN_PEPPER in .env}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SERVE_FRONTEND: "false"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    # Not published directly: traffic enters through `web` (nginx).
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: rpa-dashboard/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  pgdata:
+  mssqldata:
+  redisdata:

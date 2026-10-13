@@ -257,14 +257,13 @@ class AutomationAnywhereAdapter(HttpPlatformAdapter):
             external_id=external_id, accepted=True, status=CanonicalStatus.STOPPED, message="Stop requested"
         )
 
-    def capabilities(self) -> Dict[str, bool]:
-        return {
-            "read_processes": True,
-            "read_runs": True,
-            "read_queues": True,
-            "read_machines": True,
-            "read_bot_status": True,
-            "start_job": True,
-            "stop_job": True,
-            "queue_items": True,
-        }
+    CAPABILITIES: Dict[str, bool] = {
+        "read_processes": True,
+        "read_runs": True,
+        "read_queues": True,
+        "read_machines": True,
+        "read_bot_status": True,
+        "start_job": True,
+        "stop_job": True,
+        "queue_items": True,
+    }

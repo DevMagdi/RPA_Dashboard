@@ -23,6 +23,7 @@ Configuration example (stored per tenant)::
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -239,8 +240,12 @@ class GenericSQLAdapter(PlatformAdapter):
         The actual dispatch happens in :mod:`app.services.command_service`
         (WebSocket + Redis pub/sub) so this adapter stays transport agnostic.
         """
+        # Always return an external_id: the caller's idempotency key when one
+        # was supplied, otherwise a freshly generated job reference — API
+        # consumers must never receive ``external_id: null`` for an accepted
+        # job (they need it to poll/stop the job later).
         return JobHandle(
-            external_id=request.idempotency_key,
+            external_id=request.idempotency_key or f"job-{uuid.uuid4().hex}",
             accepted=True,
             status=CanonicalStatus.PENDING,
             message="Command queued for the native agent",
@@ -251,14 +256,13 @@ class GenericSQLAdapter(PlatformAdapter):
             external_id=external_id, accepted=True, status=CanonicalStatus.STOPPED, message="Stop queued"
         )
 
-    def capabilities(self) -> Dict[str, bool]:
-        return {
-            "read_processes": True,
-            "read_runs": True,
-            "read_queues": True,
-            "read_machines": True,
-            "read_bot_status": True,
-            "start_job": True,
-            "stop_job": True,
-            "queue_items": False,
-        }
+    CAPABILITIES: Dict[str, bool] = {
+        "read_processes": True,
+        "read_runs": True,
+        "read_queues": True,
+        "read_machines": True,
+        "read_bot_status": True,
+        "start_job": True,
+        "stop_job": True,
+        "queue_items": False,
+    }

@@ -35,11 +35,16 @@ class ROIConfigUpdate(BaseModel):
 
 
 class SLAConfigUpdate(BaseModel):
-    """SLA configuration payload."""
+    """SLA configuration payload.
+
+    Both tuning fields are optional: clients may update just the SLA target
+    (or just the queue processing estimate, or only the warning ratio) and
+    leave the other value untouched.
+    """
 
     ProcessName: str = Field(..., min_length=1, max_length=100)
-    SLATargetMinutes: int = Field(..., gt=0, le=100_000)
-    AvgItemProcessingSeconds: int = Field(..., gt=0, le=100_000)
+    SLATargetMinutes: Optional[int] = Field(None, gt=0, le=100_000)
+    AvgItemProcessingSeconds: Optional[int] = Field(None, gt=0, le=100_000)
     SLAWarningRatio: float = Field(0.75, ge=0.1, le=1.0)
 
 

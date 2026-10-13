@@ -269,14 +269,20 @@ def update_sla(
     *,
     tenant_id: int,
     process_name: str,
-    sla_target_minutes: int,
-    avg_item_processing_seconds: int,
+    sla_target_minutes: Optional[int] = None,
+    avg_item_processing_seconds: Optional[int] = None,
     warning_ratio: float = 0.75,
 ) -> Dict[str, Any]:
-    """Update SLA targets and the queue's processing-time estimate."""
-    if sla_target_minutes <= 0:
+    """Update SLA targets and the queue's processing-time estimate.
+
+    ``sla_target_minutes`` / ``avg_item_processing_seconds`` are optional —
+    an omitted field keeps its current value (partial updates are a normal
+    case: the capacity advisor tweaks the processing estimate without
+    touching the contractual SLA target).
+    """
+    if sla_target_minutes is not None and sla_target_minutes <= 0:
         raise ValueError("زمن الـ SLA يجب أن يكون أكبر من صفر")
-    if avg_item_processing_seconds <= 0:
+    if avg_item_processing_seconds is not None and avg_item_processing_seconds <= 0:
         raise ValueError("زمن معالجة العنصر يجب أن يكون أكبر من صفر")
     if not 0.1 <= warning_ratio <= 1.0:
         raise ValueError("نسبة التحذير يجب أن تكون بين 0.1 و 1.0")
@@ -284,6 +290,18 @@ def update_sla(
     existing = get_process(session, tenant_id=tenant_id, process_name=process_name)
     if not existing:
         raise ValueError("العملية غير موجودة في الإعدادات")
+
+    # Resolve omitted fields to their current values (partial update).
+    if sla_target_minutes is None:
+        sla_target_minutes = int(existing.get("SLATargetMinutes") or 0) or 60
+    queue_existing = fetch_one(
+        session,
+        "SELECT AvgItemProcessingSeconds FROM ProcessQueues WHERE TenantID = :t AND ProcessName = :p",
+        {"t": tenant_id, "p": process_name},
+        operation="processes.queue_existing",
+    )
+    if avg_item_processing_seconds is None:
+        avg_item_processing_seconds = int((queue_existing or {}).get("AvgItemProcessingSeconds") or 0) or 30
 
     before_sla = int(existing.get("SLATargetMinutes") or 0)
     queue_before = fetch_one(
@@ -352,12 +370,21 @@ def set_active(session: Session, *, tenant_id: int, process_name: str, is_active
 
 
 def soft_delete_process(session: Session, *, tenant_id: int, process_name: str) -> int:
-    """Logically delete a process (history & audit remain intact)."""
+    """Logically delete a process (history & audit remain intact).
+
+    Only *live* rows are affected: deleting an already-deleted process
+    returns ``0`` so the API can answer ``404`` instead of pretending a
+    second delete succeeded.
+    """
     return update_rows(
         session,
         ProcessConfig,
         {"IsDeleted": True, "DeletedAt": datetime.utcnow(), "IsActive": False},
-        [ProcessConfig.c.ProcessName == process_name, ProcessConfig.c.TenantID == tenant_id],
+        [
+            ProcessConfig.c.ProcessName == process_name,
+            ProcessConfig.c.TenantID == tenant_id,
+            ProcessConfig.c.IsDeleted.is_(False),
+        ],
     )
 
 

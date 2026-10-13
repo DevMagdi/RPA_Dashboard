@@ -64,6 +64,15 @@ class JobControlRequest(BaseModel):
     Arguments: Dict[str, Any] = Field(default_factory=dict)
     Reason: Optional[str] = Field(None, max_length=300)
     Priority: str = Field("Normal", max_length=20)
+    IdempotencyKey: Optional[str] = Field(
+        None,
+        max_length=120,
+        description=(
+            "Caller-supplied key making job starts safe to retry: resubmitting the "
+            "same key does not start the job twice, and the response always carries "
+            "the job's external_id (generated server-side when omitted)."
+        ),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -323,11 +332,16 @@ async def start_job(
         machine_keys=payload.MachineNames,
         arguments=payload.Arguments,
         priority=payload.Priority,
+        idempotency_key=payload.IdempotencyKey,
         trigger="manual",
         triggered_by=principal.username,
         reason=payload.Reason,
     )
     handle = adapter.start_job(request)
+    # The caller must always learn the job's identity — adapters echo the
+    # idempotency key or generate one (see generic_sql) — but never trust a
+    # vendor to do it: fall back to the submitted/generated key here.
+    external_id = handle.external_id or payload.IdempotencyKey
 
     audit_service.record(
         db,
@@ -338,7 +352,8 @@ async def start_job(
         new_values={
             "provider": adapter.name,
             "accepted": handle.accepted,
-            "external_id": handle.external_id,
+            "external_id": external_id,
+            "idempotency_key": payload.IdempotencyKey,
             "reason": payload.Reason,
             "machines": payload.MachineNames,
         },
@@ -349,7 +364,8 @@ async def start_job(
     return {
         "status": "success",
         "provider": adapter.name,
-        "external_id": handle.external_id,
+        "external_id": external_id,
+        "idempotency_key": payload.IdempotencyKey,
         "job_status": handle.status.value,
         "message": handle.message,
     }

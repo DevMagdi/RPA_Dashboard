@@ -39,7 +39,11 @@ class HttpAdapterConfig:
     configured secret store — never hard-coded, never committed.
     """
 
-    base_url: str
+    # Empty default: adapters must be *instantiable* without credentials so the
+    # provider catalogue / setup wizard can describe them before a tenant has
+    # configured anything (requests against an empty base URL fail fast with
+    # PlatformUnavailable instead).
+    base_url: str = ""
     auth_mode: AuthMode = "bearer"
     client_id: Optional[str] = None
     client_secret: Optional[str] = None

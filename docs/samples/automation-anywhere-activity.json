@@ -1,0 +1,39 @@
+{
+  "$schema": "Sample Automation Anywhere A360 activity payload — the 'status' wording is the interesting part",
+  "list": [
+    {
+      "id": "dep-9001",
+      "automationId": "42",
+      "automationName": "Invoice_Processing",
+      "status": "In Progress",
+      "startDateTime": "2026-10-13T08:00:00Z",
+      "endDateTime": null,
+      "deviceName": "RPA-RUNNER-01",
+      "botName": "InvoiceBot"
+    },
+    {
+      "id": "dep-9002",
+      "automationId": "42",
+      "automationName": "Invoice_Processing",
+      "status": "Completed",
+      "startDateTime": "2026-10-13T07:00:00Z",
+      "endDateTime": "2026-10-13T07:04:12Z",
+      "deviceName": "RPA-RUNNER-01",
+      "botName": "InvoiceBot",
+      "successCount": 120,
+      "failureCount": 2
+    },
+    {
+      "id": "dep-9003",
+      "automationId": "77",
+      "automationName": "KYC_Onboarding",
+      "status": "Failed",
+      "startDateTime": "2026-10-13T06:30:00Z",
+      "endDateTime": "2026-10-13T06:31:40Z",
+      "deviceName": "RPA-RUNNER-02",
+      "botName": "KYCBot",
+      "errorMessage": "Control Room device disconnected"
+    }
+  ],
+  "_note": "\"In Progress\" (with a space) must normalise to the canonical Running status — see tests/test_platforms_base.py and tests/test_platforms_adapters.py::test_aa_run_mapping_in_progress"
+}

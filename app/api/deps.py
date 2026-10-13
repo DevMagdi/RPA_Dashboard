@@ -177,6 +177,82 @@ def require_permission(*required: str) -> Callable[..., AuthenticatedUser]:
     return _checker
 
 
+# --------------------------------------------------------------------------- #
+# Platform-operator guard
+# --------------------------------------------------------------------------- #
+#: TenantKey of the platform-operator tenant created at bootstrap.  Tenant
+#: management (list/provision/suspend *other* banks) is reserved for a
+#: SuperAdmin **of this tenant only**.
+PLATFORM_TENANT_KEY = "default"
+
+
+def platform_tenant_id(db: Session) -> Optional[int]:
+    """Resolve the platform-operator tenant id (``TenantKey='default'``)."""
+    from app.db.repository import fetch_one
+
+    row = fetch_one(
+        db,
+        "SELECT TenantID FROM Tenants WHERE TenantKey = :k",
+        {"k": PLATFORM_TENANT_KEY},
+        operation="deps.platform_tenant",
+    )
+    if row:
+        return int(row["TenantID"])
+    row = fetch_one(db, "SELECT MIN(TenantID) AS TenantID FROM Tenants", operation="deps.platform_tenant_min")
+    return int(row["TenantID"]) if row and row.get("TenantID") is not None else None
+
+
+def require_platform_admin(
+    principal: AuthenticatedUser = Depends(current_principal),
+    db: Session = Depends(get_db),
+) -> AuthenticatedUser:
+    """Guard for cross-tenant (platform-operator) endpoints.
+
+    Tenant provisioning used to be guarded by ``require_permission("*")`` —
+    but every tenant gets its *own* ``SuperAdmin`` role seeded with the ``*``
+    permission **inside that tenant**, so any tenant's admin could list,
+    rebrand, reconfigure or suspend every other tenant.  This dependency
+    additionally binds the caller to the platform tenant (``default``), so a
+    tenant-local SuperAdmin can never cross the tenant boundary.
+    """
+    if principal.role != "SuperAdmin" or principal.tenant_id != platform_tenant_id(db):
+        AUTH_EVENTS.labels(event="permission", result="platform_denied").inc()
+        logger.warning(
+            "Platform-admin denied: user=%s role=%s tenant=%s",
+            principal.username,
+            principal.role,
+            principal.tenant_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذا الإجراء مخصص لمشغّل المنصة فقط",
+        )
+    return principal
+
+
+# --------------------------------------------------------------------------- #
+# SSE authentication (EventSource cannot send headers)
+# --------------------------------------------------------------------------- #
+def current_principal_sse(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> AuthenticatedUser:
+    """Authenticate an SSE subscription.
+
+    Browsers' ``EventSource`` API cannot set an ``Authorization`` header, so
+    the realtime endpoint additionally accepts the access token as a
+    ``?token=`` query parameter.  The header always wins when present; the
+    query token is only a fallback and is validated exactly like a bearer
+    token (same signature/expiry/principal checks).
+    """
+    if credentials is None or not credentials.credentials:
+        query_token = request.query_params.get("token")
+        if query_token:
+            credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=query_token)
+    return authenticate_bearer(request, db, credentials)
+
+
 def require_roles(*roles: str) -> Callable[..., AuthenticatedUser]:
     """Backward-compatible role guard (prefer :func:`require_permission`)."""
 

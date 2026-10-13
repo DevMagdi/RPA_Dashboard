@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_permission, require_platform_admin
 from app.platforms.registry import invalidate_adapter_cache
 from app.services import audit_service, tenant_service
 from app.services.auth_service import AuthenticatedUser
@@ -72,7 +72,7 @@ class PlatformConfigUpdate(BaseModel):
 def list_tenants(
     include_inactive: bool = Query(False),
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> List[Dict[str, Any]]:
     """Every tenant with its branding and provider (no secrets)."""
     return tenant_service.list_tenants(db, include_inactive=include_inactive)
@@ -82,7 +82,7 @@ def list_tenants(
 def create_tenant(
     payload: TenantCreate,
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Create a tenant, seed its roles and optionally its first administrator."""
     try:
@@ -140,7 +140,7 @@ def create_tenant(
 def get_tenant(
     tenant_id: int,
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Tenant row plus usage statistics."""
     tenant = tenant_service.get_tenant(db, tenant_id)
@@ -154,7 +154,7 @@ def update_branding(
     tenant_id: int,
     payload: BrandingUpdate,
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Change logo/colours/company name — the UI picks them up on reload."""
     try:
@@ -187,7 +187,7 @@ def configure_platform(
     payload: PlatformConfigUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Point the tenant at UiPath / Automation Anywhere / a bespoke platform.
 
@@ -215,7 +215,7 @@ def configure_platform(
 def get_platform_configuration(
     tenant_id: int,
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Current provider + non-secret configuration."""
     return tenant_service.get_platform_configuration(db, tenant_id)
@@ -224,7 +224,7 @@ def get_platform_configuration(
 @router.post("/{tenant_id}/platform/test", summary="Test platform connectivity")
 def test_platform(
     tenant_id: int,
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Instantiate the adapter and ping the vendor (setup wizard step 3)."""
     from app.platforms.registry import platform_health
@@ -238,7 +238,7 @@ def set_tenant_active(
     tenant_id: int,
     is_active: bool = Query(...),
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Suspension blocks logins immediately (contract end / security incident)."""
     affected = tenant_service.set_tenant_active(db, tenant_id=tenant_id, is_active=is_active)
@@ -258,7 +258,7 @@ def run_retention(
     tenant_id: int,
     retention_days: int = Query(730, ge=30, le=3650),
     db: Session = Depends(get_db),
-    principal: AuthenticatedUser = Depends(require_permission("*")),
+    principal: AuthenticatedUser = Depends(require_platform_admin),
 ) -> Dict[str, Any]:
     """Delete telemetry older than the retention window (GDPR / data-minimisation)."""
     result = tenant_service.purge_tenant_data(db, tenant_id=tenant_id, retention_days=retention_days)

@@ -12,7 +12,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import RequestMeta, current_principal, get_db, rate_limit, request_meta, require_permission
+from app.api.deps import (
+    RequestMeta,
+    current_principal,
+    current_principal_sse,
+    get_db,
+    rate_limit,
+    request_meta,
+    require_permission,
+)
 from app.services import audit_service
 from app.services.auth_service import AuthenticatedUser
 from app.services.dashboard_service import get_dashboard, process_options, invalidate_dashboard_cache
@@ -144,7 +152,7 @@ def branding(request: Request, db: Session = Depends(get_db)) -> Dict[str, Any]:
 @router.get("/realtime/events", summary="Server-Sent Events stream")
 async def realtime_events(
     request: Request,
-    principal: AuthenticatedUser = Depends(current_principal),
+    principal: AuthenticatedUser = Depends(current_principal_sse),
     _limit=Depends(rate_limit(10, 60, "sse")),
 ) -> StreamingResponse:
     """Stream live KPI/capacity events for the dashboard.
@@ -152,6 +160,10 @@ async def realtime_events(
     SSE was chosen over WebSockets for the browser client: it survives corporate
     proxies, reconnects automatically and needs no client library.  A
     bidirectional socket is available at ``/ws/realtime`` for the control console.
+
+    Authentication accepts the usual ``Authorization: Bearer`` header **or** a
+    ``?token=`` query parameter — ``EventSource`` cannot set headers, and
+    without the fallback the browser client could never subscribe.
     """
     subscriber_id = f"{principal.tenant_id}:{principal.user_id}:{uuid.uuid4().hex[:8]}"
 
