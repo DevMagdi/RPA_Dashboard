@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
-import api, { ApiError, setAccessToken, setUnauthenticatedHandler } from '../lib/api'
+import api, { ApiError, getAccessToken, hasSessionHint, setAccessToken, setUnauthenticatedHandler, silentRefresh } from '../lib/api'
 import { qk, queryClient } from '../lib/queryClient'
 import { startRealtime, stopRealtime } from '../lib/realtime'
 
@@ -37,20 +37,47 @@ export function AuthProvider({ children }) {
     queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'branding' })
   }, [])
 
-  // Boot: restore the session from the refresh cookie when possible
+  // Boot: restore the session without ever guaranteeing a 401.
+  // Order: (1) an in-memory token (e.g. right after login) is validated
+  // directly; (2) otherwise ONE silent, single-flight refresh runs first
+  // and /auth/me is only called once a token was actually obtained.
+  // A 401 from either bootstrap call must not trigger a second refresh
+  // loop, hence `retryAuth: false` + `silent: true` on the /me calls and
+  // silentRefresh() (which never invokes the unauthenticated handler).
   useEffect(() => {
     let cancelled = false
     setUnauthenticatedHandler(() => clearSession('session_expired'))
 
     const bootstrap = async () => {
-      try {
-        await api.post('/api/auth/refresh', {})
-      } catch {
+      if (getAccessToken()) {
+        try {
+          const me = await api.get('/api/auth/me', { retryAuth: false, silent: true })
+          if (cancelled) return
+          setUser(me)
+          setStatus('authenticated')
+          startRealtime()
+          queryClient.setQueryData(qk.me, me)
+          return
+        } catch {
+          // In-memory token rejected — fall through to one silent refresh.
+        }
+      } else if (!hasSessionHint()) {
+        // Fresh profile: no csrf companion cookie => no refresh cookie
+        // either, so any refresh/me call would 401 by construction.
         if (!cancelled) setStatus('anonymous')
         return
       }
+
+      const refreshed = await silentRefresh()
+      if (cancelled) return
+      if (!refreshed) {
+        // Quiet logged-out transition (also where RequireAuth routes to
+        // /login) — no console errors, no retry storm.
+        setStatus('anonymous')
+        return
+      }
       try {
-        const me = await api.get('/api/auth/me')
+        const me = await api.get('/api/auth/me', { retryAuth: false, silent: true })
         if (cancelled) return
         setUser(me)
         setStatus('authenticated')

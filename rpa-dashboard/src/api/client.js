@@ -73,6 +73,18 @@ function readCookie(name) {
   return match ? decodeURIComponent(match[1]) : ''
 }
 
+/**
+ * Whether a session *might* exist.  The refresh token itself is HttpOnly
+ * and unreadable from JS, but the companion ``csrf_token`` cookie is set
+ * (and cleared) together with it and *is* readable.  A fresh browser
+ * profile has neither, so bootstrap can go straight to ``/login``
+ * without issuing a refresh (or a ``/me``) request that is guaranteed
+ * to 401 — and to show up red in the console/network panel.
+ */
+export function hasSessionHint() {
+  return Boolean(readCookie('csrf_token'))
+}
+
 async function parse(response) {
   const type = response.headers.get('content-type') || ''
   if (type.includes('application/json')) {
@@ -101,7 +113,7 @@ function toError(payload, response) {
   })
 }
 
-async function rotateRefreshToken() {
+async function rotateRefreshToken({ notifyOnFailure = true } = {}) {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const response = await fetch(apiUrl('/api/auth/refresh'), {
@@ -120,7 +132,7 @@ async function rotateRefreshToken() {
     })()
       .catch((error) => {
         setAccessToken(null)
-        if (onUnauthenticated) onUnauthenticated(error)
+        if (notifyOnFailure && onUnauthenticated) onUnauthenticated(error)
         throw error
       })
       .finally(() => {
@@ -131,6 +143,22 @@ async function rotateRefreshToken() {
 }
 
 /**
+ * One silent, single-flight refresh attempt for bootstrap / realtime
+ * recovery.  Returns the token payload on success and ``null`` on any
+ * failure (including 401) — it never throws and never invokes the
+ * unauthenticated handler, so a logged-out bootstrap stays quiet with
+ * no retry storm and no second refresh loop.  Concurrent callers share
+ * the same in-flight rotation (React StrictMode double-effects safe).
+ */
+export async function silentRefresh() {
+  try {
+    return await rotateRefreshToken({ notifyOnFailure: false })
+  } catch {
+    return null
+  }
+}
+
+/**
  * Perform an authenticated request.
  *
  * @param {string} path - absolute API path, e.g. `/api/dashboard-data`
@@ -138,11 +166,22 @@ async function rotateRefreshToken() {
  * @param {string} [options.method]
  * @param {object|FormData} [options.body]
  * @param {boolean} [options.retryAuth] - internal: prevents refresh loops
+ * @param {boolean} [options.silent] - bootstrap-only: a 401 must not invoke
+ *   the unauthenticated handler (the caller transitions quietly itself)
  * @param {AbortSignal} [options.signal]
  * @returns {Promise<any>}
  */
 export async function request(path, options = {}) {
-  const { method = 'GET', body, headers = {}, retryAuth = true, signal, raw = false, timeoutMs = 30_000 } = options
+  const {
+    method = 'GET',
+    body,
+    headers = {},
+    retryAuth = true,
+    silent = false,
+    signal,
+    raw = false,
+    timeoutMs = 30_000,
+  } = options
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const composedSignal = signal
@@ -193,7 +232,7 @@ export async function request(path, options = {}) {
       error.retryAfter = Number(response.headers.get('retry-after') || 0) || null
     }
     if (response.status >= 500 && error.code === 'error') error.code = 'server_error'
-    if (response.status === 401 && onUnauthenticated) onUnauthenticated(error)
+    if (response.status === 401 && !silent && onUnauthenticated) onUnauthenticated(error)
     throw error
   }
 

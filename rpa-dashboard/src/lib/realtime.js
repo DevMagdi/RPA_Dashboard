@@ -7,7 +7,16 @@
  * degrades gracefully: if the stream cannot be established (or the tab was
  * hidden for a long time), consumers fall back to polling, so the dashboard
  * never shows stale numbers silently.
+ *
+ * Auth contract: the stream is started ONLY with a non-empty in-memory
+ * access token (AuthProvider calls startRealtime after login/refresh and
+ * stopRealtime on logout).  EventSource cannot send an Authorization
+ * header, so the token travels as the `?token=` query parameter the API
+ * explicitly supports for SSE.  Without a token this module stays
+ * disconnected and quiet — it never loops on 401s while logged out.
  */
+
+import { apiUrl, getAccessToken, silentRefresh } from '../api/client'
 
 const listeners = new Set()
 const stateListeners = new Set()
@@ -21,6 +30,8 @@ const realtime = {
   retries: 0,
   stopped: true,
   timer: null,
+  hasOpened: false,
+  authRefreshAttempted: false,
 }
 
 function emitState() {
@@ -52,6 +63,11 @@ function dispatch(event, data) {
 
 function scheduleReconnect() {
   if (realtime.stopped) return
+  if (!getAccessToken()) {
+    realtime.stopped = true
+    setStatus(STATE.CLOSED)
+    return
+  }
   realtime.retries += 1
   // 1s, 2s, 4s … capped at 30s with jitter so a restarting cluster does not
   // synchronise all clients onto the same retry instant.
@@ -65,12 +81,26 @@ function open() {
   if (realtime.stopped || realtime.source) return
   if (typeof EventSource === 'undefined') return
 
+  const token = getAccessToken()
+  if (!token) {
+    // Logged out (or bootstrap has not produced a token yet): stay
+    // disconnected quietly instead of spamming 401 reconnects.
+    realtime.stopped = true
+    setStatus(STATE.CLOSED)
+    return
+  }
+
   setStatus(STATE.CONNECTING)
-  const source = new EventSource('/api/realtime/events', { withCredentials: true })
+  realtime.hasOpened = false
+  const source = new EventSource(apiUrl(`/api/realtime/events?token=${encodeURIComponent(token)}`), {
+    withCredentials: true,
+  })
   realtime.source = source
 
   source.onopen = () => {
     realtime.retries = 0
+    realtime.hasOpened = true
+    realtime.authRefreshAttempted = false
     setStatus(STATE.OPEN)
     dispatch('__status', { status: STATE.OPEN })
   }
@@ -98,24 +128,52 @@ function open() {
     })
   })
 
-  source.onerror = () => {
+  source.onerror = async () => {
     source.close()
-    realtime.source = null
+    if (realtime.source === source) realtime.source = null
     if (realtime.stopped) return
     setStatus(STATE.CLOSED)
+
+    if (!realtime.hasOpened && !realtime.authRefreshAttempted) {
+      // Never opened: most likely a 401 (expired/rejected token), since
+      // EventSource exposes no status code.  Stop reconnecting, attempt
+      // ONE silent refresh, and reconnect only with a fresh token.
+      realtime.authRefreshAttempted = true
+      const refreshed = await silentRefresh()
+      if (realtime.stopped) return
+      if (refreshed && getAccessToken()) {
+        open()
+        return
+      }
+      // No fresh token: stay disconnected quietly until next login.
+      realtime.stopped = true
+      setStatus(STATE.CLOSED)
+      return
+    }
+
+    // Genuine drop of an established stream (or a post-refresh retry):
+    // keep the exponential backoff.
     scheduleReconnect()
   }
 }
 
-/** Start streaming (idempotent). */
+/** Start streaming (idempotent; no-op without an access token). */
 export function startRealtime() {
+  if (!getAccessToken()) {
+    realtime.stopped = true
+    setStatus(STATE.CLOSED)
+    return
+  }
   realtime.stopped = false
+  realtime.authRefreshAttempted = false
   open()
 }
 
 /** Stop streaming (called on sign-out). */
 export function stopRealtime() {
   realtime.stopped = true
+  realtime.authRefreshAttempted = false
+  realtime.hasOpened = false
   clearTimeout(realtime.timer)
   if (realtime.source) {
     realtime.source.close()
