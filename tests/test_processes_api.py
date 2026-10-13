@@ -167,3 +167,68 @@ def test_viewer_cannot_write_roi(client, user_headers):
         headers=user_headers("Viewer"),
     )
     assert response.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# Catalogue paging — the console sends limit/offset, keyset callers use
+# page_size/after.  Both must work and agree with each other.
+# --------------------------------------------------------------------------- #
+def _names(response):
+    assert response.status_code == 200, response.text
+    return [row["ProcessName"] for row in response.json()["items"]]
+
+
+def test_limit_offset_paging_returns_total(client, admin_headers):
+    first = client.get("/api/processes?limit=2&offset=0&include_inactive=true", headers=admin_headers)
+    body = first.json()
+    assert first.status_code == 200
+    assert len(body["items"]) == 2
+    # Offset paging drives the page numbers, so the total is always present.
+    assert body["total"] is not None and body["total"] > 2
+
+    second = client.get("/api/processes?limit=2&offset=2&include_inactive=true", headers=admin_headers)
+    assert _names(second) and _names(second) != _names(first)
+
+
+def test_limit_is_an_alias_of_page_size(client, admin_headers):
+    by_limit = client.get("/api/processes?limit=3&include_inactive=true", headers=admin_headers)
+    by_page_size = client.get("/api/processes?page_size=3&include_inactive=true", headers=admin_headers)
+    assert _names(by_limit) == _names(by_page_size)
+    # The keyset shape stays cheap: no total unless it is asked for.
+    assert by_page_size.json()["total"] is None
+
+
+def test_include_total_forces_the_count_on_a_keyset_walk(client, admin_headers):
+    body = client.get(
+        "/api/processes?page_size=3&include_total=true&include_inactive=true", headers=admin_headers
+    ).json()
+    assert body["total"] is not None
+
+
+def test_conflicting_limit_and_page_size_is_rejected(client, admin_headers):
+    response = client.get("/api/processes?limit=5&page_size=10", headers=admin_headers)
+    assert response.status_code == 422
+
+
+def test_cursor_and_offset_cannot_be_combined(client, admin_headers):
+    response = client.get("/api/processes?after=Invoice_Processing&offset=25", headers=admin_headers)
+    assert response.status_code == 422
+
+
+def test_keyset_walk_continues_after_the_cursor(client, admin_headers):
+    page = client.get("/api/processes?page_size=3&include_inactive=true", headers=admin_headers).json()
+    assert page["has_more"] is True and page["next_cursor"]
+    following = client.get(
+        f"/api/processes?page_size=3&after={page['next_cursor']}&include_inactive=true", headers=admin_headers
+    ).json()
+    assert following["items"]
+    assert following["items"][0]["ProcessName"] > page["next_cursor"]
+
+
+def test_catalogue_sorts_on_the_requested_column(client, admin_headers):
+    body = client.get(
+        "/api/processes?sort_by=ExpectedRunsPerDay&sort_dir=desc&limit=5&include_inactive=true",
+        headers=admin_headers,
+    ).json()
+    runs = [row["ExpectedRunsPerDay"] or 0 for row in body["items"]]
+    assert runs == sorted(runs, reverse=True)

@@ -10,12 +10,18 @@ import logging
 from dataclasses import dataclass, field
 from typing import FrozenSet, Iterable, Optional, Set
 
+from app.core.cache import get_cache
 from app.db.repository import fetch_all
 from app.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
 WILDCARD = "*"
+
+#: Permission sets change with a release/role edit, never per request — a short
+#: TTL keeps the authorisation path off the database without risking staleness.
+_CACHE_TTL_SECONDS = 60
+_CACHE_PREFIX = "perms:role:"
 
 #: Fallback matrix used when the database has no rows yet (fresh install).
 DEFAULT_ROLE_PERMISSIONS: dict[str, Set[str]] = {
@@ -78,9 +84,19 @@ class PermissionSet:
 def load_permissions(role: str) -> PermissionSet:
     """Load the permission set for ``role``.
 
+    Every authenticated request resolves a role, so the lookup is cached for a
+    short TTL — without it each request pays a round trip to the database (the
+    ``permissions.load`` slow queries in production logs).  Call
+    :func:`invalidate_permission_cache` after changing ``RolePermissions``.
+
     Falls back to the built-in matrix when no custom role rows exist
     (or the table is empty during a fresh bootstrap).
     """
+    cache_key = f"{_CACHE_PREFIX}{role}"
+    cached = get_cache().get_json(cache_key)
+    if isinstance(cached, list):
+        return PermissionSet(role=role, permissions=frozenset(str(item) for item in cached))
+
     try:
         with session_scope() as session:
             rows = fetch_all(
@@ -91,12 +107,24 @@ def load_permissions(role: str) -> PermissionSet:
             )
     except Exception as exc:  # pragma: no cover - defensive: never block auth
         logger.warning("Permission lookup failed for role %s: %s", role, exc)
-        rows = []
+        # A failed lookup is *not* cached: the next request retries the query.
+        return PermissionSet(role=role, permissions=frozenset(DEFAULT_ROLE_PERMISSIONS.get(role, set())))
 
     permissions = {row["Permission"] for row in rows if row.get("Permission")}
     if not permissions:
         permissions = set(DEFAULT_ROLE_PERMISSIONS.get(role, set()))
-    return PermissionSet(role=role, permissions=frozenset(permissions))
+    permission_set = PermissionSet(role=role, permissions=frozenset(permissions))
+    get_cache().set_json(cache_key, permission_set.as_list(), ttl=_CACHE_TTL_SECONDS)
+    return permission_set
+
+
+def invalidate_permission_cache(role: Optional[str] = None) -> None:
+    """Drop cached permission sets for ``role`` (or every role when omitted)."""
+    cache = get_cache()
+    if role:
+        cache.delete(f"{_CACHE_PREFIX}{role}")
+    else:
+        cache.delete_prefix(_CACHE_PREFIX)
 
 
 def is_known_role(role: str) -> bool:

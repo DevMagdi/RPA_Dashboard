@@ -177,7 +177,10 @@ export default function InfrastructurePage() {
         {tiles.map((tile) => (
           <Card key={tile.label} className="p-3">
             <p className="text-[11px] text-muted">{tile.label}</p>
-            <p className="mt-1 text-lg font-semibold text-text">{summary.isLoading && !summary.data ? <Skeleton className="h-6 w-12" /> : tile.value}</p>
+            {/* The value slot can hold the Skeleton block, so it must not be a <p>. */}
+            <div className="mt-1 text-lg font-semibold text-text">
+              {summary.isLoading && !summary.data ? <Skeleton className="h-6 w-12" /> : tile.value}
+            </div>
           </Card>
         ))}
       </div>

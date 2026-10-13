@@ -61,12 +61,26 @@ def list_processes(
     department: Optional[str] = None,
     after: Optional[str] = None,
     page_size: int = 200,
+    offset: int = 0,
     sort_by: str = "ProcessName",
     sort_dir: str = "asc",
     include_total: bool = False,
     include_inactive: bool = False,
 ) -> Dict[str, Any]:
-    """Keyset-paginated process list (stable under concurrent inserts)."""
+    """Paginated process list (stable under concurrent inserts).
+
+    Two mutually exclusive ways to walk the catalogue:
+
+    * **keyset** — pass ``after`` (the last ``ProcessName`` of the previous
+      page).  The ordering is then pinned to ``ProcessName`` so the cursor
+      stays meaningful, whatever ``sort_by`` says.
+    * **offset** — pass ``offset`` (used by the console's page numbers) when a
+      caller wants random access.  Keyset is preferred for large catalogues.
+
+    ``ORDER BY`` terms are always **unique**: SQL Server rejects a column that
+    appears twice in the order list (error 169), and PostgreSQL/SQLite would
+    silently leave the page boundary undefined.
+    """
     flavor = get_flavor()
     where = [f"c.IsDeleted = {flavor.false_literal}"]
     params: Dict[str, Any] = {}
@@ -107,30 +121,42 @@ def list_processes(
 
     sort_column = sort_by if sort_by in SORTABLE_COLUMNS else "ProcessName"
     direction = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
-    top_n = int(page_size) + 1
+    if after:
+        # The cursor walks ProcessName — never order by anything else.
+        sort_column = "ProcessName"
+
+    order_terms = [f"c.{sort_column} {direction}"]
+    if sort_column != "ProcessName":
+        # Deterministic tiebreaker: ProcessName is unique per process.
+        order_terms.append(f"c.ProcessName {direction}")
+
+    page_size = max(1, int(page_size))
+    offset = max(0, int(offset))
+    top_n = page_size + 1  # one extra row tells us whether another page exists
 
     rows = fetch_all(
         session,
         f"""
-        SELECT {flavor.top(top_n)}
+        SELECT
             c.ConfigID, c.ProcessName, c.Department, c.BotName, c.Provider, c.PlatformProcessKey,
             c.ExpectedRunsPerDay, c.SLATargetMinutes, c.Criticality, c.IsActive, c.Notes,
             c.EmpMinutesPerRequest, c.EmpCostPerRequest, c.BotCostPerRequest, c.SLAWarningRatio,
             c.CreatedAt, c.UpdatedAt
         FROM ProcessConfig c
         WHERE {where_sql}
-        ORDER BY c.{sort_column} {direction}, c.ProcessName {direction}{flavor.limit(top_n)}
+        ORDER BY {", ".join(order_terms)}{flavor.paginate(top_n, offset)}
         """,
         params,
         operation="processes.list",
     )
 
-    has_more = len(rows) > int(page_size)
-    items = rows[: int(page_size)]
+    has_more = len(rows) > page_size
+    items = rows[:page_size]
     next_cursor = items[-1]["ProcessName"] if has_more and items else None
 
     return {
-        "page_size": int(page_size),
+        "page_size": page_size,
+        "offset": offset,
         "total": total,
         "next_cursor": next_cursor,
         "has_more": has_more,
