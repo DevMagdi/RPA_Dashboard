@@ -71,15 +71,40 @@ def list_processes(
     search: Optional[str] = Query(None, max_length=100),
     department: Optional[str] = Query(None, max_length=50),
     after: Optional[str] = Query(None, description="Keyset cursor (last ProcessName)"),
-    page_size: int = Query(200, ge=1, le=1000),
-    include_total: bool = Query(False),
+    page_size: Optional[int] = Query(None, ge=1, le=1000, description="Rows per page (keyset walk)"),
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="Rows per page (offset paging, alias of page_size)"),
+    offset: int = Query(0, ge=0, description="Rows to skip (offset paging)"),
+    include_total: bool = Query(False, description="Force the COUNT even on a keyset walk"),
     include_inactive: bool = Query(False),
     sort_by: str = Query("ProcessName"),
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     principal: AuthenticatedUser = Depends(require_permission("processes:read", "*")),
 ) -> Dict[str, Any]:
-    """Keyset-paginated list — stable and index friendly for large catalogues."""
+    """Paginated list — stable and index friendly for large catalogues.
+
+    ``page_size`` + ``after`` walk the catalogue with a keyset cursor; the
+    console's page numbers use ``limit`` + ``offset`` instead.  Both shapes
+    share one implementation and one response envelope (``items`` / ``total`` /
+    ``next_cursor``); ``total`` is always filled for offset paging because page
+    numbers need it, and only on demand (``include_total=true``) for a keyset
+    walk, which must stay cheap.
+    """
+    if after and (limit is not None or offset):
+        raise HTTPException(
+            status_code=422,
+            detail="لا يمكن استخدام after مع limit/offset — اختر طريقة ترقيم واحدة",
+        )
+    if limit is not None and page_size is not None and limit != page_size:
+        raise HTTPException(
+            status_code=422,
+            detail="أرسل limit أو page_size — وليس كليهما بقيمتين مختلفتين",
+        )
+
+    size = int(limit or page_size or 200)
+    # Offset paging renders page numbers, so the total is not optional there.
+    wants_total = bool(include_total) or limit is not None or offset > 0
+
     return process_service.list_processes(
         db,
         
@@ -87,10 +112,11 @@ def list_processes(
         search=search,
         department=department,
         after=after,
-        page_size=page_size,
+        page_size=size,
+        offset=offset,
         sort_by=sort_by,
         sort_dir=sort_dir,
-        include_total=include_total,
+        include_total=wants_total,
         include_inactive=include_inactive,
     )
 

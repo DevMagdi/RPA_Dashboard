@@ -262,3 +262,83 @@ def test_mfa_full_lifecycle(client, create_user, login):
     )
     assert disabled.status_code == 200
     assert do_login(client, account["username"], account["password"]).json().get("mfa_required") is not True
+
+
+# --------------------------------------------------------------------------- #
+# Permission caching — every request resolves a role, so the lookup must not
+# hit the database each time (see the ``permissions.load`` slow queries).
+# --------------------------------------------------------------------------- #
+def _count_permission_lookups(monkeypatch) -> dict:
+    from app.security import permissions as permission_module
+
+    calls = {"n": 0}
+    real_fetch_all = permission_module.fetch_all
+
+    def counting_fetch_all(*args, **kwargs):
+        calls["n"] += 1
+        return real_fetch_all(*args, **kwargs)
+
+    monkeypatch.setattr(permission_module, "fetch_all", counting_fetch_all)
+    return calls
+
+
+def test_permission_lookup_is_cached_between_requests(client, admin_headers, monkeypatch):
+    from app.security.permissions import invalidate_permission_cache
+
+    calls = _count_permission_lookups(monkeypatch)
+    invalidate_permission_cache()  # cold cache, whatever ran before this test
+
+    for _ in range(3):
+        assert client.get("/api/processes?limit=1", headers=admin_headers).status_code == 200
+
+    # One lookup for the first request, then cache hits for the rest — even
+    # though each request resolves the principal *and* the guard.
+    assert calls["n"] == 1
+
+
+def test_permission_sets_can_be_invalidated_per_role():
+    from app.core.cache import get_cache
+    from app.security.permissions import invalidate_permission_cache
+    from app.security.permissions import load_permissions
+
+    load_permissions("SuperAdmin")
+    load_permissions("Auditor")
+    assert get_cache().get_json("perms:role:SuperAdmin") is not None
+
+    invalidate_permission_cache("SuperAdmin")
+    assert get_cache().get_json("perms:role:SuperAdmin") is None
+    assert get_cache().get_json("perms:role:Auditor") is not None
+
+    invalidate_permission_cache()
+    assert get_cache().get_json("perms:role:Auditor") is None
+
+
+def test_failed_permission_lookup_is_not_cached(monkeypatch):
+    from app.security import permissions as permission_module
+    from app.security.permissions import invalidate_permission_cache, load_permissions
+
+    invalidate_permission_cache("GhostRole")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database down")
+
+    monkeypatch.setattr(permission_module, "fetch_all", boom)
+    assert load_permissions("GhostRole").as_list() == []
+
+    # The failure was not cached, so the next call retries and picks the row up.
+    monkeypatch.setattr(
+        permission_module, "fetch_all", lambda *args, **kwargs: [{"Permission": "audit:read"}]
+    )
+    assert load_permissions("GhostRole").as_list() == ["audit:read"]
+
+
+def test_unknown_role_falls_back_to_the_builtin_matrix(monkeypatch):
+    from app.security import permissions as permission_module
+    from app.security.permissions import invalidate_permission_cache, load_permissions
+
+    invalidate_permission_cache("GhostRole")
+    monkeypatch.setattr(permission_module, "fetch_all", lambda *args, **kwargs: [])
+    # No custom rows for the role -> the built-in matrix (empty here) applies,
+    # and that answer *is* cacheable.
+    assert load_permissions("GhostRole").as_list() == []
+    assert load_permissions("Viewer").has("dashboard:read")

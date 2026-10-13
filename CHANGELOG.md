@@ -1,6 +1,37 @@
 # Changelog
 
 
+## Unreleased (2026-10-14)
+
+### Fixed
+- **`/api/processes` answered 500 on SQL Server.** The catalogue query emitted
+  `ORDER BY c.ProcessName ASC, c.ProcessName ASC` for the default sort; T-SQL
+  rejects a repeated column in the order list (*"A column has been specified
+  more than once in the order by list"*, error 169) while SQLite/PostgreSQL
+  accept it silently. `ORDER BY` terms are now unique and a deterministic
+  tiebreaker (`ProcessName`) is added only when the sort column differs.
+  Regression-pinned across all three dialects by `tests/test_process_catalogue_sql.py`.
+- **Invalid DOM nesting in the dashboard tiles.** The loading placeholder
+  (`Skeleton`, a `div`) was rendered inside a `<p>` on the dashboard and
+  infrastructure pages, so React logged `<div> cannot be a descendant of <p>`
+  and re-parsed the subtree on every load. The value slot is a `div` now;
+  `tests/test_frontend_markup.py` audits the JSX sources against a repeat.
+- **`/api/processes` ignored the console's paging parameters.** The page sent
+  `limit`/`offset` but the route only understood the keyset `page_size`/`after`
+  pair, so every page rendered the same rows, the total was never returned and
+  the rows-per-page selector did nothing. The route accepts both shapes
+  (`limit` as an alias of `page_size`, `offset` for random access, `after` for
+  the keyset walk — mutually exclusive), returns `total` for offset paging, and
+  the Processes page now sorts server-side so ordering is correct across pages.
+
+### Performance
+- **Role permissions are cached** (`perms:role:*`, 60 s TTL, memory or Redis).
+  Every authenticated request paid a database round trip for
+  `SELECT Permission FROM RolePermissions` — the `permissions.load` slow-query
+  warnings in production logs — because the principal *and* the permission
+  guard each resolved the role. Failures are never cached, and
+  `invalidate_permission_cache()` drops the entries when roles change.
+
 ## 4.0.0 — Bank Production Ready (2026-10-13)
 
 - **Single-organization, On-Premises only**: removed the multi-organization

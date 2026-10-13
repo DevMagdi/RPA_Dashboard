@@ -32,7 +32,7 @@ import {
   Switch,
 } from '../components/ui'
 
-const PAGE_SIZE = 25
+const DEFAULT_PAGE_SIZE = 25
 
 const CRITICALITY_TONE = { Critical: 'danger', High: 'warning', Medium: 'info', Low: 'neutral' }
 
@@ -45,6 +45,8 @@ export default function ProcessesPage() {
   const [department, setDepartment] = useState('ALL')
   const [includeInactive, setIncludeInactive] = useState(true)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [sort, setSort] = useState({ key: 'ProcessName', dir: 'asc' })
   const [roiTarget, setRoiTarget] = useState(null)
   const [slaTarget, setSlaTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -55,10 +57,14 @@ export default function ProcessesPage() {
       search: debounced || undefined,
       department: department === 'ALL' ? undefined : department,
       include_inactive: includeInactive,
-      limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
+      // Offset paging: the API answers with `items` + `total`, so the page
+      // numbers and the rows-per-page selector stay in sync with the server.
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      sort_by: sort.key,
+      sort_dir: sort.dir,
     }),
-    [debounced, department, includeInactive, page],
+    [debounced, department, includeInactive, page, pageSize, sort],
   )
 
   const processes = useProcesses(filters)
@@ -184,7 +190,14 @@ export default function ProcessesPage() {
             </Select>
           </label>
           <div className="flex h-9 items-center">
-            <Switch checked={includeInactive} onChange={setIncludeInactive} label={t('processes.inactive')} />
+            <Switch
+              checked={includeInactive}
+              onChange={(value) => {
+                setIncludeInactive(value)
+                setPage(1)
+              }}
+              label={t('processes.inactive')}
+            />
           </div>
         </div>
       </Card>
@@ -193,6 +206,12 @@ export default function ProcessesPage() {
         <DataTable
           loading={processes.isLoading}
           rows={rows}
+          // Sorting is done by the server so it stays correct across pages.
+          sort={sort}
+          onSortChange={(next) => {
+            setSort(next)
+            setPage(1)
+          }}
           rowKey={(row) => row.ConfigID}
           empty={<EmptyState icon={Workflow} title={t('dashboard.empty.table')} description={t('processes.missingConfig')} />}
           columns={[
@@ -302,10 +321,13 @@ export default function ProcessesPage() {
           footer={
             <Pagination
               page={page}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               total={total}
               onPageChange={setPage}
-              onPageSizeChange={() => setPage(1)}
+              onPageSizeChange={(size) => {
+                setPageSize(size)
+                setPage(1)
+              }}
               labels={{ of: t('common.of'), none: t('common.na') }}
             />
           }
