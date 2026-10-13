@@ -2,7 +2,217 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Design system — tokens
+   Light and dark are expressed with the same variable names so components
+   never branch on the theme.  Tenant branding overwrites --brand/--accent at
+   runtime (see BrandingProvider).
+   ========================================================================== */
+:root {
+  color-scheme: light;
+
+  --bg: #f4f5f9;
+  --bg-soft: #eceef5;
+  --surface: #ffffff;
+  --surface-2: #f8f9fc;
+  --border: #e2e5ee;
+  --text: #131826;
+  --text-muted: #5b6479;
+
+  --brand: #4b367c;
+  --brand-strong: #3a2a61;
+  --brand-soft: rgba(75, 54, 124, 0.12);
+  --brand-fg: #ffffff;
+  --accent: #f37920;
+  --accent-soft: rgba(243, 121, 32, 0.14);
+
+  --success: #0f9d58;
+  --success-soft: rgba(15, 157, 88, 0.14);
+  --warning: #d98b00;
+  --warning-soft: rgba(217, 139, 0, 0.16);
+  --danger: #d92d20;
+  --danger-soft: rgba(217, 45, 32, 0.14);
+  --info: #1570ef;
+  --info-soft: rgba(21, 112, 239, 0.14);
+
+  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-card: 0 10px 30px -18px rgba(16, 24, 40, 0.35), 0 2px 6px rgba(16, 24, 40, 0.05);
+  --shadow-pop: 0 24px 60px -24px rgba(16, 24, 40, 0.45);
+
+  --radius: 0.9rem;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg: #0b0e17;
+  --bg-soft: #101423;
+  --surface: #131829;
+  --surface-2: #181e33;
+  --border: #242c45;
+  --text: #eef1f8;
+  --text-muted: #9aa4bf;
+
+  --brand-soft: rgba(140, 122, 214, 0.18);
+  --accent-soft: rgba(243, 121, 32, 0.18);
+  --success-soft: rgba(15, 157, 88, 0.2);
+  --warning-soft: rgba(217, 139, 0, 0.2);
+  --danger-soft: rgba(217, 45, 32, 0.2);
+  --info-soft: rgba(21, 112, 239, 0.2);
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 18px 40px -24px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 30px 70px -30px rgba(0, 0, 0, 0.9);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
-  background-color: #F9F9F6;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 100% -10%, var(--brand-soft), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, var(--accent-soft), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, Cairo, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Arabic typography benefits from a slightly larger x-height */
+html[dir='rtl'] body {
+  font-family: Cairo, Inter, 'Segoe UI', system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--brand);
+  color: var(--brand-fg);
+}
+
+/* Slim, theme-aware scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  background-clip: content-box;
+}
+
+@layer components {
+  .glass {
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  }
+
+  .card {
+    @apply rounded-2xl border border-border bg-surface shadow-card;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 ease-premium hover:-translate-y-0.5 hover:shadow-pop;
+  }
+
+  .panel-title {
+    @apply text-sm font-semibold text-muted uppercase tracking-wide;
+  }
+
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg;
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+    border-radius: 0.6rem;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 60%, transparent), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+
+  .scroll-shadow {
+    mask-image: linear-gradient(to bottom, transparent, black 8px, black calc(100% - 8px), transparent);
+  }
+}
+
+/* Respect users who ask for less motion (WCAG 2.1 AA) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* RTL: chart tooltips and the react-grid-layout drag handle follow the text
+   direction, so flip the translate direction used by slide-in animations. */
+html[dir='rtl'] {
+  --slide-from: -12px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
+
+/* ------------------------------------------------------------------ grid */
+/* react-grid-layout ships structural CSS; these are the themed touches. */
+.rpa-grid-container {
+  width: 100%;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--brand) !important;
+  opacity: 0.16 !important;
+  border-radius: 1rem;
+  transition-duration: 120ms;
+}
+
+.react-grid-item.react-draggable-dragging,
+.react-grid-item.resizing {
+  z-index: 30;
+  transition: none;
+}
+
+.react-grid-item > .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.react-grid-item:hover > .react-resizable-handle,
+.react-grid-item.resizing > .react-resizable-handle {
+  opacity: 1;
+}
+
+.react-resizable-handle::after {
+  border-color: var(--brand);
 }

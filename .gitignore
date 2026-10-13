@@ -1,0 +1,91 @@
+# ==========================================================================
+#  RPA CoE Control Room — Root .gitignore
+#  ⚠️ NEVER commit secrets, agent credentials, or database backups here.
+# ==========================================================================
+
+# ---------- Secrets & credentials (CRITICAL) ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+agent_credentials.json
+enroll_config.json
+secrets.toml
+*.secret
+
+# ---------- Database dumps & backups (never in Git) ----------
+*.bak
+*.bkp
+*.bacpac
+*.dacpac
+*.trn
+*.mdf
+*.ldf
+*.sql.gz
+/backups/
+
+# ---------- Logs ----------
+*.log
+logs/
+api.log
+agent.log
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+dist/
+build/
+.tox/
+
+# ---------- Node / Vite ----------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- IDE / OS ----------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Test / E2E artifacts ----------
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# ---------- Runtime data ----------
+/data/
+/tmp/
+*.sqlite3
+*.db

@@ -1,0 +1,13 @@
+-r requirements.txt
+
+# --- testing ---------------------------------------------------------------
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+coverage==7.16.2
+playwright>=1.48.0          # browser E2E (frontend smoke)
+
+# --- quality gates ---------------------------------------------------------
+ruff>=0.7.0                 # lint + format
+pyflakes>=3.2.0             # import hygiene (used in this repository)
+mypy>=1.13.0                # gradual typing of app/services
