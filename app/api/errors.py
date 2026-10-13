@@ -26,6 +26,7 @@ from app.platforms.base import PlatformAdapter
 from app.platforms.http_base import PlatformAuthError, PlatformUnavailable
 from app.services.auth_service import AuthError
 from app.services.capacity_service import SEVERITY_CRITICAL
+from app.services.token_service import TokenError
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=_envelope(exc.code, str(exc), request=request),
+        )
+
+    @app.exception_handler(TokenError)
+    async def _token_error(request: Request, exc: TokenError) -> JSONResponse:
+        # Defense in depth: any token-validation path that escapes the
+        # service-layer translation is still a 401, never a 500.  The
+        # internal reason (unknown / expired / reused) is not leaked.
+        logger.warning("Invalid refresh token on %s: %s", request.url.path, exc)
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=_envelope("refresh_invalid", "الجلسة منتهية، برجاء تسجيل الدخول من جديد", request=request),
         )
 
     @app.exception_handler(HTTPException)

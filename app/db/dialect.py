@@ -40,6 +40,26 @@ class SqlFlavor:
         """Build ``SELECT {TOP n}`` / ``SELECT`` + trailing ``LIMIT n`` helper."""
         return self.top(n)
 
+    def quote_ident(self, name: str) -> str:
+        """Quote a single identifier for this dialect.
+
+        Reserved words differ per engine — e.g. ``Trigger`` is a reserved
+        keyword in T-SQL (``Incorrect syntax near the keyword 'Trigger'``)
+        while it is accepted bare on SQLite/PostgreSQL.  Quoting only the
+        identifier (never a value) makes the same query text valid on every
+        supported dialect without renaming any database column.
+
+        The returned text is the quoted form only; the logical column name
+        is unchanged, so result mappings keep their original keys when the
+        quoted identifier is also used as the ``AS`` alias.
+        """
+        ident = str(name).strip()
+        if not ident or any(ch in ident for ch in (".", ";", "\n", "\r", "\0")):
+            raise ValueError(f"invalid identifier: {name!r}")
+        if self.dialect == "mssql":
+            return "[" + ident.replace("]", "]]") + "]"
+        return '"' + ident.replace('"', '""') + '"'
+
     def paginate(self, limit: int, offset: int = 0) -> str:
         """Row-limiting clause **suffix** (the query must already have ORDER BY).
 

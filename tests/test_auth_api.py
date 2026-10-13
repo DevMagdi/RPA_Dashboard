@@ -114,6 +114,91 @@ def test_logout_then_refresh_fails(client):
     assert client.post("/api/auth/refresh", json={}, headers={"X-CSRF-Token": csrf}).status_code in (401, 403)
 
 
+def _csrf(client) -> str:
+    return client.cookies.get("csrf_token") or ""
+
+
+def test_refresh_with_garbage_token_returns_401_not_500(client):
+    do_login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+    response = client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": "garbage.not-a-jwt"},
+        headers={"X-CSRF-Token": _csrf(client)},
+    )
+    assert response.status_code == 401, response.text
+    assert response.json()["error"]["code"] == "refresh_invalid"
+
+
+def test_refresh_with_unknown_token_row_returns_401_not_500(client):
+    """Well-formed JWT whose hash has no RefreshTokens row -> 401."""
+    from app.core.security import create_refresh_token
+
+    login_response = do_login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+    assert login_response.status_code == 200
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {login_response.json()['access_token']}"})
+    assert me.status_code == 200
+    forged = create_refresh_token(ADMIN_USERNAME, user_id=int(me.json()["user_id"]), token_id="999999999")
+    response = client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": forged},
+        headers={"X-CSRF-Token": _csrf(client)},
+    )
+    assert response.status_code == 401, response.text
+    assert response.json()["error"]["code"] == "refresh_invalid"
+
+
+def test_refresh_after_logout_returns_401_not_500(client):
+    do_login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+    csrf = _csrf(client)
+    captured_refresh = client.cookies.get("refresh_token")
+    assert captured_refresh
+    access = client.post("/api/auth/refresh", json={}, headers={"X-CSRF-Token": csrf})
+    assert access.status_code == 200
+    captured_refresh = client.cookies.get("refresh_token") or captured_refresh
+    headers = {"Authorization": f"Bearer {access.json()['access_token']}", "X-CSRF-Token": csrf}
+    assert client.post("/api/auth/logout", headers=headers).status_code == 200
+    # Authorization header exempts the cookie-CSRF check (bearer requests are
+    # not forgeable), so this exercises the auth layer itself: the revoked
+    # token must surface as 401, never 500.
+    response = client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": captured_refresh},
+        headers={"Authorization": f"Bearer {access.json()['access_token']}"},
+    )
+    assert response.status_code == 401, response.text
+    assert response.json()["error"]["code"] == "refresh_invalid"
+
+
+def test_valid_refresh_still_rotates(client):
+    do_login(client, ADMIN_USERNAME, ADMIN_PASSWORD)
+    response = client.post("/api/auth/refresh", json={}, headers={"X-CSRF-Token": _csrf(client)})
+    assert response.status_code == 200, response.text
+    assert response.json().get("access_token")
+
+
+def test_token_error_handler_returns_401_envelope():
+    """Defense-in-depth: a bare TokenError escaping any path is a 401."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.errors import register_exception_handlers
+    from app.services.token_service import TokenError
+
+    mini = FastAPI()
+    register_exception_handlers(mini)
+
+    @mini.get("/boom")
+    def _boom():
+        raise TokenError("refresh token not recognised")
+
+    with TestClient(mini, raise_server_exceptions=False) as mini_client:
+        response = mini_client.get("/boom")
+    assert response.status_code == 401, response.text
+    body = response.json()
+    assert body["error"]["code"] == "refresh_invalid"
+    assert "request_id" in body["error"]
+
+
 def test_change_password_flow(client, create_user, login):
     account = create_user(role="Viewer")
     headers = login(account["username"], account["password"])

@@ -477,9 +477,16 @@ def refresh_session(
     if not row or not bool(row.get("IsActive", True)):
         raise AuthError("الحساب غير متاح", code="inactive_account", status_code=403)
 
-    issued, _previous = token_service.rotate_refresh_token(
-        session, raw_refresh_token, username=username, ip_address=ip_address, user_agent=user_agent
-    )
+    try:
+        issued, _previous = token_service.rotate_refresh_token(
+            session, raw_refresh_token, username=username, ip_address=ip_address, user_agent=user_agent
+        )
+    except token_service.TokenError as exc:
+        # Unknown / expired / revoked / reused refresh token (e.g. a stale
+        # browser cookie against a fresh database) is a client auth failure,
+        # never a server error.  Reuse detection (family revocation) has
+        # already run inside token_service before this is raised.
+        raise AuthError("الجلسة منتهية، برجاء تسجيل الدخول من جديد", code="refresh_invalid", status_code=401) from exc
     principal = _build_principal(session, row)
     access_token = create_access_token(
         principal.username,
