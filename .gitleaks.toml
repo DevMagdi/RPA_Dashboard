@@ -1,0 +1,55 @@
+# Gitleaks configuration — extends the upstream default rule set.
+#
+# This repository intentionally contains non-production dummy credentials
+# used only as test/demo fixtures.  They are allowlisted below by EXACT
+# value AND by fixture path (condition = "AND", regexTarget = "line"):
+# a finding is ignored only when the line contains one of these exact
+# dummy strings AND the file is one of the listed fixture paths.  A real
+# secret in any of those files, or one of these strings anywhere else
+# (other than the documented bootstrap/README references below), still
+# fails the scan.  No rule is disabled and no path is blanket-ignored.
+#
+# Dummy fixtures allowlisted (all non-production, rotate-on-first-use
+# where they seed a demo login — see app/db/bootstrap.py):
+#   ChangeMe_Admin1!   demo/bootstrap admin password (tests/, scripts/, README, docs, bootstrap)
+#   ChangeMe_Strong1!  .env.example DB password placeholder
+#   Str0ng_Passw0rd!   test user password fixture (tests/, scripts/smoke_api.py)
+#   New_Str0ng_Pass!   password-change fixture (tests/)
+#   s3cr3t-value       vault/encryption round-trip fixture (tests/, scripts/smoke_api.py)
+#   uat-secret         smoke-only credential fixture (scripts/smoke_api.py)
+#   x-secret           vault masking fixture (tests/)
+#   plain-text-secret  negative test: must be rejected by the API (tests/)
+#   replace_me_with_a_long_random_value_at_least_32_chars  .env.example JWT placeholder
+#   sa:secret@sql01    dummy MSSQL connection-string fixture (tests/test_config.py)
+
+title = "RPA Dashboard (extends default)"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Exact non-production dummy fixture values in fixture paths only"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''ChangeMe_Admin1!''',
+  '''ChangeMe_Strong1!''',
+  '''Str0ng_Passw0rd!''',
+  '''New_Str0ng_Pass!''',
+  '''s3cr3t-value''',
+  '''uat-secret''',
+  '''x-secret''',
+  '''plain-text-secret''',
+  '''replace_me_with_a_long_random_value_at_least_32_chars''',
+  '''sa:secret@sql01''',
+]
+paths = [
+  '''(^|/)tests/''',
+  '''(^|/)scripts/smoke_api\.py$''',
+  '''(^|/)scripts/verify_dashboard\.py$''',
+  '''(^|/)app/db/bootstrap\.py$''',
+  '''(^|/)README\.md$''',
+  '''(^|/)docs/''',
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.gitleaks\.toml$''',
+]
