@@ -7,6 +7,7 @@ pytest-cov==7.1.0
 coverage==7.16.2
 playwright>=1.48.0          # browser E2E (frontend smoke)
 fonttools>=4.55.0           # font-coverage assertions (Arabic glyph subsets)
+brotli>=1.1.0               # WOFF2 decoder fontTools needs to read the shipped webfonts
 pypdf>=6.1.0                # extract text from generated PDFs (Arabic export proof)
 
 # --- quality gates ---------------------------------------------------------

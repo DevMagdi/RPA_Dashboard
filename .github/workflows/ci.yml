@@ -33,7 +33,20 @@ jobs:
         run: |
           python -m ruff check app tests scripts
       - name: Test (coverage gate 80% via .coveragerc)
-        run: python -m pytest
+        run: |
+          set +e
+          python -m pytest -q --tb=short -rf | tee /tmp/pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Surface the failures as check annotations: this environment has no
+            # access to the raw job log, annotations are the readable channel.
+            grep -E '^(FAILED|ERROR)' /tmp/pytest.log | head -10 | while IFS= read -r failure; do
+              echo "::error title=pytest failure::${failure}"
+            done
+            tail -n 25 /tmp/pytest.log | sed 's/%/%25/g' | tr '\n' '\r' > /tmp/tail.txt
+            while IFS= read -r chunk; do echo "::error title=pytest output::${chunk}"; done < /tmp/tail.txt
+          fi
+          exit "$status"
       - name: API smoke (64 checks, in-process)
         env:
           PYTHONPATH: ${{ github.workspace }}

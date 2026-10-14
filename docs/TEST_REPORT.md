@@ -8,7 +8,7 @@ checkout; API timings are **not** a bank-hardware production benchmark.
 
 | Suite / metric | Result | Gate |
 |---|---:|---:|
-| `pytest` (20 test files) | **352 passed, 3 warnings** | pass |
+| `pytest` (20 test files) | **352 passed, 3 warnings** (348 passed + 4 skipped in the CI backend job, where `dist/` is not built) | pass |
 | Backend statement coverage | **81.42%** | ≥ 80% |
 | `scripts/smoke_api.py` | **64/64 checks passed** | all |
 | `scripts/verify_dashboard.py` through the live Vite proxy | **59/59 checks passed** | all |

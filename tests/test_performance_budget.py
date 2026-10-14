@@ -127,11 +127,23 @@ def test_static_assets_are_cached_immutably_and_the_shell_is_not(client):
 
 
 def test_fonts_are_served_from_the_installation(client):
-    """Air-gapped banks: the Arabic font must come from the Control Room itself."""
+    """Air-gapped banks: the Arabic font must come from the Control Room itself.
+
+    The font is part of the SPA build, so the HTTP half of the check only runs
+    when ``dist/`` exists (the backend CI job does not build the frontend — the
+    frontend job does, and this file runs there as well).
+    """
+    bundled = FRONTEND / "public" / "fonts" / "cairo-arabic-wght-normal.woff2"
+    assert bundled.exists() and bundled.stat().st_size > 10_000, "the Arabic webfont is missing from the SPA"
+
+    if not DIST.exists():
+        pytest.skip("frontend build not present (run `npm run build`)")
+
     response = client.get("/fonts/cairo-arabic-wght-normal.woff2")
     assert response.status_code == 200
     assert response.headers["content-type"] in ("font/woff2", "application/octet-stream")
     assert len(response.content) > 10_000
+    assert response.content == bundled.read_bytes(), "served font differs from the shipped asset"
 
 
 # --------------------------------------------------------------------------- #
