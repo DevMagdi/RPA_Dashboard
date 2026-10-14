@@ -73,11 +73,11 @@
   --text-muted: #5b6b82; /* AA (≥4.5:1) on the #F5F7FB canvas — 5.06:1 */
 
   /* — brand (refined Indigo — brand ACTIONS only; Navy carries presence) — */
-  --brand: #3f51b5;
-  --brand-strong: #33439c;
-  --brand-lighter: #6c7ce0;
-  --brand-soft: rgba(63, 81, 181, 0.12);
-  --brand-ring: rgba(63, 81, 181, 0.40);
+  --brand: #4f46e5;
+  --brand-strong: #3730a3;
+  --brand-lighter: #6366f1;
+  --brand-soft: rgba(79, 70, 229, 0.12);
+  --brand-ring: rgba(79, 70, 229, 0.40);
   --brand-fg: #ffffff;
 
   /* Navy — the dominant presence colour (hero, live badge, active nav, strips). */
@@ -102,7 +102,7 @@
 
   /* KPI strip tones — strong fills for bars & dots (AA text uses the semantic tokens). */
   --strip-navy: #1e3a5f;
-  --strip-indigo: #4c63d2;
+  --strip-indigo: #4f46e5;
   --strip-green: #10b981;
   --strip-orange: #f58220;
   --strip-blue: #0ea5e9;
@@ -209,11 +209,11 @@
   --text-soft: #c7d3e4;
   --text-muted: #a6b4c8;
 
-  --brand: #a5b4fc;
-  --brand-strong: #8c9df2;
-  --brand-lighter: #c7d0fb;
-  --brand-soft: rgba(165, 180, 252, 0.18);
-  --brand-ring: rgba(165, 180, 252, 0.50);
+  --brand: #818cf8;
+  --brand-strong: #6d78f6;
+  --brand-lighter: #a5b4fc;
+  --brand-soft: rgba(129, 140, 248, 0.18);
+  --brand-ring: rgba(129, 140, 248, 0.50);
   --brand-fg: #0f1a2e;
 
   --navy: #1e3a5f;
@@ -234,7 +234,7 @@
   --orange-fg: #1a0f05;
 
   --strip-navy: #7fa9de;
-  --strip-indigo: #a5b4fc;
+  --strip-indigo: #818cf8;
   --strip-green: #34d399;
   --strip-orange: #ff9640;
   --strip-blue: #38bdf8;
@@ -623,7 +623,7 @@ h4 {
     --danger: #fca5a5;
     --info: #7dd3fc;
     --strip-navy: #7fa9de;
-    --strip-indigo: #a5b4fc;
+    --strip-indigo: #818cf8;
     --strip-green: #34d399;
     --strip-orange: #ff9640;
     --strip-blue: #38bdf8;
