@@ -11,7 +11,7 @@ import {
   useTestPlatformConfig,
   useUpdateBranding,
 } from '../hooks/api'
-import { Badge, Button, Card, CardBody, CardHeader, Field, InfoTile, Input, Notice, SectionTitle, Select, Textarea } from '../components/ui'
+import { Badge, Button, Card, CardBody, CardHeader, Field, InfoTile, Input, Notice, SectionTitle, Select, Textarea, ErrorState} from '../components/ui'
 
 const SAMPLE_CONFIGS = {
   uipath: `{\n  "base_url": "https://orchestrator.bank.local",\n  "folder_path": "Finance",\n  "auth_mode": "pat",\n  "personal_access_token": "vault:UIPATH_PAT"\n}`,
@@ -100,6 +100,10 @@ export default function OrganizationPage() {
     }
   }
 
+  if (organization.isError) {
+    return <ErrorState error={organization.error} onRetry={() => organization.refetch()} />
+  }
+
   return (
     <div className="space-y-4">
       <SectionTitle title={t('organization.title')} subtitle={t('organization.subtitle')} />
@@ -130,17 +134,17 @@ export default function OrganizationPage() {
                   <Input name="AccentColor" type="color" defaultValue={org.BrandAccentColor || '#f37920'} />
                 </Field>
               </div>
-              <Field label="Logo URL">
+              <Field label={t('fields.logoUrl')}>
                 <Input name="LogoUrl" defaultValue={org.LogoUrl || ''} placeholder="https://intranet.bank.local/logo.png" />
               </Field>
               <Field label={t('organization.locale')}>
                 <Select name="Locale" defaultValue={org.Locale || 'en'}>
-                  <option value="en">English</option>
+                  <option value="en">{LANGUAGES.find((item) => item.code === value)?.nativeLabel || value}</option>
                   <option value="ar">العربية</option>
                 </Select>
               </Field>
               <Button type="submit" disabled={updateBranding.isPending}>
-                <Check className="h-4 w-4" /> {t('actions.save')}
+                <Check className="h-4 w-4"  aria-hidden/> {t('actions.save')}
               </Button>
             </form>
           </CardBody>
@@ -165,18 +169,18 @@ export default function OrganizationPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="JSON" hint={t('organization.configHint')}>
+              <Field label={t('fields.json')} hint={t('organization.configHint')}>
                 <Textarea rows={9} value={configText} onChange={(event) => setConfigText(event.target.value)} />
               </Field>
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={configurePlatform.isPending}>
-                  <Plug className="h-4 w-4" /> {t('actions.save')}
+                  <Plug className="h-4 w-4"  aria-hidden/> {t('actions.save')}
                 </Button>
                 <Button type="button" variant="secondary" onClick={onTest} disabled={testPlatform.isPending}>
-                  <RefreshCw className="h-4 w-4" /> {t('organization.testConnection')}
+                  <RefreshCw className="h-4 w-4"  aria-hidden/> {t('organization.testConnection')}
                 </Button>
                 <Button type="button" variant="secondary" onClick={onRetention} disabled={runRetention.isPending}>
-                  <ShieldCheck className="h-4 w-4" /> {t('organization.retention')}
+                  <ShieldCheck className="h-4 w-4"  aria-hidden/> {t('organization.retention')}
                 </Button>
               </div>
               {testResult ? (

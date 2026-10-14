@@ -1,6 +1,7 @@
 import { BadgeCheck, Boxes, GitBranch, KeyRound, Lock, Plus, Rocket, RotateCcw, ShieldCheck, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useEffect } from 'react'
 
 import { useAuth } from '../context/AuthProvider'
 import { useToast } from '../context/ToastProvider'
@@ -22,6 +23,7 @@ import {
   useVersions,
 } from '../hooks/api'
 import { ENVIRONMENTS } from '../lib/constants'
+import { markOnboardingStep } from '../lib/onboarding'
 import { dateTime, relative } from '../lib/format'
 import {
   Badge,
@@ -40,8 +42,7 @@ import {
   Select,
   Tabs,
   Textarea,
-  Tooltip,
-} from '../components/ui'
+  Tooltip, ErrorState} from '../components/ui'
 
 const ENV_TONE = { Production: 'success', UAT: 'info', Development: 'neutral', Retired: 'warning' }
 
@@ -140,6 +141,17 @@ export default function LifecyclePage() {
     }
   }
 
+  if (versions.isError) {
+    return (
+      <Card>
+        <ErrorState error={versions.error} onRetry={() => versions.refetch()} />
+      </Card>
+    )
+  }
+
+  // The operator reached this module — that is what completes the getting-started step.
+  useEffect(() => markOnboardingStep('stepReview'), [])
+
   return (
     <div className="space-y-4">
       <SectionTitle
@@ -190,7 +202,11 @@ export default function LifecyclePage() {
               subtitle={t('lifecycle.workflow.fourEyes')}
               icon={GitBranch}
               actions={
-                <Select className="h-8 w-40 py-0 text-xs" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <Select
+      aria-label={t('filters.status')}
+      className="h-8 w-40 py-0 text-xs"
+      value={statusFilter}
+      onChange={(event) => setStatusFilter(event.target.value)}>
                   <option value="ALL">{t('dashboard.filters.all')}</option>
                   {ENVIRONMENTS.map((environment) => (
                     <option key={environment} value={environment}>
@@ -233,7 +249,7 @@ export default function LifecyclePage() {
                   align: 'center',
                   render: (row) => (
                     <Button size="sm" variant="ghost" onClick={() => setVaultTarget(row)}>
-                      <KeyRound className="h-3.5 w-3.5" /> {row.CredentialsCount ?? 0}
+                      <KeyRound className="h-3.5 w-3.5"  aria-hidden/> {row.CredentialsCount ?? 0}
                     </Button>
                   ),
                 },
@@ -249,7 +265,7 @@ export default function LifecyclePage() {
                         </Button>
                         <Tooltip content={t('lifecycle.rollbackReason')}>
                           <Button size="icon" variant="ghost" onClick={() => setRollbackTarget(row)} aria-label={t('lifecycle.rollback')}>
-                            <Undo2 className="h-3.5 w-3.5" />
+                            <Undo2 className="h-3.5 w-3.5"  aria-hidden/>
                           </Button>
                         </Tooltip>
                       </div>
@@ -307,7 +323,12 @@ export default function LifecyclePage() {
             subtitle={t('lifecycle.workflow.fourEyes')}
             icon={BadgeCheck}
             actions={
-              <Select className="h-8 w-40 py-0 text-xs" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <Select
+                aria-label={t('filters.status')}
+                className="h-8 w-40 py-0 text-xs"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
                 <option value="ALL">{t('dashboard.filters.all')}</option>
                 {['Pending', 'Approved', 'Rejected'].map((item) => (
                   <option key={item} value={item}>
@@ -425,7 +446,7 @@ export default function LifecyclePage() {
                               }}
                               aria-label={t('actions.delete')}
                             >
-                              <RotateCcw className="h-3.5 w-3.5 text-danger" />
+                              <RotateCcw className="h-3.5 w-3.5 text-danger"  aria-hidden/>
                             </Button>
                           </div>
                         ),
@@ -508,7 +529,7 @@ export default function LifecyclePage() {
           <Field label={t('runs.machine')}>
             <Input name="TargetMachineName" placeholder="Bot-01" />
           </Field>
-          <Field label="Artifact URL">
+          <Field label={t('fields.artifactUrl')}>
             <Input name="ArtifactUrl" placeholder="\\fileshare\\bots\\v1.2.0.nupkg" />
           </Field>
           <div className="sm:col-span-2">
@@ -732,7 +753,7 @@ export default function LifecyclePage() {
               ))}
             </Select>
           </Field>
-          <Field label={t('lifecycle.vault')} required hint="Encrypted at rest; decryption is audited and never logged.">
+          <Field label={t('lifecycle.vault')} required hint={t('fields.encryptedAtRest')}>
             <Input name="Value" type="password" required autoComplete="new-password" />
           </Field>
           <div className="flex justify-end gap-2">

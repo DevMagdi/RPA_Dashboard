@@ -1,7 +1,71 @@
 # Changelog
 
 
-## Unreleased (2026-10-14)
+## 4.1.0 — "Private Operations" (2026-10-14)
+
+Accessibility, Arabic and speed release. Everything below is protected by the
+automated suite: `pytest` (352 tests, 81.42 % coverage), `scripts/smoke_api.py`
+(64/64), `scripts/verify_dashboard.py` (59/59) and `npx vitest run` (46 tests).
+
+### Fixed — the Arabic "????" defect (5 independent layers)
+- **SQL Server stored Arabic as `?`.** Every text column was a non-Unicode
+  `VARCHAR`; under a Latin collation the characters were destroyed **at write
+  time**. All text columns are now SQLAlchemy `Unicode`/`UnicodeText`
+  (`NVARCHAR(n)` / `NVARCHAR(MAX)`), including the single-organization baseline
+  revision.
+- **Existing installations are repaired in place.**
+  `app/db/unicode_upgrade.py` generates `db/migrations/sqlserver/005_unicode_nvarchar_upgrade.sql`
+  (125 idempotent, type-guarded `ALTER COLUMN`s) and reports index-key risks
+  before a DBA runs it. A test fails if the script drifts from the metadata.
+- **Arabic file names could not be sent as HTTP headers.** All four export
+  endpoints now emit RFC 5987 `filename*=UTF-8''…` with a latin-1-safe fallback
+  (`app/core/text.py::content_disposition`) and accept `?locale=ar|en`.
+- **PDF export printed boxes instead of Arabic.** Reports embed the shipped
+  **Amiri** font and shape the text (`arabic-reshaper` + `python-bidi`), mirror
+  tables and right-align; the report sub-title no longer falls back to
+  Helvetica. Excel exports set `sheet_view.rightToLeft` with right-aligned
+  Arabic cells. Verified by extracting the text back out of the generated PDF.
+- **Workstations had no Arabic font** (and bank installs are air-gapped).
+  Cairo (UI Arabic) and Inter (Latin) are self-hosted, script-scoped via
+  `unicode-range` and preloaded from `index.html`.
+- **Service logs lost Arabic to the Windows console code page.** Handlers and
+  `stdout`/`stderr` are forced to UTF-8 with `errors="backslashreplace"`, plus an
+  optional rotating UTF-8 `LOG_FILE`. An unencodable glyph is escaped rather
+  than replaced by `?`.
+- Arabic is a first-class locale: `ar-EG-u-nu-latn` (Arabic month names, Latin
+  digits for financial values), all six plural categories, key-complete bundles
+  in both languages, and `<html lang dir>` set before first paint.
+
+### Added — product experience
+- **Command Center dashboard**: live hero with running/process/success-rate
+  telemetry, KPI rail with animated counters, draggable-resizable widget grid
+  (persisted layout) and a permission-aware first-run tour (`Ctrl+K → Take the
+  tour`), scoped per user.
+- **Command palette on `Ctrl+K`** with fuzzy navigation, recent destinations,
+  theme/language actions and `Shift+?` shortcut reference.
+- **Design system** (`docs/DESIGN_SYSTEM.md`): light-first + dark tokens, Inter
+  and Cairo variable fonts, Radix/CVA primitives, chart tokens, motion grammar,
+  reduced-motion mode, empty/loading/error state contract, RTL rules.
+- World-class empty, loading and error states: skeletons shaped like the final
+  content, `ErrorState` with the request id and a retry action on every page,
+  filter-aware "no match" states.
+- Global keyboard model (`Ctrl+K`, `Shift+?`, `Ctrl+Shift+L`, `Ctrl+J`),
+  skip-to-content link, `aria-live` realtime ticker, labelled form controls and
+  `aria-hidden` decorative icons (audited in CI).
+
+### Performance
+- **Entry bundle 57.3 KB raw / 15.8 KB gzip**; recharts (429.9 KB) stays in a
+  `charts` chunk that only chart-heavy routes download. Every page is its own
+  chunk.
+- **Dashboard API: median 5.4 ms / p95 6.3 ms in-process, p95 18 ms over live
+  HTTP**, 9.6 KiB payload, **one SQL statement per render** — budgets locked by
+  `tests/test_performance_budget.py` (latency, payload size, N+1 guard).
+- Gzip negotiation for JSON (≥ 1 KiB, SSE/fonts/images/Office excluded) and
+  **immutable 1-year caching** for content-hashed assets while `index.html`
+  stays `no-cache`.
+- Virtualised tables (2 000-row Arabic table renders ≤ 120 rows), `LazyMount`
+  for below-the-fold charts, 30 s `staleTime` / 10 min `gcTime`, scoped
+  invalidation on refresh, and role-permission caching.
 
 ### Fixed
 - **`/api/processes` answered 500 on SQL Server.** The catalogue query emitted
@@ -51,6 +115,9 @@
 - Aligned frontend and environment-template version fallbacks with 4.0.0 and
   updated the default installation palette while retaining per-install branding.
 - Added a bilingual frontend contract test and `docs/PRODUCT_UX_PLAN_AR.md`.
+- Version aligned to **4.1.0** across the API, SPA, agent, deployment scripts and
+  documentation; tests now assert against `app.__version__` so a release bump
+  cannot leave a stale literal behind.
 
 ## 4.0.0 — Bank Production Ready (2026-10-13)
 

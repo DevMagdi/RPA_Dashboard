@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { AlertTriangle, Gauge, ListChecks, Sparkles, Timer, TrendingUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useEffect } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
 
 import { useAuth } from '../context/AuthProvider'
@@ -31,6 +32,7 @@ import {
   Textarea,
 } from '../components/ui'
 import { CapacitySummaryTiles } from '../components/dashboard/Widgets'
+import { markOnboardingStep } from '../lib/onboarding'
 
 const toneForSla = (status) => (status === 'Breach_Risk' || status === 'Breach' ? 'danger' : status === 'Warning' ? 'warning' : 'success')
 
@@ -77,6 +79,9 @@ export default function CapacityPage() {
       </Card>
     )
   }
+
+  // The operator reached this module — that is what completes the getting-started step.
+  useEffect(() => markOnboardingStep('stepCapacity'), [])
 
   return (
     <div className="space-y-4">
@@ -211,7 +216,11 @@ export default function CapacityPage() {
           icon={ListChecks}
           actions={
             <div className="flex items-center gap-2">
-              <Select className="h-8 w-32 py-0 text-xs" value={severity} onChange={(event) => setSeverity(event.target.value)} aria-label={t('capacity.severity.Critical')}>
+              <Select
+      aria-label={t('filters.severity')}
+      className="h-8 w-32 py-0 text-xs"
+      value={severity}
+      onChange={(event) => setSeverity(event.target.value)} aria-label={t('capacity.severity.Critical')}>
                 <option value="ALL">{t('dashboard.filters.all')}</option>
                 {['Info', 'Warning', 'Critical'].map((level) => (
                   <option key={level} value={level}>
@@ -219,7 +228,11 @@ export default function CapacityPage() {
                   </option>
                 ))}
               </Select>
-              <Select className="h-8 w-40 py-0 text-xs" value={status} onChange={(event) => setStatus(event.target.value)} aria-label={t('capacity.status')}>
+              <Select
+      aria-label={t('filters.status')}
+      className="h-8 w-40 py-0 text-xs"
+      value={status}
+      onChange={(event) => setStatus(event.target.value)} aria-label={t('capacity.status')}>
                 <option value="ALL">{t('dashboard.filters.all')}</option>
                 {RECOMMENDATION_STATUSES.map((item) => (
                   <option key={item} value={item}>

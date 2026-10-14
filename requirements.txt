@@ -34,6 +34,15 @@ httpx==0.28.1                                      # vendor REST clients (UiPath
 openpyxl==3.1.5                                    # branded Excel exports
 reportlab==5.0.1                                   # branded PDF exports
 
+# --- Arabic (RTL) text rendering -------------------------------------------
+# reportlab has no shaping/bidi engine and Helvetica has no Arabic glyphs, so
+# an Arabic PDF would print boxes.  arabic-reshaper produces the contextual
+# presentation forms and python-bidi puts the line in visual order; the Amiri
+# TTF bundled in app/assets/fonts is embedded in the document.  Both packages
+# are pure Python (no compiler needed on an air-gapped build host).
+arabic-reshaper==3.0.1
+python-bidi==0.6.11
+
 # --- observability ---------------------------------------------------------
 prometheus_client==0.26.0
 # Optional tracing / error reporting — install where the bank allows egress:

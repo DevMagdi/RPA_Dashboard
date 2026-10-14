@@ -26,8 +26,7 @@ import {
   Pagination,
   SectionTitle,
   Select,
-  Textarea,
-} from '../components/ui'
+  Textarea, ErrorState} from '../components/ui'
 
 const PAGE_SIZE = 50
 
@@ -115,6 +114,14 @@ export default function RunsPage() {
     } catch (error) {
       toast.error(t('errors.title'), error.message)
     }
+  }
+
+  if (runs.isError) {
+    return (
+      <Card>
+        <ErrorState error={runs.error} onRetry={() => runs.refetch()} />
+      </Card>
+    )
   }
 
   return (

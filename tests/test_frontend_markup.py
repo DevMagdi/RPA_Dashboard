@@ -26,11 +26,14 @@ BLOCK_TAGS = (
     "h5", "h6", "hr", "pre", "blockquote",
 )
 
-#: ``export function Name(...) { return (<block tag …``  — a block-root component.
+#: ``export function Name(...)  …  return (<tag`` — the *first* JSX tag the
+#: component renders decides whether it is block-rooted.  Statements before the
+#: ``return`` are allowed (a component may compute a label first).
 COMPONENT_DEF = re.compile(
-    r"export function ([A-Z]\w+)\s*\([^)]*\)\s*\{\s*"
-    r"(?://[^\n]*\n\s*)*"
-    r"return\s*\(?\s*<(" + "|".join(BLOCK_TAGS) + r")\b"
+    r"export\s+(?:default\s+)?function\s+([A-Z]\w*)\s*\([^)]*\)\s*\{"
+    r"(?P<body>.*?)"
+    r"return\s*\(?\s*(?:/\*.*?\*/\s*)*<(?P<tag>[A-Za-z][\w.]*)",
+    re.DOTALL,
 )
 
 PARAGRAPH = re.compile(r"<p\b[^>]*>(.*?)</p>", re.DOTALL)
@@ -53,12 +56,36 @@ def _jsx_sources() -> Dict[pathlib.Path, str]:
     }
 
 
-def block_root_components(sources: Iterable[str]) -> Set[str]:
-    """Components whose root element is block level (e.g. ``Skeleton``, ``Card``)."""
-    found: Set[str] = set()
+def component_roots(sources: Iterable[str]) -> Dict[str, str]:
+    """Map ``Component -> first rendered tag`` for every component in the tree."""
+    roots: Dict[str, str] = {}
     for source in sources:
-        found.update(match.group(1) for match in COMPONENT_DEF.finditer(source))
-    return found
+        for match in COMPONENT_DEF.finditer(source):
+            name, tag = match.group(1), match.group("tag")
+            # A component may only claim a root once, and the first definition wins.
+            roots.setdefault(name, tag)
+    return roots
+
+
+def block_root_components(sources: Iterable[str]) -> Set[str]:
+    """Components whose rendered root is block level.
+
+    Resolved to a fixed point, because a component may render *another*
+    component (``CardBody`` renders ``CardContent`` which renders a ``<div>``) —
+    nesting either one inside a ``<p>`` is the same invalid markup.
+    """
+    roots = component_roots(sources)
+    block = set()
+    changed = True
+    while changed:
+        changed = False
+        for name, tag in roots.items():
+            if name in block:
+                continue
+            if tag.lower() in BLOCK_TAGS or tag in block:
+                block.add(name)
+                changed = True
+    return block
 
 
 def paragraphs_containing_blocks(source: str, block_components: Iterable[str] = ()) -> List[str]:

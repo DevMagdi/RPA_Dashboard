@@ -1,25 +1,38 @@
+/**
+ * Command palette (Ctrl+K / ⌘K).
+ *
+ * The single fastest path through the product: navigate modules, jump to a
+ * process, or run an action — without touching the mouse.
+ *
+ * Engineering notes:
+ *  • Built on the Radix Dialog primitive, so focus is trapped, `Esc` closes and
+ *    the rest of the page is `aria-hidden` automatically.
+ *  • `fuzzyMatch()` scores *and* returns match indices, so results are ranked
+ *    and the matched characters are highlighted — including in Arabic
+ *    (diacritics/hamza are normalised, see `lib/utils.js`).
+ *  • The result list is memoised on `query` only, and the keyboard handler runs
+ *    through `useDeferredValue` so a 5 000-item catalogue cannot drop frames.
+ *  • Recents are persisted per workstation — an operator reopening the palette
+ *    mid-incident gets yesterday's shortcuts first.
+ */
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
-  BadgeCheck,
-  Bell,
-  Bot,
+  ArrowRight,
+  CornerDownLeft,
+  FileSpreadsheet,
+  FileText,
   Gauge,
-  KeyRound,
-  LayoutDashboard,
+  Languages,
   Moon,
   RefreshCw,
-  ScrollText,
   Search,
-  Server,
   Settings as SettingsIcon,
-  Shield,
   Sun,
-  Users,
   Workflow,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 
@@ -27,16 +40,46 @@ import { useAuth } from '../../context/AuthProvider'
 import { useBranding } from '../../context/BrandingProvider'
 import { useTheme } from '../../context/ThemeProvider'
 import { useToast } from '../../context/ToastProvider'
+import { applyLanguage, otherLanguage, LANGUAGES } from '../../i18n'
+import { highlightSegments, fuzzyMatch } from '../../lib/utils'
+import storage from '../../lib/storage'
 import { startRealtime } from '../../lib/realtime'
-import { cx } from '../ui'
+import { prefetchRoute, routesFor } from '../../lib/routeMeta'
+import { cn } from '../../lib/utils'
+import { Dialog, DialogContent, Kbd } from '../ui'
 
-/**
- * Command palette (⌘K / Ctrl+K).
- *
- * Actions first, then navigation, then live search over processes — the fastest
- * path for an operator during an incident ("find the failing process", "toggle
- * theme", "refresh everything").
- */
+const RECENTS_KEY = 'palette.recents'
+const MAX_RECENTS = 5
+
+function useRecents() {
+  const [recents, setRecents] = useState(() => storage.get(RECENTS_KEY, []) || [])
+  const remember = useCallback((id) => {
+    setRecents((current) => {
+      const next = [id, ...current.filter((item) => item !== id)].slice(0, MAX_RECENTS)
+      storage.set(RECENTS_KEY, next)
+      return next
+    })
+  }, [])
+  return { recents, remember }
+}
+
+function Highlight({ text, indices }) {
+  const segments = useMemo(() => highlightSegments(text, indices), [text, indices])
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.match ? (
+          <mark key={index} className="rounded-[3px] bg-brand/18 px-0.5 text-brand">
+            {segment.text}
+          </mark>
+        ) : (
+          <span key={index}>{segment.text}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 export default function CommandPalette({ open, onClose, processes = [] }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -45,62 +88,96 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
   const { toggleTheme, isDark } = useTheme()
   const { has } = useAuth()
   const { companyName } = useBranding()
+  const { recents, remember } = useRecents()
+
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef(null)
+  const listRef = useRef(null)
+  const deferredQuery = useDeferredValue(query)
 
   useEffect(() => {
     if (!open) return undefined
     setQuery('')
     setCursor(0)
-    const previouslyFocused = document.activeElement
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 40)
-    return () => {
-      window.clearTimeout(focusTimer)
-      document.body.style.overflow = previousOverflow
-      previouslyFocused?.focus?.()
-    }
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 30)
+    return () => window.clearTimeout(timer)
   }, [open])
 
   const items = useMemo(() => {
-    const navigation = [
-      { id: 'nav-dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, run: () => navigate('/') },
-      { id: 'nav-capacity', label: t('nav.capacity'), icon: Gauge, run: () => navigate('/capacity') },
-      { id: 'nav-processes', label: t('nav.processes'), icon: Workflow, run: () => navigate('/processes') },
-      { id: 'nav-runs', label: t('nav.runs'), icon: Activity, run: () => navigate('/runs') },
-      { id: 'nav-infra', label: t('nav.infrastructure'), icon: Server, run: () => navigate('/infrastructure') },
-      { id: 'nav-lifecycle', label: t('nav.lifecycle'), icon: BadgeCheck, run: () => navigate('/lifecycle') },
-      { id: 'nav-audit', label: t('nav.audit'), icon: ScrollText, run: () => navigate('/audit') },
-      { id: 'nav-health', label: t('nav.health'), icon: Shield, run: () => navigate('/health') },
-      { id: 'nav-settings', label: t('nav.settings'), icon: SettingsIcon, run: () => navigate('/settings') },
-    ]
-    if (has('users:read')) navigation.push({ id: 'nav-users', label: t('nav.users'), icon: Users, run: () => navigate('/users') })
-    if (has('*')) navigation.push({ id: 'nav-organization', label: t('nav.organization'), icon: KeyRound, run: () => navigate('/organization') })
-    navigation.push({ id: 'nav-alerts', label: t('nav.alerts'), icon: Bell, run: () => navigate('/alerts') })
+    const navigation = routesFor(has).map((route) => ({
+      id: `nav-${route.id}`,
+      group: 'navigation',
+      label: t(route.labelKey),
+      hint: t(route.descriptionKey),
+      icon: route.icon,
+      keywords: `${route.id} ${t(route.labelKey)} ${t(route.descriptionKey)}`,
+      run: () => {
+        prefetchRoute(route)
+        navigate(route.path)
+      },
+    }))
 
+    const theme = isDark ? t('settings.themeLight') : t('settings.themeDark')
     const actions = [
       {
+        id: 'action-theme',
+        group: 'actions',
+        label: t('palette.toggleTheme', { theme }),
+        icon: isDark ? Sun : Moon,
+        keywords: 'theme dark light مظهر داكن فاتح',
+        run: toggleTheme,
+      },
+      {
+        id: 'action-language',
+        group: 'actions',
+        label: t('palette.switchLanguage', { language: LANGUAGES.find((l) => l.code === otherLanguage())?.nativeLabel }),
+        icon: Languages,
+        keywords: 'language arabic english لغة عربي انجليزي',
+        run: () => applyLanguage(otherLanguage()),
+      },
+      {
         id: 'action-refresh',
-        label: t('actions.refresh'),
+        group: 'actions',
+        label: t('palette.refreshDashboard'),
         icon: RefreshCw,
+        keywords: 'refresh reload تحديث',
         run: () => {
           client.invalidateQueries()
           toast.success(t('actions.refresh'), companyName)
         },
       },
       {
-        id: 'action-theme',
-        label: t('actions.toggleTheme'),
-        icon: isDark ? Sun : Moon,
-        run: toggleTheme,
+        id: 'action-reconnect',
+        group: 'actions',
+        label: t('a11y.realtimeReconnecting'),
+        icon: Activity,
+        keywords: 'realtime live stream بث مباشر',
+        run: () => startRealtime(),
       },
-      { id: 'action-reconnect', label: t('app.live'), icon: Activity, run: () => startRealtime() },
       {
-        id: 'action-generate',
+        id: 'action-export-excel',
+        group: 'actions',
+        label: t('palette.exportExcel'),
+        icon: FileSpreadsheet,
+        keywords: 'excel export تصدير',
+        run: () => navigate('/?export=xlsx'),
+      },
+      {
+        id: 'action-export-pdf',
+        group: 'actions',
+        label: t('palette.exportPdf'),
+        icon: FileText,
+        keywords: 'pdf report export تصدير تقرير',
+        run: () => navigate('/?export=pdf'),
+      },
+      {
+        id: 'action-capacity',
+        group: 'actions',
         label: t('capacity.generate'),
-        icon: Bot,
+        icon: Gauge,
+        keywords: 'capacity advisor سعة توصيات',
+        permission: 'capacity:act',
         run: async () => {
           try {
             const { api } = await import('../../lib/api')
@@ -112,24 +189,62 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
           }
         },
       },
-    ]
+    ].filter((item) => !item.permission || has(item.permission) || has('*'))
 
-    const processItems = (processes || []).slice(0, 40).map((name) => ({
+    const processItems = (processes || []).slice(0, 60).map((name) => ({
       id: `process-${name}`,
+      group: 'processes',
       label: name,
-      hint: t('nav.processes'),
+      hint: t('palette.gotoProcess'),
       icon: Workflow,
+      keywords: name,
       run: () => navigate(`/processes?process=${encodeURIComponent(name)}`),
     }))
 
-    const visibleActions = actions.filter((item) => item.id !== 'action-generate' || has('capacity:act') || has('*'))
-    const all = [...visibleActions, ...navigation, ...processItems]
-    if (!query.trim()) return all
-    const needle = query.trim().toLowerCase()
-    return all.filter((item) => item.label.toLowerCase().includes(needle))
-  }, [t, navigate, client, toast, companyName, toggleTheme, isDark, has, processes, query])
+    const all = [...actions, ...navigation, ...processItems]
 
-  useEffect(() => setCursor(0), [query])
+    const needle = deferredQuery.trim()
+    if (!needle) {
+      // Without a query: recents first (in the order the operator used them),
+      // then quick actions, then navigation.
+      const recalled = recents
+        .map((id) => all.find((item) => item.id === id))
+        .filter(Boolean)
+        .map((item) => ({ ...item, group: 'recents' }))
+      const rest = all.filter((item) => !recents.includes(item.id))
+      return [...recalled, ...rest]
+    }
+
+    const scored = []
+    for (const item of all) {
+      const direct = fuzzyMatch(item.label, needle)
+      const indirect = direct || fuzzyMatch(item.keywords || '', needle)
+      if (!indirect) continue
+      scored.push({ ...item, score: indirect.score + (direct ? 40 : 0), indices: direct?.indices || [] })
+    }
+    scored.sort((a, b) => b.score - a.score)
+    return scored.slice(0, 40)
+  }, [t, has, processes, deferredQuery, recents, isDark, toggleTheme, client, toast, companyName, navigate])
+
+  useEffect(() => {
+    setCursor(0)
+  }, [deferredQuery])
+
+  useEffect(() => {
+    if (!listRef.current) return
+    const node = listRef.current.querySelector(`[data-index="${cursor}"]`)
+    node?.scrollIntoView({ block: 'nearest' })
+  }, [cursor, items])
+
+  const run = useCallback(
+    (item) => {
+      if (!item) return
+      remember(item.id)
+      onClose?.()
+      item.run()
+    },
+    [onClose, remember],
+  )
 
   const onKeyDown = (event) => {
     if (event.key === 'ArrowDown') {
@@ -140,95 +255,142 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
       setCursor((value) => Math.max(0, value - 1))
     } else if (event.key === 'Enter') {
       event.preventDefault()
-      const item = items[cursor]
-      if (item) {
-        item.run()
-        onClose?.()
-      }
-    } else if (event.key === 'Tab') {
-      const dialog = inputRef.current?.closest('[role="dialog"]')
-      const focusable = [...(dialog?.querySelectorAll('input, button:not([disabled])') || [])]
-      if (!focusable.length) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    } else if (event.key === 'Escape') {
-      onClose?.()
+      run(items[cursor])
+    } else if (event.key === 'Home' && event.ctrlKey) {
+      event.preventDefault()
+      setCursor(0)
+    } else if (event.key === 'End' && event.ctrlKey) {
+      event.preventDefault()
+      setCursor(items.length - 1)
     }
   }
 
+  const groupLabels = {
+    recents: t('palette.recents'),
+    actions: t('palette.quickActions'),
+    navigation: t('palette.navigation'),
+    processes: t('palette.processes'),
+  }
+
+  const rendered = useMemo(() => {
+    const buckets = []
+    let lastGroup = null
+    items.forEach((item, index) => {
+      if (item.group !== lastGroup) {
+        buckets.push({ type: 'label', key: `label-${item.group}-${index}`, label: groupLabels[item.group] || '' })
+        lastGroup = item.group
+      }
+      buckets.push({ type: 'item', key: item.id, item, index })
+    })
+    return buckets
+  }, [items, groupLabels])
+
   return (
-    <AnimatePresence>
+    <Dialog open={open} onOpenChange={(next) => (!next ? onClose?.() : undefined)}>
       {open ? (
-        <motion.div
-          className="fixed inset-0 z-[95] flex items-start justify-center bg-black/45 p-4 backdrop-blur-sm sm:pt-[12vh]"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onMouseDown={(event) => event.target === event.currentTarget && onClose?.()}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('actions.commandPalette')}
-            onKeyDown={onKeyDown}
-            initial={{ opacity: 0, y: -12, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="glass w-full max-w-xl overflow-hidden rounded-2xl border border-border shadow-pop"
-          >
-            <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-              <Search className="h-4 w-4 text-muted" aria-hidden />
-              <input
-                ref={inputRef}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={`${t('actions.search')}…`}
-                className="w-full bg-transparent text-sm text-text outline-none placeholder:text-muted"
-                aria-label={t('actions.search')}
-                aria-controls="command-palette-results"
-                aria-activedescendant={items[cursor] ? `command-option-${cursor}` : undefined}
-                role="combobox"
-                aria-expanded="true"
-              />
-              <kbd className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">ESC</kbd>
-            </div>
-            <ul id="command-palette-results" role="listbox" className="max-h-[55vh] overflow-y-auto p-2">
-              {items.length === 0 ? (
-                <li className="px-3 py-6 text-center text-xs text-muted">{t('common.na')}</li>
-              ) : (
-                items.map((item, index) => (
-                  <li id={`command-option-${index}`} key={item.id} role="option" aria-selected={index === cursor}>
+        <DialogContent hideClose size="sm" className="max-w-[min(96vw,40rem)] overflow-hidden p-0">
+          <div className="flex items-center gap-3 border-b border-border/80 px-4 py-3.5">
+            <Search className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={t('palette.placeholder')}
+              aria-label={t('palette.label')}
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="command-palette-results"
+              aria-activedescendant={items[cursor] ? `command-option-${cursor}` : undefined}
+              className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-muted/80"
+            />
+            <Kbd>ESC</Kbd>
+          </div>
+
+          <ul id="command-palette-results" ref={listRef} role="listbox" className="max-h-[min(58vh,26rem)] overflow-y-auto overscroll-contain p-2">
+            {items.length === 0 ? (
+              <li className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
+                <Search className="h-5 w-5 text-muted/70" aria-hidden />
+                <p className="text-sm font-medium text-text">{t('palette.empty')}</p>
+                <p className="max-w-xs text-xs leading-relaxed text-muted">{t('palette.emptyHint')}</p>
+              </li>
+            ) : (
+              rendered.map((entry) =>
+                entry.type === 'label' ? (
+                  <li key={entry.key} className="px-2.5 pt-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-muted uppercase">
+                    {entry.label}
+                  </li>
+                ) : (
+                  <li
+                    key={entry.key}
+                    id={`command-option-${entry.index}`}
+                    role="option"
+                    aria-selected={entry.index === cursor}
+                    data-index={entry.index}
+                  >
                     <button
                       type="button"
-                      onMouseEnter={() => setCursor(index)}
-                      onClick={() => {
-                        item.run()
-                        onClose?.()
-                      }}
-                      className={cx(
-                        'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start text-sm transition',
-                        index === cursor ? 'bg-brand-soft text-brand' : 'text-text hover:bg-surface-2',
+                      onMouseMove={() => setCursor(entry.index)}
+                      onClick={() => run(entry.item)}
+                      className={cn(
+                        'group flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start text-sm transition-colors duration-150',
+                        entry.index === cursor ? 'bg-brand-soft text-brand' : 'text-text-soft hover:bg-surface-2',
                       )}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {item.hint ? <span className="text-[10px] uppercase tracking-wide text-muted">{item.hint}</span> : null}
+                      <span
+                        className={cn(
+                          'grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-border/70 bg-surface-2',
+                          entry.index === cursor && 'border-brand/30 bg-surface text-brand',
+                        )}
+                      >
+                        {entry.item.icon ? <entry.item.icon className="h-3.5 w-3.5" aria-hidden /> : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate" dir="auto">
+                          <Highlight text={entry.item.label} indices={entry.item.indices} />
+                        </span>
+                        {entry.item.hint ? (
+                          <span className="mt-0.5 block truncate text-[11px] text-muted" dir="auto">
+                            {entry.item.hint}
+                          </span>
+                        ) : null}
+                      </span>
+                      {entry.index === cursor ? (
+                        <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="shrink-0 text-brand/70">
+                          <CornerDownLeft className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden />
+                        </motion.span>
+                      ) : (
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted/0 rtl:rotate-180" aria-hidden />
+                      )}
                     </button>
                   </li>
-                ))
-              )}
-            </ul>
-          </motion.div>
-        </motion.div>
+                ),
+              )
+            )}
+          </ul>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/80 bg-surface-2/60 px-4 py-2.5 text-[11px] text-muted">
+            <span className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd>
+                {t('palette.hintNavigate')}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Kbd>↵</Kbd>
+                {t('palette.hintSelect')}
+              </span>
+              <span className="hidden items-center gap-1.5 sm:flex">
+                <Kbd>Esc</Kbd>
+                {t('palette.hintClose')}
+              </span>
+            </span>
+            {query ? <span>{t('palette.resultsCount', { count: items.length })}</span> : null}
+          </div>
+        </DialogContent>
       ) : null}
-    </AnimatePresence>
+    </Dialog>
   )
 }
+
+export { AnimatePresence, SettingsIcon }

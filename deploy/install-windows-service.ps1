@@ -24,6 +24,6 @@ nssm set $ServiceName AppEnvironmentExtra "ENV=prod" "PYTHONUNBUFFERED=1"
 nssm set $ServiceName Start SERVICE_AUTO_START
 nssm set $ServiceName AppStdout (Join-Path $AppDir "logs\service.log")
 nssm set $ServiceName AppStderr (Join-Path $AppDir "logs\service-error.log")
-nssm set $ServiceName Description "RPA CoE Control Room 4.0.0 (On-Premises, single organization)"
+nssm set $ServiceName Description "RPA CoE Control Room 4.1.0 (On-Premises, single organization)"
 Start-Service $ServiceName
 Write-Host "Service $ServiceName installed and started on 127.0.0.1:$Port (put IIS/ARR in front for TLS)."

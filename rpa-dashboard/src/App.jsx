@@ -1,65 +1,105 @@
+/**
+ * Application composition root.
+ *
+ * Provider order matters: data → theme → toasts → branding → auth → router.
+ * Routes are generated from `lib/routeMeta.js`, which is also what the sidebar,
+ * the command palette and the prefetcher read, so a module is never declared
+ * twice.  Every page is a separate chunk (lazy) and every guard failure renders
+ * a translated state instead of a bare English string.
+ */
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Suspense, lazy } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import AppShell from './components/layout/AppShell'
+import RouteFallback from './components/common/RouteFallback'
+import { Button, Card, EmptyState, ErrorBoundary, ErrorState } from './components/ui'
 import { AuthProvider, useAuth } from './context/AuthProvider'
 import { BrandingProvider } from './context/BrandingProvider'
 import { ThemeProvider } from './context/ThemeProvider'
 import { ToastProvider } from './context/ToastProvider'
 import { queryClient } from './lib/queryClient'
-import { Card, EmptyState, Skeleton } from './components/ui'
+import { ROUTES } from './lib/routeMeta'
 
-/* Route-level code splitting keeps the first paint under the 1.5 s budget. */
 const LoginPage = lazy(() => import('./pages/LoginPage'))
-const DashboardPage = lazy(() => import('./pages/DashboardPage'))
-const CapacityPage = lazy(() => import('./pages/CapacityPage'))
-const ProcessesPage = lazy(() => import('./pages/ProcessesPage'))
-const RunsPage = lazy(() => import('./pages/RunsPage'))
-const InfrastructurePage = lazy(() => import('./pages/InfrastructurePage'))
-const LifecyclePage = lazy(() => import('./pages/LifecyclePage'))
-const AuditPage = lazy(() => import('./pages/AuditPage'))
-const HealthPage = lazy(() => import('./pages/HealthPage'))
-const UsersPage = lazy(() => import('./pages/UsersPage'))
-const OrganizationPage = lazy(() => import('./pages/OrganizationPage'))
-const AlertsPage = lazy(() => import('./pages/AlertsPage'))
-const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
-function PageFallback() {
+function Forbidden() {
+  const { t } = useTranslation()
   return (
-    <div className="space-y-3">
-      <Skeleton className="h-8 w-64" />
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Skeleton className="h-40" />
-        <Skeleton className="h-40" />
-        <Skeleton className="h-40" />
-      </div>
-      <Skeleton className="h-72" />
-    </div>
+    <Card className="mx-auto max-w-xl">
+      <EmptyState
+        tone="warning"
+        title="403"
+        description={t('errors.forbiddenHint')}
+        action={
+          <Button variant="secondary" size="sm" onClick={() => window.history.back()}>
+            {t('actions.close')}
+          </Button>
+        }
+      />
+    </Card>
+  )
+}
+
+function NotFound() {
+  const { t } = useTranslation()
+  return (
+    <Card className="mx-auto max-w-xl">
+      <EmptyState tone="muted" title="404" description={t('errors.notFoundHint')} />
+    </Card>
   )
 }
 
 function RequireAuth({ permission, children }) {
   const { isAuthenticated, isBootstrapping, has } = useAuth()
   const location = useLocation()
+  const { t } = useTranslation()
 
-  if (isBootstrapping) return <PageFallback />
+  if (isBootstrapping) return <RouteFallback />
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
-  if (permission && !has(permission) && !has('*')) {
-    return (
-      <Card>
-        <EmptyState title="403" description="You do not have permission to view this page." />
-      </Card>
-    )
-  }
-  return children
+  if (permission && !has(permission) && !has('*')) return <Forbidden />
+  return (
+    <ErrorBoundary title={t('errors.sectionFailed')}>
+      <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+    </ErrorBoundary>
+  )
 }
 
-function NotFound() {
+function AppRoutes() {
   return (
-    <Card>
-      <EmptyState title="404" description="The page you asked for does not exist." />
-    </Card>
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          <Suspense fallback={<RouteFallback />}>
+            <LoginPage />
+          </Suspense>
+        }
+      />
+      <Route
+        element={
+          <RequireAuth>
+            <AppShell />
+          </RequireAuth>
+        }
+      >
+        {ROUTES.map((route) => {
+          const Page = lazy(route.load)
+          const element = (
+            <RequireAuth permission={route.permission === '*' ? '*' : undefined}>
+              <Page />
+            </RequireAuth>
+          )
+          return route.path === '/' ? (
+            <Route index key={route.id} element={element} />
+          ) : (
+            <Route path={route.path.replace(/^\//, '')} key={route.id} element={element} />
+          )
+        })}
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
   )
 }
 
@@ -71,32 +111,7 @@ export default function App() {
           <BrandingProvider>
             <AuthProvider>
               <BrowserRouter>
-                <Suspense fallback={<PageFallback />}>
-                  <Routes>
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route
-                      element={
-                        <RequireAuth>
-                          <AppShell />
-                        </RequireAuth>
-                      }
-                    >
-                      <Route index element={<DashboardPage />} />
-                      <Route path="capacity" element={<CapacityPage />} />
-                      <Route path="processes" element={<ProcessesPage />} />
-                      <Route path="runs" element={<RunsPage />} />
-                      <Route path="infrastructure" element={<InfrastructurePage />} />
-                      <Route path="lifecycle" element={<LifecyclePage />} />
-                      <Route path="audit" element={<AuditPage />} />
-                      <Route path="health" element={<HealthPage />} />
-                      <Route path="users" element={<RequireAuth permission="users:read"><UsersPage /></RequireAuth>} />
-                      <Route path="organization" element={<RequireAuth permission="*"><OrganizationPage /></RequireAuth>} />
-                      <Route path="alerts" element={<AlertsPage />} />
-                      <Route path="settings" element={<SettingsPage />} />
-                      <Route path="*" element={<NotFound />} />
-                    </Route>
-                  </Routes>
-                </Suspense>
+                <AppRoutes />
               </BrowserRouter>
             </AuthProvider>
           </BrandingProvider>
@@ -105,3 +120,5 @@ export default function App() {
     </QueryClientProvider>
   )
 }
+
+export { ErrorState }

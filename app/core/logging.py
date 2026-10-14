@@ -5,6 +5,13 @@ Provides:
 * ``correlation_id`` context variable propagated to every log record
 * ``get_logger(name)`` — thin wrapper
 
+Encoding: every handler is forced to **UTF-8** with ``errors="backslashreplace"``.
+A Windows Service runs with a legacy console code page (cp1256/cp437), and a
+handler bound to that stream silently replaces Arabic with ``?`` — the ``????``
+defect operators saw in the service log.  ``configure_stream_encoding()`` also
+reconfigures ``stdout``/``stderr`` themselves so prints made by third-party
+libraries cannot corrupt Arabic either.
+
 Log records emitted anywhere in the app automatically carry ``correlation_id``,
 ``actor`` (when known) and the logger name.
 """
@@ -12,12 +19,15 @@ Log records emitted anywhere in the app automatically carry ``correlation_id``,
 from __future__ import annotations
 
 import contextvars
+import io
 import json
 import logging
+import os
 import sys
 import time
 import uuid
-from typing import Any, Dict, Optional
+from logging.handlers import RotatingFileHandler
+from typing import Any, Dict, Optional, TextIO
 
 from app.core.config import get_settings
 
@@ -99,6 +109,49 @@ class HumanFormatter(logging.Formatter):
 _CONFIGURED = False
 
 
+def configure_stream_encoding(stream: Optional[TextIO] = None) -> Optional[TextIO]:
+    r"""Force UTF-8 (with escapes as a safety net) on a text stream.
+
+    Returns the stream to use.  ``errors="backslashreplace"`` is deliberate: if
+    a glyph cannot be encoded we keep ``\uXXXX`` in the log line instead of
+    losing the character to ``?`` — an operator reading an audit trail must be
+    able to see which Arabic value was rejected.
+    """
+    if stream is None:
+        return None
+    encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+    if encoding in ("utf8", "utf8mb4", "cp65001"):
+        return stream
+
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure):
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+            return stream
+        except (ValueError, OSError, io.UnsupportedOperation):  # pragma: no cover - platform specific
+            pass
+
+    try:  # pragma: no cover - only reachable on a legacy console
+        return open(  # noqa: SIM115 - wrapper around an existing descriptor
+            stream.fileno(),
+            "w",
+            encoding="utf-8",
+            errors="backslashreplace",
+            buffering=1,
+            closefd=False,
+        )
+    except (OSError, ValueError, AttributeError, io.UnsupportedOperation):
+        return stream
+
+
+def configure_process_encoding() -> None:
+    """Make the whole process UTF-8-safe (Windows Services, cron, containers)."""
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.environ.setdefault("PYTHONUTF8", "1")
+    sys.stdout = configure_stream_encoding(sys.stdout)
+    sys.stderr = configure_stream_encoding(sys.stderr)
+
+
 def configure_logging(force: bool = False) -> None:
     """Configure root logging (idempotent)."""
     global _CONFIGURED
@@ -106,12 +159,33 @@ def configure_logging(force: bool = False) -> None:
         return
 
     settings = get_settings()
-    handler = logging.StreamHandler(sys.stdout)
+    configure_process_encoding()
+
+    handler = logging.StreamHandler(configure_stream_encoding(sys.stdout) or sys.stdout)
     handler.setFormatter(JsonFormatter() if settings.LOG_JSON else HumanFormatter())
     handler.addFilter(ContextFilter())
 
     root = logging.getLogger()
-    root.handlers = [handler]
+    handlers: list[logging.Handler] = [handler]
+
+    log_file = (getattr(settings, "LOG_FILE", "") or "").strip()
+    if log_file:
+        try:
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
+                encoding="utf-8",
+                errors="backslashreplace",
+                delay=True,
+            )
+            file_handler.setFormatter(JsonFormatter() if settings.LOG_JSON else HumanFormatter())
+            file_handler.addFilter(ContextFilter())
+            handlers.append(file_handler)
+        except OSError:  # pragma: no cover - unwritable path must not stop boot
+            logging.getLogger(__name__).warning("Log file %s is not writable; console logging only", log_file)
+
+    root.handlers = handlers
     root.setLevel(settings.LOG_LEVEL)
 
     # Tame noisy libraries

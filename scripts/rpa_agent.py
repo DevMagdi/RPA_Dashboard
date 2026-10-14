@@ -96,7 +96,7 @@ def collect_telemetry() -> Dict[str, Any]:
         "HDD_Usage": _disk_usage(),
         "MachineIP": socket.gethostbyname(socket.gethostname()),
         "OSName": f"{platform.system()} {platform.release()}",
-        "AgentVersion": "4.0.0",
+        "AgentVersion": "4.1.0",
     }
 
 

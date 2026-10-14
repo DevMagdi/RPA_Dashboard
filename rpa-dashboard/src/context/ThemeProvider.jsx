@@ -14,9 +14,16 @@ function resolve(theme) {
 }
 
 /**
- * Theme + density provider (light / dark / system), with Light as the default.
- * The `<html>` class is toggled directly so Tailwind's `dark:` variants and the
- * CSS variables in index.css both switch instantly.
+ * Theme + density + motion provider (light / dark / system), Light first.
+ *
+ * The `<html>` element carries the state as attributes/classes so *everything*
+ * downstream follows automatically:
+ *   • `class="dark"`           → Tailwind `dark:` variants + CSS variables
+ *   • `data-density="compact"` → row heights and paddings tighten
+ *   • `data-motion="reduced"`  → non-essential animation is switched off for
+ *     operators who are motion-sensitive or suffer eye fatigue on long shifts
+ * Rendering state on the document (instead of a JS branch per component) is
+ * what keeps the theme switch instantaneous and flash-free.
  */
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
@@ -25,6 +32,7 @@ export function ThemeProvider({ children }) {
     return savedTheme === 'system' ? 'light' : savedTheme
   })
   const [density, setDensity] = useState(() => storage.get('density', 'comfortable'))
+  const [motion, setMotion] = useState(() => storage.get('motion', 'full'))
 
   const applied = resolve(theme)
 
@@ -32,9 +40,11 @@ export function ThemeProvider({ children }) {
     const root = document.documentElement
     root.classList.toggle('dark', applied === 'dark')
     root.dataset.density = density
+    root.dataset.motion = motion
     storage.set('theme', theme)
     storage.set('density', density)
-  }, [applied, theme, density])
+    storage.set('motion', motion)
+  }, [applied, theme, density, motion])
 
   // Follow the OS while the user keeps "system" selected
   useEffect(() => {
@@ -53,8 +63,8 @@ export function ThemeProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ theme, applied, density, setTheme, setDensity, toggleTheme, isDark: applied === 'dark' }),
-    [theme, applied, density, toggleTheme],
+    () => ({ theme, applied, density, motion, setTheme, setDensity, setMotion, toggleTheme, isDark: applied === 'dark' }),
+    [theme, applied, density, motion, toggleTheme],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

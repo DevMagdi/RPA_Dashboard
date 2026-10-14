@@ -13,7 +13,7 @@ const FALLBACK = {
   accent_color: '#0F9F91',
   locale: 'en',
   logo_url: null,
-  api_version: '4.0.0',
+  api_version: '4.1.0',
   features: {},
 }
 

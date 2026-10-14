@@ -119,7 +119,7 @@ def refresh_cache(
 def branding(request: Request, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Return organization branding (logo, colours, locale) for the frontend."""
     payload = get_branding(db)
-    payload["api_version"] = "4.0.0"
+    payload["api_version"] = __import__("app").__version__
     return payload
 
 

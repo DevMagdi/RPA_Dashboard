@@ -40,7 +40,7 @@ from app.db.tables import (
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "4.0.0"
+SCHEMA_VERSION = "4.1.0"
 
 # --------------------------------------------------------------------------- #
 # Role → permission matrix (kept in the DB so banks can customise it live)
@@ -330,7 +330,7 @@ def seed_demo_data(session: Session, *, days: int = 30, seed: int = 1337) -> Dic
                 "RunnerType": runner_type,
                 "Platform": "generic_sql",
                 "OSName": os_name,
-                "AgentVersion": "4.0.0",
+                "AgentVersion": "4.1.0",
                 "LastIP": f"10.20.{rng.randint(1, 9)}.{rng.randint(10, 250)}",
             },
         )

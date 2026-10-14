@@ -42,7 +42,7 @@ jobs:
           DB_NAME=/tmp/smoke.sqlite3 python scripts/smoke_api.py
 
   frontend:
-    name: Frontend (lint + build)
+    name: Frontend (lint + build + tests)
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -57,6 +57,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      # Component + RTL/Arabic DOM contracts, bundle-size budgets and the
+      # accessibility audits run against the build produced above.
+      - run: npm test
 
   security:
     name: Security scan
