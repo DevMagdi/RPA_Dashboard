@@ -11,7 +11,8 @@ import { useTranslation } from 'react-i18next'
 
 import { CHART_COLORS } from '../../lib/constants'
 import { compactNumber, currency, hoursSaved } from '../../lib/format'
-import { Sparkline } from '../charts/primitives'
+import { seriesDelta } from '../../lib/stats'
+import { DeltaChip, Sparkline } from '../charts/primitives'
 import { Card, CountUpStat, Skeleton, cn } from '../ui'
 
 
@@ -19,9 +20,9 @@ import { Card, CountUpStat, Skeleton, cn } from '../ui'
 const KPI_CONFIG = [
   { key: 'totalProcedures', label: 'dashboard.totalProcedures', icon: Workflow, tone: 'brand' },
   { key: 'totalTransactions', label: 'dashboard.totalTransactions', icon: Package, tone: 'info' },
-  { key: 'runsToday', label: 'dashboard.runsToday', icon: Activity, tone: 'success', hintKey: 'targetRuns' },
+  { key: 'runsToday', label: 'dashboard.runsToday', icon: Activity, tone: 'success', hintKey: 'targetRuns', delta: { from: 'spark', key: 'volume' } },
   { key: 'timeSaved', label: 'dashboard.timeSaved', icon: Timer, format: 'hours', tone: 'warning' },
-  { key: 'costSaved', label: 'dashboard.costSaved', icon: BadgeDollarSign, format: 'currency', tone: 'success' },
+  { key: 'costSaved', label: 'dashboard.costSaved', icon: BadgeDollarSign, format: 'currency-compact', tone: 'success', delta: { from: 'savings', key: 'bar' } },
   { key: 'runningNow', label: 'dashboard.activeRun', icon: Bot, tone: 'info' },
 ]
 
@@ -32,7 +33,7 @@ const KPI_TONES = {
   warning: 'bg-warning-soft text-warning',
 }
 
-export default function KpiGrid({ kpis, loading, spark = [], onSelect }) {
+export default function KpiGrid({ kpis, loading, spark = [], savings = [], onSelect }) {
   const { t } = useTranslation()
 
   if (loading && !kpis) {
@@ -56,12 +57,14 @@ export default function KpiGrid({ kpis, loading, spark = [], onSelect }) {
         const display =
           item.format === 'hours' ? (
             <>{hoursSaved(raw)}</>
-          ) : item.format === 'currency' ? (
-            <>{currency(raw)}</>
+          ) : item.format === 'currency-compact' ? (
+            <CountUpStat value={Number(raw) || 0} format="currency-compact" />
           ) : (
             <CountUpStat value={raw} format="number" />
           )
         const interactive = Boolean(onSelect)
+        const delta = item.delta ? seriesDelta(item.delta.from === 'savings' ? savings : spark, item.delta.key) : null
+        const exact = item.format === 'currency-compact' ? currency(raw) : undefined
         return (
           <motion.div
             key={item.key}
@@ -70,9 +73,13 @@ export default function KpiGrid({ kpis, loading, spark = [], onSelect }) {
             transition={{ duration: 0.34, delay: index * 0.045, ease: [0.22, 1, 0.36, 1] }}
           >
             <Card
-              hover={interactive}
+              hover
               onClick={interactive ? () => onSelect(item.key) : undefined}
-              className={cn('group relative h-full overflow-hidden p-4', interactive && 'cursor-pointer')}
+              className={cn(
+                'group relative h-full overflow-hidden p-4',
+                interactive && 'cursor-pointer',
+                item.key === 'runningNow' && Number(raw) > 0 && 'shadow-glow',
+              )}
             >
               <span
                 aria-hidden
@@ -84,7 +91,12 @@ export default function KpiGrid({ kpis, loading, spark = [], onSelect }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-muted">{t(item.label)}</p>
-                  <p className="mt-0.5 truncate text-lg font-semibold text-text">{display}</p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <p className="min-w-0 truncate text-2xl font-semibold text-text stat-number" title={exact}>
+                      {display}
+                    </p>
+                    {delta !== null ? <DeltaChip value={delta} className="shrink-0" /> : null}
+                  </div>
                   {item.hintKey && kpis?.[item.hintKey] !== undefined ? (
                     <p className="mt-0.5 truncate text-[11px] text-muted">
                       {t('common.of')} {compactNumber(kpis[item.hintKey])}

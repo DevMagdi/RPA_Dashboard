@@ -12,6 +12,7 @@ import {
   Bell,
   BellOff,
   Check,
+  ChevronRight,
   ChevronsUpDown,
   Command as CommandIcon,
   HelpCircle,
@@ -38,7 +39,7 @@ import { useAlertCount, useAlerts } from '../../hooks/api'
 import { useIsMobile, useRealtimeStatus, useTicker } from '../../hooks/ui'
 import { applyLanguage, currentLanguage, LANGUAGES } from '../../i18n'
 import { relative, severityColor } from '../../lib/format'
-import { matchRoute } from '../../lib/routeMeta'
+import { matchRoute, ROUTE_SECTIONS } from '../../lib/routeMeta'
 import { cn } from '../../lib/utils'
 import { Badge, Button, DropdownItem, DropdownLabel, DropdownMenu, DropdownSeparator, Kbd, Popover, Tooltip } from '../ui'
 
@@ -56,7 +57,7 @@ export function LivePill() {
         </span>
       }
     >
-      <span className="hidden items-center gap-2 rounded-full border border-border/80 bg-surface-2/70 px-3 py-1.5 text-xs text-muted sm:inline-flex">
+      <span className="hidden items-center gap-1.5 rounded-full px-2 py-1 text-xs text-muted sm:inline-flex">
         <span className="relative flex h-2 w-2">
           <span className="h-2 w-2 rounded-full" style={{ background: tone }} />
           {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: tone }} aria-hidden /> : null}
@@ -85,7 +86,7 @@ function NotificationMenu() {
         <button
           type="button"
           aria-label={t('a11y.notifications', { count })}
-          className="focus-ring relative grid h-9 w-9 place-items-center rounded-xl border border-border/70 bg-surface-2/60 text-muted transition-colors hover:border-brand/30 hover:text-text"
+          className="focus-ring relative grid h-8 w-8 place-items-center rounded-xl text-muted transition-colors hover:bg-surface-2 hover:text-text"
         >
           <Bell className="h-4 w-4"  aria-hidden/>
           {count > 0 ? (
@@ -161,7 +162,7 @@ function LanguageMenu() {
         <button
           type="button"
           aria-label={t('a11y.languageToggle')}
-          className="focus-ring hidden h-9 items-center gap-2 rounded-xl border border-border/70 bg-surface-2/60 px-2.5 text-xs font-medium text-muted transition-colors hover:border-brand/30 hover:text-text sm:inline-flex"
+          className="focus-ring hidden h-8 items-center gap-1.5 rounded-xl px-2 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text sm:inline-flex"
         >
           <Languages className="h-4 w-4"  aria-hidden/>
           {LANGUAGES.find((item) => item.code === active)?.nativeLabel}
@@ -193,6 +194,7 @@ function LanguageMenu() {
 
 function UserMenu({ onOpenMfa, onOpenShortcuts }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { user, logout, has } = useAuth()
   const [open, setOpen] = useState(false)
   const roleKey = `users.roleDescriptions.${user?.role}`
@@ -208,7 +210,7 @@ function UserMenu({ onOpenMfa, onOpenShortcuts }) {
         <button
           type="button"
           aria-label={t('a11y.userMenu')}
-          className="focus-ring flex h-9 items-center gap-2 rounded-xl border border-border/70 bg-surface-2/60 px-2 text-sm transition-colors hover:border-brand/30"
+          className="focus-ring flex h-8 items-center gap-2 rounded-xl px-1.5 text-sm transition-colors hover:bg-surface-2"
         >
           <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-soft text-[10px] font-bold text-brand">
             {String(user?.username || 'U').slice(0, 2).toUpperCase()}
@@ -304,11 +306,12 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
   const route = useMemo(() => matchRoute(location.pathname), [location.pathname])
   const title = route ? t(route.labelKey) : t('app.name')
   const subtitle = route ? t(route.descriptionKey) : companyName
+  const sectionLabel = route?.section ? t(ROUTE_SECTIONS.find((item) => item.key === route.section)?.labelKey || '') : ''
   const modifier = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl'
 
   return (
     <header className="topbar sticky top-0 z-40 border-b border-border/70">
-      <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5">
+      <div className="flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
         {isMobile ? (
           <Button variant="ghost" size="icon" onClick={onOpenMobileNav} aria-label={t('nav.expand')}>
             <Menu className="h-5 w-5"  aria-hidden/>
@@ -316,7 +319,13 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
         ) : null}
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            {sectionLabel ? (
+              <>
+                <span className="hidden text-2xs font-semibold tracking-[0.1em] text-muted uppercase sm:inline">{sectionLabel}</span>
+                <ChevronRight className="hidden h-3 w-3 shrink-0 text-muted/70 rtl:rotate-180 sm:block" aria-hidden />
+              </>
+            ) : null}
             <h1 className="truncate text-sm font-semibold tracking-[-0.01em] text-text">{title}</h1>
             <Badge tone="neutral" size="sm" className="hidden xl:inline-flex">
               {t('app.environment')}: {branding.api_version || '4.1.0'}
@@ -329,7 +338,7 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
           type="button"
           onClick={onOpenPalette}
           aria-label={`${t('palette.title')} (${modifier}+K)`}
-          className="focus-ring group inline-flex h-9 items-center gap-2 rounded-xl border border-border/80 bg-surface-2/60 px-2.5 text-xs text-muted transition-colors hover:border-brand/35 hover:bg-surface hover:text-text sm:min-w-[15rem] sm:justify-between"
+          className="focus-ring group inline-flex h-9 items-center gap-2 rounded-full border border-border/80 bg-surface-2/60 px-3 text-xs text-muted transition-colors hover:border-brand/35 hover:bg-surface hover:text-text sm:min-w-[15rem] sm:justify-between"
         >
           <span className="flex items-center gap-2">
             <Search className="h-4 w-4"  aria-hidden/>
@@ -341,16 +350,16 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
           </span>
         </button>
 
-        <LivePill />
-
-        <div className="flex items-center gap-1">
+        {/* one elegant control cluster: live status · language · theme · bell · account */}
+        <div className="flex items-center gap-0.5 rounded-2xl border border-border/60 bg-surface/60 p-1 shadow-xs backdrop-blur-sm">
+          <LivePill />
           <LanguageMenu />
           <Tooltip content={isDark ? t('settings.themeLight') : t('settings.themeDark')}>
             <button
               type="button"
               onClick={toggleTheme}
               aria-label={t('a11y.themeToggle')}
-              className="focus-ring grid h-9 w-9 place-items-center rounded-xl border border-border/70 bg-surface-2/60 text-muted transition-colors hover:border-brand/30 hover:text-text"
+              className="focus-ring grid h-8 w-8 place-items-center rounded-xl text-muted transition-colors hover:bg-surface-2 hover:text-text"
             >
               <motion.span key={isDark ? 'dark' : 'light'} initial={{ rotate: -35, opacity: 0, scale: 0.8 }} animate={{ rotate: 0, opacity: 1, scale: 1 }} transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}>
                 {isDark ? <Sun className="h-4 w-4"  aria-hidden/> : <Moon className="h-4 w-4"  aria-hidden/>}
@@ -358,6 +367,7 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
             </button>
           </Tooltip>
           <NotificationMenu />
+          <span className="mx-0.5 hidden h-5 w-px bg-border/80 sm:block" aria-hidden />
           <UserMenu onOpenMfa={onOpenMfa} onOpenShortcuts={onOpenShortcuts} />
         </div>
       </div>

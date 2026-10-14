@@ -168,7 +168,7 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     assert ":root {" in css
     assert ".dark {" in css
-    assert "--bg: #070b14" in css
+    assert "--bg: #020617" in css
     assert "prefers-reduced-motion: reduce" in css
     assert ".command-hero" in css
     assert "storage.get('theme', 'light')" in theme_provider

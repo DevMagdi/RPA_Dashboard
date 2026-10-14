@@ -22,19 +22,25 @@ primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#F3F6FA` | `#070B14` | application canvas |
-| `--surface` | `#FFFFFF` | `#101827` | cards, panels, menus |
-| `--surface-2` | `#F7F9FC` | `#141F30` | inputs, table headers, hover |
-| `--surface-3` | `#E9EEF5` | `#1C2A3D` | pressed / selected rows |
-| `--border` | `#E1E7F0` | `#253249` | 1px separation, low but visible |
-| `--text` | `#111827` | `#EFF5FF` | primary type |
-| `--text-muted` | `#657286` | `#98A8BF` | secondary type, labels (AA on light canvas) |
-| `--brand` / hover | `#6254E8` / `#5145C5` | `#7F72FF` / `#7969FF` | primary action, focus, selection (dark foreground tuned for AA) |
-| `--accent` | `#0F9F91` | `#2DD4BF` | live/telemetry affordances |
+| `--bg` | `#F8FAFC` | `#020617` | application canvas |
+| `--surface` | `#FFFFFF` | `#0F172A` | cards, panels, menus |
+| `--surface-2` | `#F8FAFC` | `#131C31` | inputs, table headers, hover |
+| `--surface-3` | `#F1F5F9` | `#1B2741` | pressed / selected rows |
+| `--border` | `rgba(15, 23, 42, 0.06)` | `rgba(255, 255, 255, 0.07)` | 1px separation, low but visible |
+| `--text` | `#0F172A` | `#EFF5FF` | primary type |
+| `--text-muted` | `#64748B` | `#98A8BF` | secondary type, labels (AA on light canvas) |
+| `--brand` / hover | `#4F46E5` / `#3730A3` | `#818CF8` / `#6D78F6` | primary action, focus, selection (dark foreground tuned for AA) |
+| `--accent` | `#0D9488` | `#2DD4BF` | live/telemetry affordances |
 | `--success` | `#047857` | `#34D399` | healthy runs |
 | `--warning` | `#B45309` | `#FBBF24` | SLA risk, queue growth |
 | `--danger` | `#BE123C` | `#FB7185` | failures, breaches |
 | `--info` | `#0369A1` | `#38BDF8` | neutral information |
+
+> Premium command-center refresh (2026-10): the light canvas/surfaces/brand/accent
+> follow the Premium plan (`#F8FAFC`, Deep Indigo `#4F46E5`, Electric Teal `#0D9488`).
+> The semantic trio keeps the plan's hue families at **AA-safe depth**
+> (`#059669`/`#D97706`/`#E11D48` fail 4.5:1 as text on `#F8FAFC`), while their
+> `*-soft` backgrounds carry the plan hexes exactly.
 
 Rules:
 

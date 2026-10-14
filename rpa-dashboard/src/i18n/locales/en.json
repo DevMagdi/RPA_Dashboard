@@ -140,7 +140,12 @@
       "allClear": "No open incidents",
       "nextAction": "Suggested next action",
       "viewCapacity": "Review capacity advisor",
-      "operator": "Operator"
+      "operator": "Operator",
+      "greetingMorning": "Good morning, {{name}}",
+      "greetingAfternoon": "Good afternoon, {{name}}",
+      "greetingEvening": "Good evening, {{name}}",
+      "kicker": "Private Operations",
+      "standby": "Runners on standby"
     },
     "tour": {
       "title": "Your control room, at a glance",

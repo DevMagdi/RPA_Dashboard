@@ -84,8 +84,8 @@ def get_branding(session: Session) -> Dict[str, Any]:
         return {
             "name": "RPA CoE Control Room",
             "company_name": "RPA CoE",
-            "primary_color": "#6254E8",
-            "accent_color": "#0F9F91",
+            "primary_color": "#4F46E5",
+            "accent_color": "#0D9488",
             "logo_url": None,
             "locale": "en",
             "time_zone": "UTC",
@@ -94,8 +94,8 @@ def get_branding(session: Session) -> Dict[str, Any]:
     return {
         "name": row.get("Name"),
         "company_name": row.get("CompanyName") or row.get("Name"),
-        "primary_color": row.get("BrandPrimaryColor") or "#6254E8",
-        "accent_color": row.get("BrandAccentColor") or "#0F9F91",
+        "primary_color": row.get("BrandPrimaryColor") or "#4F46E5",
+        "accent_color": row.get("BrandAccentColor") or "#0D9488",
         "logo_url": row.get("LogoUrl"),
         "locale": row.get("Locale") or "en",
         "time_zone": row.get("TimeZone") or "UTC",

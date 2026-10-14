@@ -10,7 +10,7 @@
  * expensive thing on this screen, and skipping them during interaction is what
  * keeps dragging smooth on a four-year-old bank workstation.
  */
-import { MotionConfig } from 'framer-motion'
+import { MotionConfig, motion } from 'framer-motion'
 import { Check, Eye, GripVertical, LayoutGrid, RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -203,8 +203,14 @@ export default function WidgetGrid({ widgets, hidden, onToggleHidden, onReset })
               onResizeStop={() => setDraggingId(null)}
               verticalCompact
             >
-              {widgets.map((widget) => (
-                <div key={widget.id} className={cn('transition-shadow duration-200', editing && 'ring-1 ring-brand-soft ring-offset-2 ring-offset-bg rounded-2xl')}>
+              {widgets.map((widget, index) => (
+                <motion.div
+                  key={widget.id}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.36, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
+                  className={cn('transition-shadow duration-200', editing && 'ring-1 ring-brand-soft ring-offset-2 ring-offset-bg rounded-2xl')}
+                >
                   <WidgetFrame
                     id={widget.id}
                     title={widget.title}
@@ -215,7 +221,7 @@ export default function WidgetGrid({ widgets, hidden, onToggleHidden, onReset })
                   >
                     {widget.render()}
                   </WidgetFrame>
-                </div>
+                </motion.div>
               ))}
             </ResponsiveGridLayout>
           </MotionConfig>

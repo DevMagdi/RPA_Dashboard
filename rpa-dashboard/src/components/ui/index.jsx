@@ -36,7 +36,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useCountUp, useIsMobile } from '../../hooks/ui'
 import { useDirection } from '../../lib/direction'
-import { compactNumber, currency, dirFor } from '../../lib/format'
+import { compactNumber, currency, currencyCompact, dirFor } from '../../lib/format'
 import { cn } from '../../lib/utils'
 import {
   Badge,
@@ -454,11 +454,13 @@ export function CountUpStat({ value, format = 'number', className, duration = 90
   const rendered =
     format === 'currency'
       ? currency(animated)
-      : format === 'percent'
-        ? `${Number(animated).toFixed(1)}%`
-        : format === 'compact'
-          ? compactNumber(animated)
-          : Math.round(Number(animated) || 0).toLocaleString()
+      : format === 'currency-compact'
+        ? currencyCompact(animated)
+        : format === 'percent'
+          ? `${Number(animated).toFixed(1)}%`
+          : format === 'compact'
+            ? compactNumber(animated)
+            : Math.round(Number(animated) || 0).toLocaleString()
   return (
     <span className={cn('stat-number', className)}>
       {rendered}

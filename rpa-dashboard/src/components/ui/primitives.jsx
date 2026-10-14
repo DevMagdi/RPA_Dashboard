@@ -577,7 +577,7 @@ export function DialogContent({
 
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-[color-mix(in_srgb,var(--bg-deep)_62%,transparent)] backdrop-blur-[3px] data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-[70] bg-[color-mix(in_srgb,var(--bg-deep)_58%,transparent)] backdrop-blur-[6px] data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out" />
       <DialogPrimitive.Content
         ref={contentRef}
         onCloseAutoFocus={onCloseAutoFocus}

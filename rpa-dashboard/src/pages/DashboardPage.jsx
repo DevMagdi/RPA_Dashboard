@@ -98,6 +98,8 @@ export default function DashboardPage() {
 
   const data = dashboard.data
   const spark = data?.charts?.volume || []
+  const savings = data?.charts?.savings || []
+  const slaRisk = (sla.data || []).filter((row) => String(row.SLAStatus || 'Healthy') !== 'Healthy').length
 
   useEffect(() => {
     if (!dashboard.isLoading && data && !storage.get(tourStorageKey, false)) {
@@ -154,7 +156,7 @@ export default function DashboardPage() {
       kpis: {
         render: () => (
           <div className="p-3">
-            <KpiGrid kpis={data?.kpis} loading={dashboard.isLoading} spark={spark} />
+            <KpiGrid kpis={data?.kpis} loading={dashboard.isLoading} spark={spark} savings={savings} />
           </div>
         ),
       },
@@ -259,11 +261,13 @@ export default function DashboardPage() {
         onOpenTour={() => setTourOpen(true)}
         actions={<ExportMenu days={filters.days} />}
         spark={spark}
+        savings={savings}
+        slaRisk={slaRisk}
         scope={data?.scope?.department}
       />
 
       {/* Filters — persisted in the URL so a view can be shared with a colleague */}
-      <Card className="sticky top-[3.7rem] z-20 p-3 backdrop-blur-md">
+      <Card className="sticky top-[3.35rem] z-20 p-3 backdrop-blur-md">
         <div className="flex flex-wrap items-end gap-3">
           <span className="flex items-center gap-2 text-xs font-medium text-muted">
             <Filter className="h-4 w-4" aria-hidden />
