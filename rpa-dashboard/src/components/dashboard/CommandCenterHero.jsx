@@ -23,7 +23,7 @@ function HeroStat({ icon: Icon, label, value, tone = 'brand', loading, hint }) {
     info: 'bg-info-soft text-info',
     success: 'bg-success-soft text-success',
     warning: 'bg-warning-soft text-warning',
-    accent: 'bg-accent-soft text-accent',
+    accent: 'bg-accent-soft text-accent-strong',
   }
   return (
     <div className="command-hero__stat">

@@ -1,7 +1,7 @@
-import { Pencil, Power, Search, Trash2, Workflow } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { LayoutGrid, List, Pencil, Power, Search, Trash2, Workflow } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../context/AuthProvider'
 import { useToast } from '../context/ToastProvider'
@@ -14,10 +14,11 @@ import {
   useUpdateRoi,
   useUpdateSla,
 } from '../hooks/api'
-import { useDebouncedValue } from '../hooks/ui'
+import { useDebouncedValue, usePersistentState } from '../hooks/ui'
 import { markOnboardingStep } from '../lib/onboarding'
 import { compactNumber, currency, percent } from '../lib/format'
 import ExportMenu from '../components/features/ExportMenu'
+import ProcessCard from '../components/processes/ProcessCard'
 import {
   Badge,
   Button,
@@ -31,7 +32,11 @@ import {
   Pagination,
   SectionTitle,
   Select,
-  Switch, ErrorState} from '../components/ui'
+  SegmentedControl,
+  Skeleton,
+  Switch,
+  ErrorState,
+} from '../components/ui'
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -41,10 +46,13 @@ export default function ProcessesPage() {
   const { t } = useTranslation()
   const toast = useToast()
   const { has } = useAuth()
+  const [searchParams] = useSearchParams()
+  const processQuery = searchParams.get('process') || ''
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(processQuery)
   const [department, setDepartment] = useState('ALL')
   const [includeInactive, setIncludeInactive] = useState(true)
+  const [viewMode, setViewMode] = usePersistentState('processes.view', 'table')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [sort, setSort] = useState({ key: 'ProcessName', dir: 'asc' })
@@ -144,6 +152,17 @@ export default function ProcessesPage() {
     }
   }
 
+  // A command-palette process jump is reflected in the search filter on arrival.
+  useEffect(() => {
+    if (!processQuery) return
+    setSearch(processQuery)
+    setPage(1)
+  }, [processQuery])
+
+  // Hooks stay unconditional even when the API returns an error state.
+  // Reaching this module completes the getting-started step.
+  useEffect(() => markOnboardingStep('stepProcesses'), [])
+
   if (processes.isError) {
     return (
       <Card>
@@ -151,9 +170,6 @@ export default function ProcessesPage() {
       </Card>
     )
   }
-
-  // The operator reached this module — that is what completes the getting-started step.
-  useEffect(() => markOnboardingStep('stepProcesses'), [])
 
   return (
     <div className="space-y-4">
@@ -211,10 +227,71 @@ export default function ProcessesPage() {
               label={t('processes.inactive')}
             />
           </div>
+          <div className="ms-auto flex items-center gap-2" role="group" aria-label={t('processes.viewMode')}>
+            <span className="hidden text-xs text-muted sm:inline">{t('processes.viewMode')}</span>
+            <SegmentedControl
+              value={viewMode === 'cards' ? 'cards' : 'table'}
+              onValueChange={setViewMode}
+              size="sm"
+              items={[
+                { value: 'table', label: t('processes.tableView'), icon: List },
+                { value: 'cards', label: t('processes.cardsView'), icon: LayoutGrid },
+              ]}
+            />
+          </div>
         </div>
       </Card>
 
-      <Card>
+      {viewMode === 'cards' ? (
+        <>
+          {processes.isLoading && !rows.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Card key={index} className="space-y-3 p-4">
+                  <Skeleton className="h-10" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-3" />
+                </Card>
+              ))}
+            </div>
+          ) : !rows.length ? (
+            <Card>
+              <EmptyState icon={Workflow} title={t('dashboard.empty.table')} description={t('processes.missingConfig')} />
+            </Card>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {rows.map((row) => (
+                  <ProcessCard
+                    key={row.ConfigID ?? row.ProcessName}
+                    process={row}
+                    stats={roiByProcess.get(row.ProcessName)}
+                    canWrite={canWrite}
+                    onEditRoi={setRoiTarget}
+                    onEditSla={setSlaTarget}
+                    onToggleActive={toggleActive}
+                    onDelete={setDeleteTarget}
+                  />
+                ))}
+              </div>
+              <Card className="p-3">
+                <Pagination
+                  page={page}
+                  pageSize={pageSize}
+                  total={total}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size)
+                    setPage(1)
+                  }}
+                  labels={{ of: t('common.of'), none: t('common.na') }}
+                />
+              </Card>
+            </>
+          )}
+        </>
+      ) : (
+        <Card>
         <DataTable
           loading={processes.isLoading}
           rows={rows}
@@ -344,7 +421,8 @@ export default function ProcessesPage() {
             />
           }
         />
-      </Card>
+        </Card>
+      )}
 
       {/* --------------------------------------------------------- ROI model */}
       <Modal open={Boolean(roiTarget)} onClose={() => setRoiTarget(null)} title={t('processes.editRoi')} description={roiTarget?.ProcessName} size="sm">

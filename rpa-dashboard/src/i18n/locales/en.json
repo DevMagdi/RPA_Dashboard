@@ -261,6 +261,9 @@
   "processes": {
     "title": "Processes & ROI",
     "subtitle": "Automation catalogue, business case and SLA configuration",
+    "viewMode": "View mode",
+    "tableView": "Table",
+    "cardsView": "Cards",
     "process": "Process",
     "department": "Department",
     "criticality": "Criticality",
@@ -583,6 +586,7 @@
     "openSettings": "Open settings",
     "exportExcel": "Export current view to Excel",
     "exportPdf": "Export current view to PDF",
+    "acknowledgeAlert": "Acknowledge alert: {{alert}}",
     "gotoProcess": "Open process",
     "label": "Command palette"
   },

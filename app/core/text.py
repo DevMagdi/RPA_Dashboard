@@ -105,9 +105,11 @@ def shaping_available() -> bool:
     global _shaping_ready
     if _shaping_ready is None:
         try:  # pragma: no cover - exercised implicitly by the export tests
-            import arabic_reshaper  # noqa: F401
-            from bidi.algorithm import get_display  # noqa: F401
+            import arabic_reshaper
+            from bidi.algorithm import get_display
 
+            if not callable(arabic_reshaper.reshape) or not callable(get_display):
+                raise ImportError("Arabic shaping entry points are unavailable")
             _shaping_ready = True
         except Exception:  # pragma: no cover - degraded deployments
             logger.warning(

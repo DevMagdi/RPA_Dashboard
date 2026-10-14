@@ -244,11 +244,12 @@ export function useOrganization() {
   })
 }
 
-export function useAlerts(filters = {}) {
+export function useAlerts(filters = {}, { enabled = true } = {}) {
   return useQuery({
     queryKey: qk.alerts(filters),
     queryFn: () => api.get(`/api/alerts${queryString({ status: filters.status, limit: filters.limit || 100 })}`),
     staleTime: 15_000,
+    enabled,
   })
 }
 

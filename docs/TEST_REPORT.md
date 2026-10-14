@@ -8,20 +8,19 @@ checkout; API timings are **not** a bank-hardware production benchmark.
 
 | Suite / metric | Result | Gate |
 |---|---:|---:|
-| `pytest` (20 test files) | **352 passed, 3 warnings** (348 passed + 4 skipped in the CI backend job, where `dist/` is not built) | pass |
-| Backend statement coverage | **81.42%** | ≥ 80% |
+| `pytest` (20 test files) | **352 passed, 3 Starlette deprecation warnings** | pass |
+| Backend statement coverage | **81.52%** | ≥ 80% |
 | `scripts/smoke_api.py` | **64/64 checks passed** | all |
 | `scripts/verify_dashboard.py` through the live Vite proxy | **59/59 checks passed** | all |
-| Dashboard API latency, in-process (n=40) | median **5.4 ms**, p95 **6.3 ms**, max 6.4 ms | p95 < 1 500 ms |
-| Dashboard API latency, live over HTTP (n=35, Vite proxy) | median **7 ms**, p95 **18 ms** | p95 < 200 ms |
+| Dashboard API latency, in-process (n=6, latest budget run) | median **6.4 ms**, p95 **6.6 ms** | p95 < 1 500 ms |
+| Dashboard API latency, live over HTTP (n=35, Vite proxy, latest run) | median **7 ms**, p95 **12 ms** | p95 < 200 ms |
 | Dashboard payload | **9.6 KiB** (gzip-negotiated on the wire) | < 400 KiB |
 | Dashboard SQL statements per render | **1** | ≤ 40 |
-| Frontend `npx vitest run` | **46 tests passed** (6 files) | all |
-| Frontend `npm run lint` (oxlint) | **0 warnings, 0 errors** (61 files) | 0 |
-| Frontend `npm run build` | **passed in 1.51 s** | success |
+| Frontend `npx vitest run` | **61 tests passed** (11 files) | all |
+| Frontend `npm run lint` (oxlint) | **0 warnings, 0 errors** (69 files) | 0 |
+| Frontend `npm run build` | **passed in 1.58 s** | success |
 | Frontend `npm audit` | **0 vulnerabilities** | 0 |
-| `ruff check app tests` | **passed** | 0 findings |
-| `pyflakes app tests` | **passed** | 0 findings |
+| `ruff check app tests` and `pyflakes app tests` | **passed** | 0 findings |
 | Arabic + English JSON and product-contract tests | **passed** | both locales |
 
 The three pytest warnings are Starlette deprecations (`TestClient`'s httpx
@@ -35,17 +34,18 @@ moved into the same transaction.
 
 ## 2. Performance observations
 
-Bundle (production build, `vite build`, 36 assets / 1.58 MB total):
+Bundle (production build, `vite build`, 48 files / 1.88 MB total):
 
 | Chunk | Raw | gzip |
 |---|---:|---:|
-| `charts-*.js` (recharts + d3, lazy route only) | 429.9 KB | 121.3 KB |
-| `react-*.js` (react, react-dom, router) | 240.7 KB | 75.7 KB |
-| `motion-*.js` (framer-motion) | 132.7 KB | 43.3 KB |
-| `radix-*.js` (13 Radix primitives + CVA) | 127.2 KB | 39.8 KB |
-| `index-*.css` (design system + Tailwind) | 89.7 KB | 15.3 KB |
-| `ui-*.js` (component kit, shared) | 89.1 KB | 28.5 KB |
-| **entry `index-*.js`** (shell, router, providers) | **57.3 KB** | **15.8 KB** |
+| `charts-*.js` (Recharts, lazy routes only) | 368.26 KB | 100.55 KB |
+| `chart-data-*.js` (D3 primitives, split from Recharts) | 62.29 KB | 20.25 KB |
+| `react-*.js` (React, React DOM, router) | 247.32 KB | 78.80 KB |
+| `motion-*.js` (Framer Motion) | 135.84 KB | 44.93 KB |
+| `radix-*.js` (Radix primitives + CVA) | 130.23 KB | 41.29 KB |
+| `index-*.css` (design system + Tailwind) | 92.83 KB | 16.06 KB |
+| `ui-*.js` (component kit, shared) | 91.84 KB | 29.73 KB |
+| **entry `index-*.js`** (shell, router, providers) | **59.48 KB** | **16.57 KB** |
 
 - Every page is its own chunk (14 route chunks + dashboard sub-chunks); the
   login screen and the app shell never download recharts, the grid layout or the
@@ -59,9 +59,7 @@ Bundle (production build, `vite build`, 36 assets / 1.58 MB total):
   images and Office/PDF downloads are excluded on purpose.
 - The dashboard renders a 6-query aggregation in **a single SQL statement**
   (`test_performance_budget.py::test_dashboard_does_not_n_plus_one`).
-- Live HTTP p95 through the Vite proxy is **18 ms**; the in-process p95 is
-  **6.3 ms**.  These numbers exclude browser rendering, bank network latency and
-  SQL Server hardware, and are therefore *not* a production benchmark.
+- The latest performance-budget run measured in-process dashboard latency at **6.4 ms median / 6.6 ms p95** (n=6); the most recent live HTTP run measured **7 ms median / 12 ms p95** through the Vite proxy (n=35). These numbers exclude browser rendering, bank network latency and SQL Server hardware, and are therefore *not* a production benchmark.
 - Dashboard refresh invalidates only the `dashboard`, `capacity` and `sla`
   query groups instead of marking every query in the SPA stale; `staleTime` is
   30 s with a 10-minute `gcTime`, and a 2 000-row Arabic table renders
@@ -83,7 +81,7 @@ Bundle (production build, `vite build`, 36 assets / 1.58 MB total):
 | `test_arabic_rendering.py` | **The `????` defect, layer by layer**: Unicode DDL + migration drift, API round-trip of an Arabic name, RFC 5987 download headers, RTL Excel, shaped Arabic PDF (text re-extracted), bilingual report copy, self-hosted Cairo/Amiri coverage, UTF-8 service logs |
 | `test_performance_budget.py` | Measured budgets: dashboard latency/size/SQL count, gzip negotiation, immutable asset caching, self-hosted fonts, entry-chunk and chunk-splitting budgets, CI wiring |
 | `test_frontend_experience_contracts.py` | EN/AR copy parity, Arabic-only and mojibake-free values, per-user permission-aware tour, scoped refresh, chart loading, RTL logical-utility audit, labelled form controls, hidden decorative icons, Light-first theme migration and v4 shell |
-| `src/test/*` (vitest, 46 tests) | API client contracts (relative URLs, CSRF, single-flight refresh), route registry/permissions, RTL DOM direction, bundle/latency budgets, JSX audits |
+| `src/test/*` (Vitest, 61 tests) | API client contracts, runtime branding, route permissions, RTL DOM direction, command-palette acknowledgement/localization, process card/table views and URL jumps, design-token parity and AA contrast, bundle budgets |
 
 The smoke/API scripts additionally exercised RBAC-sensitive operations, MFA,
 agent command acknowledgement, four-eyes approval, audit events, exports,

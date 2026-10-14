@@ -182,7 +182,7 @@ export const badgeVariants = cva(
         warning: 'border-transparent bg-warning-soft text-warning',
         danger: 'border-transparent bg-danger-soft text-danger',
         info: 'border-transparent bg-info-soft text-info',
-        accent: 'border-transparent bg-accent-soft text-accent',
+        accent: 'border-transparent bg-accent-soft text-accent-strong',
         outline: 'border-border text-text',
       },
       size: { sm: 'px-2 py-0 text-[10px]', md: '', lg: 'px-3 py-1 text-xs' },
@@ -303,7 +303,7 @@ export function Separator({ className, orientation = 'horizontal', ...props }) {
 
 /* ---------------------------------------------------------------- Progress */
 
-export function Progress({ value = 0, max = 100, tone = 'brand', className, indicatorClassName, showValue = false }) {
+export function Progress({ value = 0, max = 100, tone = 'brand', className, indicatorClassName, showValue = false, 'aria-label': ariaLabel }) {
   const percent = max > 0 ? Math.min(100, Math.max(0, (Number(value) / max) * 100)) : 0
   const tones = {
     brand: 'bg-brand',
@@ -317,6 +317,7 @@ export function Progress({ value = 0, max = 100, tone = 'brand', className, indi
     <ProgressPrimitive.Root
       value={percent}
       max={100}
+      aria-label={ariaLabel}
       className={cn('relative h-1.5 w-full overflow-hidden rounded-full bg-surface-3', className)}
     >
       <ProgressPrimitive.Indicator

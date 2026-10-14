@@ -411,13 +411,16 @@ export function Tabs({ tabs = [], value, onChange, className, contentClassName, 
   return (
     <TabsRoot value={value} onValueChange={onChange} className={className}>
       <TabsList>
-        {tabs.map((tab) => (
-          <TabsTrigger key={tab.value} value={tab.value} disabled={tab.disabled}>
-            {tab.icon ? <tab.icon className="h-3.5 w-3.5" aria-hidden /> : null}
-            {tab.label}
-            {tab.badge ? <Badge tone={tab.badgeTone || 'neutral'} size="sm">{tab.badge}</Badge> : null}
-          </TabsTrigger>
-        ))}
+        {tabs.map((tab, index) => {
+          const tabValue = tab.value ?? tab.key ?? String(index)
+          return (
+            <TabsTrigger key={tabValue} value={tabValue} disabled={tab.disabled}>
+              {tab.icon ? <tab.icon className="h-3.5 w-3.5" aria-hidden /> : null}
+              {tab.label}
+              {tab.badge ? <Badge tone={tab.badgeTone || 'neutral'} size="sm">{tab.badge}</Badge> : null}
+            </TabsTrigger>
+          )
+        })}
       </TabsList>
       {children ? <TabsContent className={contentClassName}>{children}</TabsContent> : null}
     </TabsRoot>
@@ -426,10 +429,16 @@ export function Tabs({ tabs = [], value, onChange, className, contentClassName, 
 
 /* ---------------------------------------------------------------- progress */
 
-export function ProgressBar({ value = 0, max = 100, tone, className, showLabel = false, label, size = 'md' }) {
+export function ProgressBar({ value = 0, max = 100, tone, className, showLabel = false, label, ariaLabel, size = 'md' }) {
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <Progress value={value} max={max} tone={tone} className={cn(size === 'sm' ? 'h-1' : 'h-1.5')} />
+      <Progress
+        value={value}
+        max={max}
+        tone={tone}
+        aria-label={ariaLabel || label}
+        className={cn(size === 'sm' ? 'h-1' : 'h-1.5')}
+      />
       {showLabel ? (
         <span className="w-10 shrink-0 text-end text-2xs tabular text-muted">{Math.round(max ? (value / max) * 100 : 0)}%</span>
       ) : null}
@@ -464,7 +473,7 @@ const STAT_TONES = {
   success: 'bg-success-soft text-success ring-success/12',
   warning: 'bg-warning-soft text-warning ring-warning/12',
   danger: 'bg-danger-soft text-danger ring-danger/12',
-  accent: 'bg-accent-soft text-accent ring-accent/12',
+  accent: 'bg-accent-soft text-accent-strong ring-accent/12',
 }
 
 export const Stat = memo(function Stat({ label, value, format, hint, tone = 'brand', icon: Icon, delta, className, layout = 'card', onClick }) {

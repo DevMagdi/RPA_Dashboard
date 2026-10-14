@@ -1,16 +1,30 @@
-# React + Vite
+# RPA CoE Control Room — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The React/Vite client for the single-organization, on-premises RPA operations console. It supports English and Arabic (RTL), a light-first theme with full dark mode, and lazy-loaded operations pages.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm ci
+npm run dev
+```
 
-## React Compiler
+Vite serves on port `5173` and proxies `/api`, `/ws`, `/health`, and `/metrics` to `http://127.0.0.1:8000` by default. Set `VITE_BACKEND_URL` when the FastAPI service runs elsewhere; browser code continues to use relative URLs.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Validation
 
-## Expanding the Oxlint configuration
+```bash
+npm test
+npm run lint
+npm run build
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Vitest covers UI primitives, route/loading contracts, Arabic translations and RTL, runtime branding, command-palette actions, process card/table views, and production bundle budgets. The build self-hosts Inter and Cairo fonts under `public/fonts` for air-gapped deployments.
+
+## Structure
+
+- `src/design-system/` — theme tokens and component-kit documentation
+- `src/components/ui/` — accessible Radix/CVA primitives and product components
+- `src/components/layout/` — sidebar, top bar, command palette and app shell
+- `src/pages/` — route-level pages, loaded with `React.lazy`
+- `src/i18n/locales/` — complete English and Arabic translations

@@ -51,59 +51,59 @@
   color-scheme: light;
 
   /* — surfaces & ink ————————————————————————————————— */
-  --bg: #f8fafc;
-  --bg-soft: #eef2f7;
-  --bg-deep: #e2e9f5;
+  --bg: #f3f6fa;
+  --bg-soft: #f7f9fc;
+  --bg-deep: #e8edf4;
   --surface: #ffffff;
-  --surface-2: #f7f9fd;
-  --surface-3: #eff4fb;
-  --surface-sunken: #f2f5fb;
+  --surface-2: #f7f9fc;
+  --surface-3: #e9eef5;
+  --surface-sunken: #eef2f8;
 
-  --border: #e3e9f3;
-  --border-strong: #cfd8e8;
-  --border-soft: #edf1f8;
+  --border: #e1e7f0;
+  --border-strong: #c6d0de;
+  --border-soft: #eef2f7;
 
-  --text: #0c1425;
-  --text-soft: #33405a;
-  --text-muted: #5d6b85;
+  --text: #111827;
+  --text-soft: #344154;
+  --text-muted: #657286;
 
   /* — brand (indigo → violet) ————————————————————————— */
-  --brand: #4f46e5;
-  --brand-strong: #4338ca;
-  --brand-lighter: #6d5ef5;
-  --brand-soft: rgba(79, 70, 229, 0.1);
-  --brand-ring: rgba(79, 70, 229, 0.38);
+  --brand: #6254e8;
+  --brand-strong: #5145c5;
+  --brand-lighter: #7a6ff0;
+  --brand-soft: rgba(98, 84, 232, 0.1);
+  --brand-ring: rgba(98, 84, 232, 0.38);
   --brand-fg: #ffffff;
 
   /* — accent (teal) ————————————————————————————————— */
-  --accent: #0d9488;
-  --accent-strong: #0f766e;
-  --accent-soft: rgba(13, 148, 136, 0.11);
+  --accent: #0f9f91;
+  --accent-strong: #0a7e74;
+  --accent-soft: rgba(15, 159, 145, 0.11);
   --accent-fg: #ffffff;
 
   /* — semantics ————————————————————————————————————— */
-  --success: #05966a;
+  --success: #047857;
   --success-strong: #047857;
-  --success-soft: rgba(5, 150, 106, 0.12);
-  --warning: #c2760a;
-  --warning-strong: #a16207;
-  --warning-soft: rgba(194, 118, 10, 0.14);
-  --danger: #dc3454;
+  --success-soft: rgba(5, 150, 105, 0.12);
+  --warning: #b45309;
+  --warning-strong: #b45309;
+  --warning-soft: rgba(217, 119, 6, 0.14);
+  --danger: #be123c;
   --danger-strong: #be123c;
-  --danger-soft: rgba(220, 52, 84, 0.12);
-  --info: #0678b8;
+  --danger-soft: rgba(225, 29, 72, 0.12);
+  --info: #0369a1;
   --info-strong: #0369a1;
-  --info-soft: rgba(6, 120, 184, 0.12);
+  --info-soft: rgba(2, 132, 199, 0.12);
 
   /* — data-viz ————————————————————————————————————— */
-  --chart-1: #4f46e5;
-  --chart-2: #0d9488;
+  --chart-1: #6254e8;
+  --chart-2: #0f9f91;
   --chart-3: #f59e0b;
   --chart-4: #e0479e;
   --chart-5: #0ea5e9;
   --chart-6: #8b5cf6;
-  --chart-grid: #e8edf6;
-  --chart-axis: #93a1b8;
+  --chart-grid: #e1e7f0;
+  --chart-axis: #657286;
 
   /* — shadcn/ui conventional tokens —————————————————— */
   --background: var(--bg);
@@ -132,8 +132,8 @@
   --shadow-focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--brand-ring);
 
   /* — geometry & motion ————————————————————————————— */
-  --radius: 0.9rem;
-  --radius-sm: 0.6rem;
+  --radius: 1rem;
+  --radius-sm: 0.75rem;
   --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
@@ -155,26 +155,26 @@
   color-scheme: dark;
 
   --bg: #070b14;
-  --bg-soft: #0c1220;
+  --bg-soft: #0b1220;
   --bg-deep: #05080f;
-  --surface: #0f1524;
-  --surface-2: #141b2d;
-  --surface-3: #1a2236;
-  --surface-sunken: #0a0f1b;
+  --surface: #101827;
+  --surface-2: #141f30;
+  --surface-3: #1c2a3d;
+  --surface-sunken: #0b1220;
 
-  --border: #222c42;
-  --border-strong: #33415c;
-  --border-soft: #1a2336;
+  --border: #253249;
+  --border-strong: #3a4a66;
+  --border-soft: #1a283a;
 
-  --text: #eef3ff;
-  --text-soft: #c3cde0;
-  --text-muted: #93a2bd;
+  --text: #eff5ff;
+  --text-soft: #ced8e8;
+  --text-muted: #98a8bf;
 
-  --brand: #837bff;
-  --brand-strong: #6d63f5;
-  --brand-lighter: #9b95ff;
-  --brand-soft: rgba(131, 123, 255, 0.16);
-  --brand-ring: rgba(131, 123, 255, 0.5);
+  --brand: #7f72ff;
+  --brand-strong: #7969ff;
+  --brand-lighter: #9c93ff;
+  --brand-soft: rgba(127, 114, 255, 0.16);
+  --brand-ring: rgba(127, 114, 255, 0.5);
   --brand-fg: #0a0f1e;
 
   --accent: #2dd4bf;
@@ -195,14 +195,14 @@
   --info-strong: #0ea5e9;
   --info-soft: rgba(56, 189, 248, 0.15);
 
-  --chart-1: #837bff;
+  --chart-1: #7f72ff;
   --chart-2: #2dd4bf;
   --chart-3: #fbbf24;
   --chart-4: #f472b6;
   --chart-5: #38bdf8;
   --chart-6: #a78bfa;
-  --chart-grid: #1c2740;
-  --chart-axis: #6c7c99;
+  --chart-grid: #253249;
+  --chart-axis: #98a8bf;
 
   --destructive-foreground: #160a10;
   --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.4);

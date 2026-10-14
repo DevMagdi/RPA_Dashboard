@@ -40,7 +40,10 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
           if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) return 'react'
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) return 'charts'
+          // Keep Recharts' chart components separate from its D3 primitives;
+          // the Dashboard loads both only after the first-paint command center.
+          if (id.includes('node_modules/d3-')) return 'chart-data'
+          if (id.includes('node_modules/recharts')) return 'charts'
           if (id.includes('node_modules/framer-motion') || id.includes('node_modules/motion-')) return 'motion'
           if (id.includes('node_modules/react-grid-layout') || id.includes('node_modules/react-resizable')) return 'grid'
           if (id.includes('node_modules/i18next') || id.includes('node_modules/react-i18next')) return 'i18n'
