@@ -29,7 +29,7 @@ def _branding() -> Dict[str, Any]:
             return get_branding(session)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Branding lookup failed: %s", exc)
-        return {"company_name": "RPA CoE", "name": "RPA CoE Control Room", "primary_color": "#4B367C", "accent_color": "#F37920"}
+        return {"company_name": "RPA CoE", "name": "RPA CoE Control Room", "primary_color": "#6D5DFC", "accent_color": "#0F9F91"}
 
 
 def build_excel(
@@ -47,8 +47,8 @@ def build_excel(
     from openpyxl.utils import get_column_letter
 
     branding = _branding()
-    header_bg = str(branding.get("primary_color") or "#4B367C").replace("#", "")
-    accent = str(branding.get("accent_color") or "#F37920").replace("#", "")
+    header_bg = str(branding.get("primary_color") or "#6D5DFC").replace("#", "")
+    accent = str(branding.get("accent_color") or "#0F9F91").replace("#", "")
 
     workbook = Workbook()
     sheet = workbook.active
@@ -136,8 +136,8 @@ def build_pdf(
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     branding = _branding()
-    primary = colors.HexColor(str(branding.get("primary_color") or "#4B367C"))
-    accent = colors.HexColor(str(branding.get("accent_color") or "#F37920"))
+    primary = colors.HexColor(str(branding.get("primary_color") or "#6D5DFC"))
+    accent = colors.HexColor(str(branding.get("accent_color") or "#0F9F91"))
 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(

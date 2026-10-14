@@ -8,6 +8,7 @@ did not install the OTel packages all keep working — they just produce no span
 from __future__ import annotations
 
 import logging
+from importlib.util import find_spec
 from typing import Any, Optional
 
 from app.core.config import get_settings
@@ -20,11 +21,9 @@ _configured = False
 def tracing_available() -> bool:
     """Return ``True`` when the OpenTelemetry API packages are importable."""
     try:
-        import opentelemetry  # noqa: F401
-        from opentelemetry import trace  # noqa: F401
-    except Exception:
+        return find_spec("opentelemetry") is not None and find_spec("opentelemetry.trace") is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
         return False
-    return True
 
 
 def configure_tracing(app: Optional[Any] = None) -> bool:

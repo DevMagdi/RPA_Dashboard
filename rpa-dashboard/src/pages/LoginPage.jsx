@@ -96,7 +96,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-xs text-white/60">
-            {t('app.poweredBy')} · {t('app.version', { version: branding.api_version || '3.0.0' })}
+            {t('app.poweredBy')} · {t('app.version', { version: branding.api_version || '4.0.0' })}
           </p>
         </div>
       </aside>
@@ -210,7 +210,7 @@ export default function LoginPage() {
               </Button>
 
               <p className="text-center text-[11px] text-muted">
-                {t('app.version', { version: branding.api_version || '3.0.0' })} · {t('app.poweredBy')}
+                {t('app.version', { version: branding.api_version || '4.0.0' })} · {t('app.poweredBy')}
               </p>
             </form>
           )}

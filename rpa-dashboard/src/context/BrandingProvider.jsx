@@ -9,11 +9,11 @@ const BrandingContext = createContext(null)
 const FALLBACK = {
   name: 'RPA CoE Control Room',
   company_name: '',
-  primary_color: '#4b367c',
-  accent_color: '#f37920',
+  primary_color: '#6D5DFC',
+  accent_color: '#0F9F91',
   locale: 'en',
   logo_url: null,
-  api_version: '3.0.0',
+  api_version: '4.0.0',
   features: {},
 }
 

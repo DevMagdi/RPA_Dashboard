@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Workflow,
 } from 'lucide-react'
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import {
@@ -129,15 +130,20 @@ export function KpiGrid({ kpis, loading }) {
 
 /* ----------------------------------------------------------------- Charts */
 
-function ChartFrame({ title, subtitle, icon, actions, children, height = 240, empty, isEmpty }) {
+function ChartFrame({ title, subtitle, icon, actions, children, height = 240, empty, isEmpty, loading }) {
   return (
     <Card className="h-full">
       <CardHeader title={title} subtitle={subtitle} icon={icon} actions={actions} />
       <CardBody className="pt-3">
-        {isEmpty ? (
+        {loading && isEmpty ? (
+          <div className="space-y-3" style={{ height }} aria-label={title} aria-busy="true">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-[calc(100%-1.5rem)] w-full rounded-xl" />
+          </div>
+        ) : isEmpty ? (
           <EmptyState title={empty || 'No data'} className="py-8" />
         ) : (
-          <div style={{ height }}>
+          <div style={{ height }} role="img" aria-label={title}>
             <ResponsiveContainer width="100%" height="100%">
               {children}
             </ResponsiveContainer>
@@ -173,22 +179,24 @@ function tooltipStyle() {
 
 export function VolumeChart({ data, loading, height }) {
   const { t } = useTranslation()
+  const gradientId = useId().replace(/:/g, '')
   const rows = data || []
   return (
     <ChartFrame
       title={t('dashboard.runVolume')}
       icon={Activity}
       height={height}
-      isEmpty={!loading && rows.length === 0}
+      isEmpty={rows.length === 0}
+      loading={loading}
       empty={t('dashboard.empty.chart')}
     >
       <AreaChart data={rows} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
         <defs>
-          <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`${gradientId}-volume-fill`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={CHART_COLORS.brand} stopOpacity={0.45} />
             <stop offset="100%" stopColor={CHART_COLORS.brand} stopOpacity={0.02} />
           </linearGradient>
-          <linearGradient id="completedFill" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`${gradientId}-completed-fill`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={CHART_COLORS.success} stopOpacity={0.4} />
             <stop offset="100%" stopColor={CHART_COLORS.success} stopOpacity={0.02} />
           </linearGradient>
@@ -197,8 +205,8 @@ export function VolumeChart({ data, loading, height }) {
         <XAxis dataKey="date" {...axisProps()} />
         <YAxis {...axisProps()} />
         <ChartTooltip {...tooltipStyle()} />
-        <Area type="monotone" dataKey="volume" stroke={CHART_COLORS.brand} fill="url(#volumeFill)" strokeWidth={2} name={t('dashboard.runsToday')} />
-        <Area type="monotone" dataKey="completed" stroke={CHART_COLORS.success} fill="url(#completedFill)" strokeWidth={2} name={t('audit.success')} />
+        <Area type="monotone" dataKey="volume" stroke={CHART_COLORS.brand} fill={`url(#${gradientId}-volume-fill)`} strokeWidth={2} name={t('dashboard.runsToday')} />
+        <Area type="monotone" dataKey="completed" stroke={CHART_COLORS.success} fill={`url(#${gradientId}-completed-fill)`} strokeWidth={2} name={t('audit.success')} />
       </AreaChart>
     </ChartFrame>
   )
@@ -212,7 +220,8 @@ export function SavingsChart({ data, loading, height }) {
       title={t('dashboard.savingsTrend')}
       icon={TrendingUp}
       height={height}
-      isEmpty={!loading && rows.length === 0}
+      isEmpty={rows.length === 0}
+      loading={loading}
       empty={t('dashboard.empty.chart')}
     >
       <BarChart data={rows} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
@@ -235,7 +244,8 @@ export function OutcomeDonut({ data, loading, height }) {
       title={t('dashboard.healthDonut')}
       icon={Cpu}
       height={height}
-      isEmpty={!loading && rows.length === 0}
+      isEmpty={rows.length === 0}
+      loading={loading}
       empty={t('dashboard.empty.chart')}
     >
       <PieChart>
@@ -259,7 +269,8 @@ export function DepartmentBars({ data, loading, height }) {
       title={t('dashboard.departmentBreakdown')}
       icon={ServerCog}
       height={height}
-      isEmpty={!loading && rows.length === 0}
+      isEmpty={rows.length === 0}
+      loading={loading}
       empty={t('dashboard.empty.chart')}
     >
       <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>

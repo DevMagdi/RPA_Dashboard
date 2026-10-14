@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Filter, RefreshCw, X } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { Filter, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../context/AuthProvider'
@@ -18,6 +18,8 @@ import { useUrlFilters } from '../hooks/ui'
 import api from '../lib/api'
 import { Button, Card, ErrorState, Select, Skeleton, cx } from '../components/ui'
 import ExportMenu from '../components/features/ExportMenu'
+import CommandCenterHero from '../components/dashboard/CommandCenterHero'
+import ProductTourDialog from '../components/dashboard/ProductTourDialog'
 import WidgetGrid, { HIDDEN_KEY } from '../components/dashboard/WidgetGrid'
 import {
   ActiveRunBanner,
@@ -49,12 +51,14 @@ export default function DashboardPage() {
   const { t } = useTranslation()
   const client = useQueryClient()
   const toast = useToast()
-  const { has } = useAuth()
+  const { has, user } = useAuth()
+  const tourStorageKey = `onboarding.control-room.v4.${user?.user_id ?? 'current'}`
 
   const { filters, update, reset } = useUrlFilters(DEFAULTS)
   const [refreshing, setRefreshing] = useState(false)
   const [busyRecommendation, setBusyRecommendation] = useState(null)
   const [hiddenIds, setHiddenIds] = useState(() => storage.get(HIDDEN_KEY, []))
+  const [tourOpen, setTourOpen] = useState(false)
 
   const dashboard = useDashboard(filters)
   const capacity = useCapacityInsights({ department: filters.department === 'ALL' ? undefined : filters.department })
@@ -67,11 +71,26 @@ export default function DashboardPage() {
 
   const data = dashboard.data
 
+  useEffect(() => {
+    if (!dashboard.isLoading && data && !storage.get(tourStorageKey, false)) {
+      setTourOpen(true)
+    }
+  }, [dashboard.isLoading, data, tourStorageKey])
+
+  const closeTour = useCallback(() => {
+    storage.set(tourStorageKey, true)
+    setTourOpen(false)
+  }, [tourStorageKey])
+
   const onRefresh = async () => {
     setRefreshing(true)
     try {
       await api.post('/api/dashboard/refresh', {})
-      await client.invalidateQueries()
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['dashboard'] }),
+        client.invalidateQueries({ queryKey: ['capacity'] }),
+        client.invalidateQueries({ queryKey: ['sla-workload'] }),
+      ])
       toast.success(t('actions.refresh'))
     } catch (error) {
       toast.error(t('errors.title'), error.message)
@@ -130,8 +149,8 @@ export default function DashboardPage() {
     }))
   }, [data, dashboard.isLoading, capacity.data, capacity.isLoading, sla.data, sla.isLoading, busyRecommendation, requestCapacity, t])
 
-  const visible = allWidgets.filter((widget) => !hiddenIds.includes(widget.id))
-  const hidden = allWidgets.filter((widget) => hiddenIds.includes(widget.id))
+  const visible = useMemo(() => allWidgets.filter((widget) => !hiddenIds.includes(widget.id)), [allWidgets, hiddenIds])
+  const hidden = useMemo(() => allWidgets.filter((widget) => hiddenIds.includes(widget.id)), [allWidgets, hiddenIds])
 
   if (dashboard.isError) {
     return (
@@ -143,21 +162,16 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-text sm:text-xl">{t('dashboard.title')}</h1>
-          <p className="mt-0.5 text-xs text-muted">
-            {t('dashboard.subtitle')} · {data?.meta?.generated_at ? new Date(data.meta.generated_at).toLocaleTimeString() : '…'}
-            {data?.meta?.cache_hit !== undefined ? <span className="ms-2 opacity-70">{data.meta.cache_hit ? 'cache' : 'live'}</span> : null}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ExportMenu days={filters.days} />
-          <Button variant="secondary" size="sm" icon={RefreshCw} loading={refreshing} onClick={onRefresh}>
-            {t('actions.refresh')}
-          </Button>
-        </div>
-      </header>
+      <CommandCenterHero
+        kpis={data?.kpis}
+        successRate={data?.sidebarStats?.successRate}
+        generatedAt={data?.meta?.generated_at}
+        loading={dashboard.isLoading && !data}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        onOpenTour={() => setTourOpen(true)}
+        actions={<ExportMenu days={filters.days} />}
+      />
 
       {/* Filters — persisted in the URL so a view can be shared with a colleague */}
       <Card className="p-3">
@@ -245,6 +259,8 @@ export default function DashboardPage() {
       <div className={cx('grid gap-3', 'lg:grid-cols-2')}>
         <DepartmentBars data={data?.analytics?.departments} loading={dashboard.isLoading} height={240} />
       </div>
+
+      <ProductTourDialog open={tourOpen} onClose={closeTour} />
     </div>
   )
 }

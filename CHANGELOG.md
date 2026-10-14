@@ -23,6 +23,12 @@
   (`limit` as an alias of `page_size`, `offset` for random access, `after` for
   the keyset walk — mutually exclusive), returns `total` for offset paging, and
   the Processes page now sorts server-side so ordering is correct across pages.
+- **Authentication audit writes now share the login transaction.** A separate
+  audit connection could collide with the still-open user-update transaction in
+  SQLite and drop an MFA challenge event. Successful MFA challenges use the
+  request session; failed-login counters and their audit rows are committed
+  together before returning the authentication error. Regression tests assert
+  both the persisted counter/audit row and the challenge event.
 
 ### Performance
 - **Role permissions are cached** (`perms:role:*`, 60 s TTL, memory or Redis).
@@ -31,6 +37,20 @@
   warnings in production logs — because the principal *and* the permission
   guard each resolved the role. Failures are never cached, and
   `invalidate_permission_cache()` drops the entries when roles change.
+- **Dashboard refresh is scoped** to dashboard, capacity and SLA query keys;
+  unrelated active pages are no longer invalidated by a local refresh.
+- **Tailwind upgraded to 4.3.3** and the dependency lock refreshed; `npm audit`
+  reports zero vulnerabilities. Lazy route chunks and the separate chart bundle
+  remain intact.
+
+### Product experience
+- Added the Light-first / full dark-mode Private Operations tokens, polished shell,
+  responsive command-center dashboard header and permission-aware first-run tour.
+- Improved chart loading states, focus/keyboard handling, mobile navigation,
+  Arabic RTL drawer direction and the command palette's modal semantics.
+- Aligned frontend and environment-template version fallbacks with 4.0.0 and
+  updated the default installation palette while retaining per-install branding.
+- Added a bilingual frontend contract test and `docs/PRODUCT_UX_PLAN_AR.md`.
 
 ## 4.0.0 — Bank Production Ready (2026-10-13)
 

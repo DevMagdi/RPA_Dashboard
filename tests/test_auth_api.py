@@ -21,9 +21,28 @@ def test_login_sets_csrf_and_refresh_cookies(client):
     assert "refresh_token" in cookie_names
 
 
-def test_login_wrong_password_rejected(client):
-    response = do_login(client, ADMIN_USERNAME, "definitely-wrong")
+def test_login_wrong_password_rejected(client, create_user):
+    from sqlalchemy import select
+
+    from app.db.session import get_session_factory
+    from app.db.tables import AuditLogs, SystemUsers
+
+    account = create_user(role="Viewer")
+    response = do_login(client, account["username"], "definitely-wrong")
     assert response.status_code in (401, 403)
+
+    with get_session_factory()() as session:
+        attempts = session.execute(
+            select(SystemUsers.c.FailedLoginAttempts).where(SystemUsers.c.UserID == account["user_id"])
+        ).scalar_one()
+        audit_event = session.execute(
+            select(AuditLogs.c.LogID).where(
+                AuditLogs.c.ActionType == "Login_Failed",
+                AuditLogs.c.NewValues.like(f'%{account["username"]}%'),
+            )
+        ).scalar_one_or_none()
+    assert attempts == 1
+    assert audit_event is not None
 
 
 def test_login_unknown_user_rejected(client):
@@ -232,8 +251,13 @@ def test_mfa_setup_issues_secret(client, create_user, login):
     assert response.json()["otpauth_url"].startswith("otpauth://")
 
 
-def test_mfa_full_lifecycle(client, create_user, login):
+def test_mfa_full_lifecycle(client, create_user, login, monkeypatch):
     import pyotp
+    from sqlalchemy import select
+
+    from app.db.session import get_session_factory
+    from app.db.tables import AuditLogs
+    from app.services import audit_service
 
     account = create_user(role="Viewer")
     headers = login(account["username"], account["password"])
@@ -243,8 +267,22 @@ def test_mfa_full_lifecycle(client, create_user, login):
     assert confirm.status_code == 200
     assert len(confirm.json().get("backup_codes", [])) >= 5
 
+    def forbid_standalone_audit(**_kwargs):
+        raise AssertionError("MFA login challenge must share the authentication transaction")
+
+    original_record_standalone = audit_service.record_standalone
+    monkeypatch.setattr(audit_service, "record_standalone", forbid_standalone_audit)
     login_response = do_login(client, account["username"], account["password"])
     assert login_response.json().get("mfa_required") is True
+    with get_session_factory()() as session:
+        challenge_audit = session.execute(
+            select(AuditLogs.c.LogID).where(
+                AuditLogs.c.UserID == account["user_id"], AuditLogs.c.ActionType == "Login_MFA_Challenge"
+            )
+        ).scalar_one_or_none()
+    assert challenge_audit is not None
+    monkeypatch.setattr(audit_service, "record_standalone", original_record_standalone)
+
     mfa_token = login_response.json()["mfa_token"]
 
     wrong = client.post("/api/auth/mfa/verify", json={"mfa_token": mfa_token, "code": "000000"})

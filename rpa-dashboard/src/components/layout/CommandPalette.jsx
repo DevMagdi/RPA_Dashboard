@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   BadgeCheck,
+  Bell,
   Bot,
   Gauge,
   KeyRound,
@@ -49,10 +50,17 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
   const inputRef = useRef(null)
 
   useEffect(() => {
-    if (open) {
-      setQuery('')
-      setCursor(0)
-      setTimeout(() => inputRef.current?.focus(), 40)
+    if (!open) return undefined
+    setQuery('')
+    setCursor(0)
+    const previouslyFocused = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 40)
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.body.style.overflow = previousOverflow
+      previouslyFocused?.focus?.()
     }
   }, [open])
 
@@ -70,7 +78,7 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
     ]
     if (has('users:read')) navigation.push({ id: 'nav-users', label: t('nav.users'), icon: Users, run: () => navigate('/users') })
     if (has('*')) navigation.push({ id: 'nav-organization', label: t('nav.organization'), icon: KeyRound, run: () => navigate('/organization') })
-    navigation.push({ id: 'nav-alerts', label: t('nav.alerts'), icon: KeyRound, run: () => navigate('/alerts') })
+    navigation.push({ id: 'nav-alerts', label: t('nav.alerts'), icon: Bell, run: () => navigate('/alerts') })
 
     const actions = [
       {
@@ -114,7 +122,8 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
       run: () => navigate(`/processes?process=${encodeURIComponent(name)}`),
     }))
 
-    const all = [...actions, ...navigation, ...processItems]
+    const visibleActions = actions.filter((item) => item.id !== 'action-generate' || has('capacity:act') || has('*'))
+    const all = [...visibleActions, ...navigation, ...processItems]
     if (!query.trim()) return all
     const needle = query.trim().toLowerCase()
     return all.filter((item) => item.label.toLowerCase().includes(needle))
@@ -136,6 +145,19 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
         item.run()
         onClose?.()
       }
+    } else if (event.key === 'Tab') {
+      const dialog = inputRef.current?.closest('[role="dialog"]')
+      const focusable = [...(dialog?.querySelectorAll('input, button:not([disabled])') || [])]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     } else if (event.key === 'Escape') {
       onClose?.()
     }
@@ -153,7 +175,9 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
         >
           <motion.div
             role="dialog"
+            aria-modal="true"
             aria-label={t('actions.commandPalette')}
+            onKeyDown={onKeyDown}
             initial={{ opacity: 0, y: -12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
@@ -166,11 +190,11 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={onKeyDown}
                 placeholder={`${t('actions.search')}…`}
                 className="w-full bg-transparent text-sm text-text outline-none placeholder:text-muted"
                 aria-label={t('actions.search')}
                 aria-controls="command-palette-results"
+                aria-activedescendant={items[cursor] ? `command-option-${cursor}` : undefined}
                 role="combobox"
                 aria-expanded="true"
               />
@@ -181,7 +205,7 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
                 <li className="px-3 py-6 text-center text-xs text-muted">{t('common.na')}</li>
               ) : (
                 items.map((item, index) => (
-                  <li key={item.id} role="option" aria-selected={index === cursor}>
+                  <li id={`command-option-${index}`} key={item.id} role="option" aria-selected={index === cursor}>
                     <button
                       type="button"
                       onMouseEnter={() => setCursor(index)}
