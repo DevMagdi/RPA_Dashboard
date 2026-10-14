@@ -168,7 +168,7 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     assert ":root {" in css
     assert ".dark {" in css
-    assert "--bg: #020617" in css
+    assert "--bg: #0f1a2e" in css
     assert "prefers-reduced-motion: reduce" in css
     assert ".command-hero" in css
     assert "storage.get('theme', 'light')" in theme_provider
@@ -176,6 +176,37 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     assert '<html lang="en" dir="ltr">' in html
     assert "JSON.parse(savedTheme) : 'light'" in html
     assert "if (theme === 'system') theme = 'light'" in html
+
+
+def test_hybrid_control_room_tokens_and_top_nav_are_wired():
+    """Hybrid plan: Navy/Orange anchors, premium radii, top pill nav and live bots badge."""
+    css = (SRC / "index.css").read_text(encoding="utf-8")
+    tokens = (SRC / "design-system" / "tokens.js").read_text(encoding="utf-8")
+    topbar = (SRC / "components" / "layout" / "TopBar.jsx").read_text(encoding="utf-8")
+    top_nav = (SRC / "components" / "layout" / "TopNav.jsx").read_text(encoding="utf-8")
+    shell = (SRC / "components" / "layout" / "AppShell.jsx").read_text(encoding="utf-8")
+
+    root_block = css[css.index(":root {") : css.index(".dark {")]
+    for declaration in (
+        "--navy: #1e3a5f;",
+        "--navy-deep: #122339;",
+        "--orange: #f58220;",
+        "--radius-card: 1.25rem;",
+        "--radius-ctrl: 0.75rem;",
+        "--hero-to: #0d9488;",
+    ):
+        assert declaration in root_block, declaration
+    assert "--bg: #f5f7fb;" in root_block
+    assert "--text-muted: #5b6b82;" in root_block
+    assert "navy: '#1E3A5F'" in tokens and "orange: '#F58220'" in tokens
+    assert "background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);" in css
+    assert ".kpi-strip" in css and ".nav-pill-active" in css and ".live-badge" in css
+
+    # Primary navigation is the centred pill; the sidebar becomes a collapsed rail by default.
+    assert "<TopNav />" in topbar and "BotsOnlineBadge" in topbar
+    assert "useConnectedAgents({ refetchInterval: 30_000 })" in topbar  # shared hook, real API
+    assert "PRIMARY_NAV_IDS = ['dashboard', 'processes', 'runs', 'alerts', 'capacity']" in top_nav
+    assert "usePersistentState('shell.collapsed', true)" in shell
 
 
 def test_ui_version_stays_aligned_with_control_room_v4():

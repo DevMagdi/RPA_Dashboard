@@ -22,13 +22,13 @@ primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#F1F5FB` | `#020617` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
-| `--surface` | `#FFFFFF` | `#0F172A` | cards, panels, menus |
-| `--surface-2` | `#F8FAFC` | `#131C31` | inputs, table headers, hover |
-| `--surface-3` | `#F1F5F9` | `#1B2741` | pressed / selected rows |
+| `--bg` | `#F5F7FB` | `#0F1A2E` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
+| `--surface` | `#FFFFFF` | `#152238` | cards, panels, menus |
+| `--surface-2` | `#F8FAFC` | `#1B2A44` | inputs, table headers, hover |
+| `--surface-3` | `#F1F5F9` | `#223556` | pressed / selected rows |
 | `--border` | `rgba(15, 23, 42, 0.06)` | `rgba(255, 255, 255, 0.07)` | 1px separation, low but visible |
-| `--text` | `#0F172A` | `#EFF5FF` | primary type |
-| `--text-muted` | `#5D6C85` | `#98A8BF` | secondary type, labels (AA on light canvas) |
+| `--text` | `#14213A` | `#EFF5FF` | primary type |
+| `--text-muted` | `#5B6B82` | `#98A8BF` | secondary type, labels (AA on light canvas) |
 | `--brand` / hover | `#4F46E5` / `#3730A3` | `#818CF8` / `#6D78F6` | primary action, focus, selection (dark foreground tuned for AA) |
 | `--accent` | `#0D9488` | `#2DD4BF` | live/telemetry affordances |
 | `--success` | `#047857` | `#34D399` | healthy runs |
@@ -37,7 +37,7 @@ primary chart series at runtime without a rebuild.
 | `--info` | `#0369A1` | `#38BDF8` | neutral information |
 
 > Premium command-center refresh (2026-10): the light canvas/surfaces/brand/accent
-> follow the Premium plan (`#F1F5FB` canvas, Deep Indigo `#4F46E5`, Electric Teal `#0D9488`).
+> follow the Hybrid control-room plan (`#F5F7FB` canvas, Navy `#1E3A5F`, Deep Indigo `#4F46E5`, Electric Teal `#0D9488`, Orange `#F58220`). See `docs/HYBRID_UI_PLAN_AR.md`.
 > Static background depth comes from the fixed mesh tokens `--mesh-1`/`--mesh-2`
 > (never animated); hover/focus glow is tokenised as `--glow-brand`/`--glow-accent`.
 > The semantic trio keeps the plan's hue families at **AA-safe depth**
@@ -76,7 +76,7 @@ applies `letter-spacing` to Arabic (it breaks the joins); Italic is never faked.
 ### 1.3 Space, radius, elevation
 
 * Approved 4-pt spacing rhythm: `4 / 8 / 12 / 16 / 24 / 32 / 48px`; component padding steps follow these tokens.
-* Radius: `12px` (`rounded-lg`) for controls, `18px` (`--radius-card: 1.125rem`)
+* Radius: `12px` (`rounded-lg`) for controls, `20px` (`--radius-card: 1.25rem`)
   for main cards; larger hero/dialog radii are used sparingly.
 * Elevation: `shadow-xs` (inputs), `shadow-soft` (cards), `shadow-lift`
   (menus/popovers), `shadow-glow` (primary action hover). Dark mode uses

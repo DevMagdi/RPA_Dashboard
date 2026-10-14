@@ -36,7 +36,7 @@ import KpiGrid from '../components/dashboard/KpiGrid'
 import OnboardingChecklist from '../components/dashboard/OnboardingChecklist'
 import ExportMenu from '../components/features/ExportMenu'
 import RouteFallback from '../components/common/RouteFallback'
-import { Button, Card, EmptyState, Select, Skeleton, cn } from '../components/ui'
+import { Button, Card, EmptyState, SegmentedControl, Select, Skeleton, cn } from '../components/ui'
 
 /* Heavy, below-the-fold modules: separate chunks, requested after first paint. */
 const ProductTourDialog = lazy(() => import('../components/dashboard/ProductTourDialog'))
@@ -307,20 +307,22 @@ export default function DashboardPage() {
               ))}
             </Select>
           </label>
-          <label className="space-y-1">
-            <span className="block text-[11px] text-muted">{t('dashboard.filters.range')}</span>
-            <Select
-              className="h-9 w-36 py-0 text-xs"
-              value={filters.days}
-              onChange={(event) => applyFilter({ days: Number(event.target.value) })}
-            >
-              {DATE_RANGES.map((range) => (
-                <option key={range.value} value={range.value}>
-                  {t('dashboard.filters.days', { count: range.count })}
-                </option>
-              ))}
-            </Select>
-          </label>
+          <div className="space-y-1">
+            <span className="block text-[11px] text-muted" id="dashboard-range-label">
+              {t('dashboard.filters.range')}
+            </span>
+            <div role="group" aria-labelledby="dashboard-range-label">
+              <SegmentedControl
+                size="sm"
+                value={String(filters.days)}
+                onValueChange={(next) => applyFilter({ days: Number(next) })}
+                items={DATE_RANGES.map((range) => ({
+                  value: String(range.value),
+                  label: t('dashboard.filters.days', { count: range.count }),
+                }))}
+              />
+            </div>
+          </div>
           {filtersDirty ? (
             <Button variant="ghost" size="sm" icon={X} onClick={reset}>
               {t('actions.clearFilters')}

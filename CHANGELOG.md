@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Hybrid control-room UI (Navy · Indigo · Teal · Orange)
+
+Implements `docs/HYBRID_UI_PLAN_AR.md` (the audit confirms the plan was not on
+`master` before this change; the earlier Premium plan is a different palette).
+
+- **Tokens**: Navy `#1E3A5F` / `#122339`, Orange `#F58220`, canvas `#F5F7FB`,
+  muted text `#5B6B82` (AA 5.06:1; the plan's `#64748B` measured 4.44:1),
+  dark canvas `#0F1A2E` / surface `#152238`. Card radius 20px (`--radius-card:
+  1.25rem`), control radius 12px (`--radius-ctrl`). KPI strip tones
+  (`--strip-*`). Semantic text keeps AA depths; bright plan hues are for fills.
+- **Top pill nav**: five primary modules inline (Dashboard, Processes, Runs,
+  Alerts, Capacity) and a permission-aware "More" menu; the active module is
+  lit with the brand gradient. Sidebar stays collapsible and starts collapsed
+  on desktop.
+- **Live badge**: navy "N bots online" from the real connected-agents API
+  (refreshed every 30 s).
+- **Hero**: Navy → Indigo/Teal gradient with white type (local token scope),
+  radial success gauge (SVG, reduced-motion aware).
+- **KPI rail**: coloured 4px top strip and matching icon per card.
+- **Filters**: the day-range select becomes a segmented control.
+- **Tests**: new `hybridControlRoom.test.jsx`; design-system contracts updated to
+  the new palette; `test_frontend_experience_contracts` gains a Hybrid contract.
+
 ## Unreleased — Premium command-center UI overhaul (plan implementation)
 
 Implements the Premium/Wow command-center plan end-to-end; the palette now

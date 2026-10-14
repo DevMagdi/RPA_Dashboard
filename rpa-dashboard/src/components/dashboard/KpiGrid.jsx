@@ -17,21 +17,18 @@ import { Card, CountUpStat, Skeleton, cn } from '../ui'
 
 
 
+/*
+ * Each card carries a coloured top strip (Hybrid plan). The strip token drives
+ * both the 4px bar and the icon tint, so the palette stays in one place (CSS).
+ */
 const KPI_CONFIG = [
-  { key: 'totalProcedures', label: 'dashboard.totalProcedures', icon: Workflow, tone: 'brand' },
-  { key: 'totalTransactions', label: 'dashboard.totalTransactions', icon: Package, tone: 'info' },
-  { key: 'runsToday', label: 'dashboard.runsToday', icon: Activity, tone: 'success', hintKey: 'targetRuns', delta: { from: 'spark', key: 'volume' } },
-  { key: 'timeSaved', label: 'dashboard.timeSaved', icon: Timer, format: 'hours', tone: 'warning' },
-  { key: 'costSaved', label: 'dashboard.costSaved', icon: BadgeDollarSign, format: 'currency-compact', tone: 'success', delta: { from: 'savings', key: 'bar' } },
-  { key: 'runningNow', label: 'dashboard.activeRun', icon: Bot, tone: 'info' },
+  { key: 'totalProcedures', label: 'dashboard.totalProcedures', icon: Workflow, strip: 'navy' },
+  { key: 'totalTransactions', label: 'dashboard.totalTransactions', icon: Package, strip: 'blue' },
+  { key: 'runsToday', label: 'dashboard.runsToday', icon: Activity, strip: 'green', hintKey: 'targetRuns', delta: { from: 'spark', key: 'volume' } },
+  { key: 'timeSaved', label: 'dashboard.timeSaved', icon: Timer, format: 'hours', strip: 'indigo' },
+  { key: 'costSaved', label: 'dashboard.costSaved', icon: BadgeDollarSign, format: 'currency-compact', strip: 'teal', delta: { from: 'savings', key: 'bar' } },
+  { key: 'runningNow', label: 'dashboard.activeRun', icon: Bot, strip: 'orange' },
 ]
-
-const KPI_TONES = {
-  brand: 'bg-brand-soft text-brand',
-  info: 'bg-info-soft text-info',
-  success: 'bg-success-soft text-success',
-  warning: 'bg-warning-soft text-warning',
-}
 
 export default function KpiGrid({ kpis, loading, spark = [], savings = [], onSelect }) {
   const { t } = useTranslation()
@@ -81,12 +78,15 @@ export default function KpiGrid({ kpis, loading, spark = [], savings = [], onSel
                 item.key === 'runningNow' && Number(raw) > 0 && 'shadow-glow',
               )}
             >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-              />
+              <span aria-hidden className="kpi-strip" style={{ '--strip': `var(--strip-${item.strip})` }} />
               <div className="flex items-start gap-3">
-                <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-transform duration-300 group-hover:scale-105', KPI_TONES[item.tone])}>
+                <span
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-transform duration-300 group-hover:scale-105"
+                  style={{
+                    background: `color-mix(in srgb, var(--strip-${item.strip}) 14%, transparent)`,
+                    color: `var(--strip-${item.strip})`,
+                  }}
+                >
                   <item.icon className="h-4 w-4" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">

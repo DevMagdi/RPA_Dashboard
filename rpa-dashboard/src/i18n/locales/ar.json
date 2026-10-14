@@ -41,7 +41,9 @@
     "collapse": "طيّ القائمة الجانبية",
     "expand": "توسيع القائمة الجانبية",
     "skipToContent": "تجاوز إلى المحتوى",
-    "commandHint": "للأوامر"
+    "commandHint": "للأوامر",
+    "more": "المزيد",
+    "moreModules": "وحدات إضافية ({{count}})"
   },
   "actions": {
     "refresh": "تحديث",
@@ -150,7 +152,9 @@
       "serverTime": "وقت الخادم",
       "liveActivity": "النشاط المباشر",
       "viewAllRuns": "عرض كل التشغيلات",
-      "targetRuns": "المستهدف {{total}} / يوم"
+      "targetRuns": "المستهدف {{total}} / يوم",
+      "successGauge": "مؤشر معدل النجاح",
+      "gaugeCaption": "من التشغيلات نجحت"
     },
     "tour": {
       "title": "غرفة التحكم في لمحة",
@@ -722,5 +726,9 @@
     "window": "الفترة الزمنية",
     "dateRange": "النطاق الزمني",
     "rowsPerPage": "عدد الصفوف في الصفحة"
+  },
+  "shell": {
+    "botsOnline": "بوت متصل",
+    "botsOnlineLabel": "{{count}} بوت أتمتة متصل"
   }
 }

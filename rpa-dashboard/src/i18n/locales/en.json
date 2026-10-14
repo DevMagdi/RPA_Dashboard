@@ -41,7 +41,9 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
     "skipToContent": "Skip to content",
-    "commandHint": "for commands"
+    "commandHint": "for commands",
+    "more": "More",
+    "moreModules": "More modules ({{count}})"
   },
   "actions": {
     "refresh": "Refresh",
@@ -150,7 +152,9 @@
       "serverTime": "Server time",
       "liveActivity": "Live activity",
       "viewAllRuns": "View all runs",
-      "targetRuns": "Target {{total}} / day"
+      "targetRuns": "Target {{total}} / day",
+      "successGauge": "Success rate gauge",
+      "gaugeCaption": "of runs succeeded"
     },
     "tour": {
       "title": "Your control room, at a glance",
@@ -709,5 +713,9 @@
     "window": "Time window",
     "dateRange": "Date range",
     "rowsPerPage": "Rows per page"
+  },
+  "shell": {
+    "botsOnline": "bots online",
+    "botsOnlineLabel": "{{count}} automation bots online"
   }
 }

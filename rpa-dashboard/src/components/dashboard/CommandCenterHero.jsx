@@ -21,17 +21,55 @@ import { Link } from 'react-router-dom'
 import { DeltaChip, Sparkline } from '../charts/primitives'
 import { useAuth } from '../../context/AuthProvider'
 import { useRealtimeStatus } from '../../hooks/ui'
-import { compactNumber, durationFromMinutes, relative, runStatusColor } from '../../lib/format'
+import { compactNumber, durationFromMinutes, percent, relative, runStatusColor } from '../../lib/format'
 import { rateDelta, seriesDelta } from '../../lib/stats'
 import { Badge, Button, CountUpStat, Skeleton, cn } from '../ui'
 
+/* Icon tones tuned for the navy gradient: light enough to read on dark glass. */
 const TONE_VARS = {
-  brand: 'var(--brand)',
-  info: 'var(--info)',
-  success: 'var(--success)',
-  warning: 'var(--warning)',
-  danger: 'var(--danger)',
-  accent: 'var(--accent)',
+  brand: '#a5b4fc',
+  info: '#7dd3fc',
+  success: '#6ee7b7',
+  warning: '#fcd34d',
+  danger: '#fca5a5',
+  accent: '#5eead4',
+}
+
+/**
+ * Radial success gauge — the ring fills with the success rate (0–100).
+ * Pure SVG: no chart runtime on the critical path, and the arc animates via a
+ * CSS transition that `prefers-reduced-motion` switches off.
+ */
+function SuccessGauge({ value, label, caption }) {
+  const pct = Math.max(0, Math.min(100, Number(value) || 0))
+  const size = 92
+  const radius = 38
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference * (1 - pct / 100)
+  return (
+    <div className="command-hero__gauge flex shrink-0 items-center gap-3" role="img" aria-label={`${label}: ${percent(pct, 1)}`}>
+      <span className="relative grid h-[92px] w-[92px] place-items-center" aria-hidden>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 overflow-visible">
+          <g style={{ transform: 'rotate(-90deg)', transformOrigin: '46px 46px' }}>
+            <circle cx="46" cy="46" r={radius} fill="none" strokeWidth="8" className="command-hero__gauge-track" />
+            <circle
+              cx="46"
+              cy="46"
+              r={radius}
+              fill="none"
+              strokeWidth="8"
+              strokeLinecap="round"
+              className="command-hero__gauge-value"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+            />
+          </g>
+        </svg>
+        <span className="text-lg font-bold tabular text-white">{percent(pct, 1)}</span>
+      </span>
+      <span className="hidden max-w-[7rem] text-xs leading-snug text-muted sm:block">{caption}</span>
+    </div>
+  )
 }
 
 /**
@@ -184,13 +222,20 @@ export default function CommandCenterHero({
         </div>
 
         {/* ── greeting ───────────────────────────────────────────────────── */}
-        <div>
-          <h2 className="command-hero__title text-display">
-            {t(greetingKey, { name })}
-          </h2>
-          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">
-            {t('dashboard.commandCenterSubtitle')}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="command-hero__title text-display">
+              {t(greetingKey, { name })}
+            </h2>
+            <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">
+              {t('dashboard.commandCenterSubtitle')}
+            </p>
+          </div>
+          {loading && !kpis ? (
+            <Skeleton className="h-[92px] w-[92px] rounded-full" />
+          ) : (
+            <SuccessGauge value={rate} label={t('dashboard.hero.successGauge')} caption={t('dashboard.hero.gaugeCaption')} />
+          )}
         </div>
 
         <span className="divider" aria-hidden />
@@ -254,7 +299,7 @@ export default function CommandCenterHero({
               <DeltaChip value={seriesDelta(spark, 'volume')} />
             </div>
             <div className="h-11 w-full">
-              <Sparkline data={spark} dataKey="volume" color="var(--chart-1)" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
+              <Sparkline data={spark} dataKey="volume" color="#a5f3fc" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
             </div>
             <div className="command-hero__strip-axis mt-1">
               <span dir="auto">{spark[0]?.date}</span>
@@ -278,7 +323,7 @@ export default function CommandCenterHero({
             ))}
             <Link
               to="/runs"
-              className="focus-ring ms-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] font-medium text-brand underline-offset-2 hover:underline"
+              className="command-hero__link focus-ring ms-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] font-medium underline-offset-2 hover:underline"
             >
               {t('dashboard.hero.viewAllRuns')}
               <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
@@ -316,7 +361,7 @@ export default function CommandCenterHero({
             {t('dashboard.hero.attention')}
           </Badge>
           <span className="truncate">{t('dashboard.hero.nextAction')}</span>
-          <Link to="/capacity" className="ms-auto font-medium text-brand underline-offset-2 hover:underline">
+          <Link to="/capacity" className="command-hero__link ms-auto font-medium underline-offset-2 hover:underline">
             {t('dashboard.hero.viewCapacity')}
           </Link>
         </div>
