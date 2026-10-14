@@ -58,15 +58,21 @@ export const OUTCOME_COLORS = {
   Pending: CHART_COLORS.muted,
 }
 
-/** Default dashboard widget layout (react-grid-layout, 12 columns). */
+/**
+ * Default dashboard widget layout (react-grid-layout, 12 columns).
+ *
+ * This grid holds the **analytics tier only**. The decision tier (verdict,
+ * triage queue, health board) is pinned above it and is deliberately *not*
+ * draggable: an operator must be able to rely on those blocks always being in
+ * the same place, on a laptop and on a wallboard alike.
+ */
 export const DEFAULT_WIDGET_LAYOUT = [
-  { i: 'kpis', x: 0, y: 0, w: 12, h: 3, minW: 6, minH: 2 },
-  { i: 'capacity', x: 0, y: 3, w: 4, h: 6, minW: 3, minH: 4 },
-  { i: 'volume', x: 4, y: 3, w: 8, h: 6, minW: 4, minH: 4 },
-  { i: 'health', x: 0, y: 9, w: 4, h: 5, minW: 3, minH: 4 },
-  { i: 'savings', x: 4, y: 9, w: 8, h: 5, minW: 4, minH: 4 },
-  { i: 'runs', x: 0, y: 14, w: 8, h: 6, minW: 4, minH: 4 },
-  { i: 'sla', x: 8, y: 14, w: 4, h: 6, minW: 3, minH: 4 },
+  { i: 'volume', x: 0, y: 0, w: 8, h: 6, minW: 4, minH: 4 },
+  { i: 'capacity', x: 8, y: 0, w: 4, h: 6, minW: 3, minH: 4 },
+  { i: 'health', x: 0, y: 6, w: 4, h: 5, minW: 3, minH: 4 },
+  { i: 'savings', x: 4, y: 6, w: 8, h: 5, minW: 4, minH: 4 },
+  { i: 'runs', x: 0, y: 11, w: 8, h: 6, minW: 4, minH: 4 },
+  { i: 'sla', x: 8, y: 11, w: 4, h: 6, minW: 3, minH: 4 },
 ]
 
 export const PERMISSION_GROUPS = {

@@ -168,6 +168,10 @@
       "openModule": "Explore this area",
       "securityNote": "The tour only shows modules available to your role. Your data stays within this on-premises installation.",
       "steps": {
+        "dashboard": {
+          "title": "Act from the decision tier",
+          "description": "The verdict, the ranked triage queue and the health board stay pinned at the top of the dashboard. Everything that needs a decision appears there first, with the action that resolves it."
+        },
         "infrastructure": {
           "title": "Connect your automation estate",
           "description": "Review vendor platform connectivity, runner health and agent heartbeats from one operational view."
@@ -231,7 +235,83 @@
     "savedLayout": "Layout saved for your workstation",
     "insights": "Insights",
     "noInsights": "No capacity signals right now — utilisation is inside target.",
-    "spanShort": "30 days"
+    "spanShort": "30 days",
+    "verdict": {
+      "critical": "Critical — act now",
+      "degraded": "Degraded — attention needed",
+      "healthy": "Operational — all clear",
+      "allClear": "No failed runs, no SLA breach and no open alert.",
+      "reasons": {
+        "sla": "processes breaching SLA",
+        "failures": "failed runs today",
+        "alerts": "open alerts",
+        "successRate": "pts below the success target"
+      }
+    },
+    "triage": {
+      "title": "Needs a decision",
+      "subtitle": "Ranked by severity, from live telemetry",
+      "cta": "Review queue",
+      "criticalCount": "{{count}} critical",
+      "highCount": "{{count}} high",
+      "warningCount": "{{count}} warning",
+      "alertBadge": "{{count}} alert",
+      "showMore": "Show {{count}} more",
+      "showLess": "Show less",
+      "allClear": "Nothing needs a decision right now",
+      "allClearHint": "{{runners}} runners online · {{queued}} items queued · every tracked process is inside its SLA.",
+      "acknowledgedHint": "The alert was acknowledged and the queue updated.",
+      "titles": {
+        "sla": "SLA breach risk — {{process}}",
+        "failures": "{{count}} failed runs — {{process}}",
+        "capacity": "Capacity recommendation",
+        "noRunner": "Queue waiting with no online runner — {{process}}",
+        "alert": "Open alert"
+      },
+      "evidence": {
+        "slaBreach": "{{pending}} items queued · drain {{drain}}m against a {{target}}m SLA",
+        "slaWarning": "{{pending}} items queued · drain {{drain}}m approaching the {{target}}m SLA",
+        "failures": "{{count}} failed today · {{failureRate}}% failure rate (7d)",
+        "repeatReason": "same reason {{count}} times",
+        "capacity": "open recommendation from the capacity advisor",
+        "noRunner": "{{pending}} items queued and no runner online",
+        "alert": "seen {{count}} times"
+      },
+      "links": {
+        "capacity": "Capacity",
+        "runs": "Inspect runs",
+        "infrastructure": "Runners",
+        "alerts": "Alerts"
+      }
+    },
+    "health": {
+      "title": "Operational health",
+      "eyebrow": "Measured against target",
+      "subtitle": "The four numbers that carry a decision, each next to the target it is judged on.",
+      "verdicts": {
+        "ok": "On target",
+        "risk": "At risk",
+        "breach": "Breaching",
+        "unknown": "No data"
+      },
+      "targets": {
+        "successRate": "Target {{value}}%",
+        "failedToday": "Target: zero failures",
+        "sla": "Target: zero breaches",
+        "throughput": "Target {{value}} runs today"
+      },
+      "hints": {
+        "successRate": "{{ok}} of {{total}} booked runs completed",
+        "failedToday": "Failed or stopped runs since midnight",
+        "sla": "{{warning}} more approaching SLA across {{tracked}} tracked processes",
+        "throughput": "{{percent}}% of the daily plan executed"
+      }
+    },
+    "analytics": {
+      "title": "Analytics and evidence",
+      "eyebrow": "Below the decision tier",
+      "subtitle": "Trends, distribution and the underlying runs behind the numbers above."
+    }
   },
   "capacity": {
     "title": "Capacity Advisor",
@@ -570,7 +650,8 @@
     "acknowledge": "Acknowledge",
     "resolve": "Resolve",
     "evaluate": "Evaluate rules now",
-    "empty": "No alerts — everything is healthy"
+    "empty": "No alerts — everything is healthy",
+    "acknowledged": "Alert acknowledged"
   },
   "pagination": {
     "range": "{{start}}–{{end}} of {{total}}",

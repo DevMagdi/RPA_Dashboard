@@ -91,3 +91,9 @@ playwright/.cache/
 *.sqlite3-shm
 *.sqlite3-wal
 *.db
+# The development SQLite database is named after DB_NAME ("RPA_Dashboard") with
+# no extension, so the patterns above never catch it — running the README's
+# `DB_DIALECT=sqlite ... python -m app.main` drops these at the repository root.
+/RPA_Dashboard
+/RPA_Dashboard-shm
+/RPA_Dashboard-wal

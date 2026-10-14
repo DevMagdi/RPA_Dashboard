@@ -1,5 +1,57 @@
 # Changelog
 
+## Unreleased — Decision-first dashboard (v5): verdict, triage queue, health board
+
+The dashboard rendered metrics; it did not support decisions. Every signal an
+operator needed was already in the payload but nothing ranked it, judged it or
+offered an action for it — `kpis.failureDetailsAll` was never read, `/api/alerts`
+was never called, and an SLA breach only ever surfaced as a count. The screen is
+now ordered by how fast an operator can act. **No colour, token, theme or RTL
+value changed.**
+
+- **Operational verdict** (`CommandCenterHero`): the hero now leads with one word
+  — Operational / Degraded / Critical — plus the factual reasons behind it
+  (breaching processes, failed runs today, open alerts, points below target) and
+  a jump-to-queue action. The time-of-day greeting is demoted to a context line;
+  the aurora, grid, glass, gauge, server clock, sparkline strip and live ticker
+  are unchanged.
+- **Triage queue** (`TriageQueue`, new): SLA breaches, today's failed/stopped
+  runs (grouped per process with the most frequent reason), open capacity
+  recommendations and queues that have work but **no online runner** — merged,
+  ranked by severity and each carrying the action that resolves it
+  (Acknowledge / Request capacity / Inspect runs / Runners). An alert that
+  describes a condition already listed is folded into that row instead of
+  double-counting it. An all-clear operation renders an explicit all-clear.
+- **Health board** (`HealthBoard`, new, replaces the six-card KPI rail): the four
+  metrics that carry a decision, each with an explicit target and a verdict —
+  success rate vs the 95% operating threshold, failed runs today vs zero, SLA
+  breaches vs zero, runs today vs the server-provided `kpis.targetRuns`. The
+  informational figures (processes, transactions, hours saved, value saved,
+  online runners, queue depth) move to a compact context strip. `KpiGrid.jsx` is
+  removed; the `.kpi-strip` / `--strip-*` token mechanism it used is kept.
+- **Decision engine** (`lib/opsSignals.js`, new): a pure, dependency-free
+  derivation from payload → verdict + ranked items + metrics. One derivation
+  feeds the hero, the queue and the board, so they cannot contradict each other.
+  Thresholds are declared once in `OPS_THRESHOLDS`. `successRate === 0` means
+  "no runs in this window", never a failure, so a fresh installation does not
+  open on a false red screen.
+- **Pinned decision tier**: the draggable grid now holds the analytics tier only
+  (`kpis` removed from `DEFAULT_WIDGET_LAYOUT`), so the verdict, queue and health
+  board are always in the same place — on a laptop and on a wallboard.
+- **Product tour**: a new first step explains the decision tier; the completion
+  key is bumped to `onboarding.control-room.v5.*` so operators see it once.
+- **Docs**: `docs/PREMIUM_UI_PLAN_AR.md` corrected and extended. Its previous
+  audit claimed the shipped brand was Indigo `#4F46E5`; the code has always been
+  Deep Violet `#5B21B6` (`src/index.css:76`, `tokens.js:27`,
+  `bootstrap.py:110`, and `GET /api/branding`). The document now matches the
+  code — the palette itself was not touched.
+- **Tests**: frontend `npm test` 101 passed (baseline 73) — 22 new tests across
+  `opsSignals.test.js` and `decisionDashboard.test.jsx`; backend 357 passed,
+  including two new source contracts
+  (`test_dashboard_leads_with_a_pinned_decision_tier`,
+  `test_triage_and_health_copy_exist_in_both_locales`). `npm run lint` reports
+  0 warnings / 0 errors; entry chunk 65 kB against a 420 kB budget.
+
 ## Unreleased — Purple-first control room: overlap, RTL and palette fixes
 
 - **Palette (purple-first)**: light `--brand` `#5B21B6`, `--brand-strong` `#4C1D95`,

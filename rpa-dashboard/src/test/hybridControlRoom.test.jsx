@@ -6,14 +6,14 @@
  *    state on the current module;
  *  • the navy "bots online" badge reads the live connected-agent count;
  *  • the hero exposes an accessible success gauge;
- *  • the six KPI cards each carry their coloured top strip (token-driven).
+ *  • the hero leads with the operational verdict and its tone is token-driven.
  */
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import CommandCenterHero from '../components/dashboard/CommandCenterHero'
-import KpiGrid from '../components/dashboard/KpiGrid'
+import { buildOpsSignals } from '../lib/opsSignals'
 import TopNav, { PRIMARY_NAV_IDS, splitTopNav } from '../components/layout/TopNav'
 import { BotsOnlineBadge } from '../components/layout/TopBar'
 import en from '../i18n/locales/en.json'
@@ -115,7 +115,7 @@ describe('navy bots-online badge', () => {
   })
 })
 
-describe('hybrid hero and KPI strip', () => {
+describe('hybrid hero, verdict and KPI strip', () => {
   it('exposes the success rate as an accessible gauge', () => {
     render(
       <MemoryRouter>
@@ -126,21 +126,50 @@ describe('hybrid hero and KPI strip', () => {
     expect(gauge.querySelector('circle.command-hero__gauge-value')).toBeTruthy()
   })
 
-  it('gives each of the six KPI cards its own token-driven coloured strip', () => {
+  it('leads the hero with an operational verdict whose tone is token-driven', () => {
+    const degraded = buildOpsSignals({
+      dashboard: { kpis: { ...kpis, stopsToday: 2 }, sidebarStats: { successRate: 84.6 } },
+      slaWorkload: [{ ProcessName: 'Fraud_Alert_Triage', SLAStatus: 'Breach_Risk', PendingItems: 140, EstimatedCompletionMinutes: 93.3, SLATargetMinutes: 35 }],
+      capacity: {},
+      alerts: [],
+    })
+    expect(degraded.verdict).toBe('critical')
+
     const { container } = render(
       <MemoryRouter>
-        <KpiGrid kpis={kpis} spark={spark} savings={savings} />
+        <CommandCenterHero kpis={kpis} successRate={84.6} spark={spark} savings={savings} slaRisk={1} signals={degraded} onRefresh={vi.fn()} onOpenTour={vi.fn()} />
       </MemoryRouter>,
     )
-    const strips = [...container.querySelectorAll('.kpi-strip')]
-    expect(strips.map((node) => node.style.getPropertyValue('--strip'))).toEqual([
-      'var(--strip-navy)',
-      'var(--strip-blue)',
-      'var(--strip-green)',
-      'var(--strip-indigo)',
-      'var(--strip-teal)',
-      'var(--strip-orange)',
-    ])
+
+    const verdict = container.querySelector('.command-hero__verdict')
+    expect(verdict).toBeTruthy()
+    expect(verdict.className).toContain('is-critical')
+    expect(screen.getByText(en.dashboard.verdict.critical)).toBeInTheDocument()
+    // the reasons are real counts from the payload, not decoration
+    expect(screen.getByText(en.dashboard.verdict.reasons.sla)).toBeInTheDocument()
+    expect(screen.getByText(en.dashboard.verdict.reasons.failures)).toBeInTheDocument()
+
+    // Tone classes resolve to CSS custom properties — no hex is hardcoded in JSX.
+    expect(document.querySelector('.command-hero__verdict-mark')).toBeTruthy()
+  })
+
+  it('reports an operational verdict when nothing needs a decision', () => {
+    const clean = buildOpsSignals({
+      dashboard: { kpis: { ...kpis, stopsToday: 0 }, sidebarStats: { successRate: 99.2 } },
+      slaWorkload: [],
+      capacity: {},
+      alerts: [],
+    })
+    expect(clean.verdict).toBe('healthy')
+    expect(clean.items).toEqual([])
+
+    const { container } = render(
+      <MemoryRouter>
+        <CommandCenterHero kpis={kpis} successRate={99.2} spark={spark} savings={savings} slaRisk={0} signals={clean} onRefresh={vi.fn()} onOpenTour={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('.command-hero__verdict.is-healthy')).toBeTruthy()
+    expect(screen.getByText(en.dashboard.verdict.allClear)).toBeInTheDocument()
   })
 
   it('ships the same Arabic and English copy for every new hybrid key', () => {

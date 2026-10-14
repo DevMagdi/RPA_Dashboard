@@ -137,9 +137,14 @@ def test_product_tour_filters_modules_by_server_permission_contract():
 
 
 def test_first_run_tour_completion_is_scoped_to_the_authenticated_user():
-    """A shared workstation should not hide onboarding from another operator."""
+    """A shared workstation should not hide onboarding from another operator.
+
+    The key is versioned: the v5 dashboard introduced the decision tier (verdict
+    + triage queue + health board) and a matching tour step, so an operator who
+    dismissed the v4 tour must see the new one exactly once.
+    """
     source = (SRC / "pages" / "DashboardPage.jsx").read_text(encoding="utf-8")
-    assert "onboarding.control-room.v4.${user?.user_id ?? 'current'}" in source
+    assert "onboarding.control-room.v5.${user?.user_id ?? 'current'}" in source
     assert "storage.get(tourStorageKey" in source
 
 
@@ -221,6 +226,71 @@ def test_command_hero_layers_and_min_height_follow_the_redesign_plan():
         assert z in block[: block.index("}")], layer
     # Desktop two-column hero: the visual column only appears at 1280px and up.
     assert "@media (min-width: 1280px)" in css[css.index(".command-hero__visual") - 400 : css.index(".command-hero__visual") + 400]
+
+
+def test_dashboard_leads_with_a_pinned_decision_tier():
+    """Decision-first layout: verdict → triage queue → health board → analytics.
+
+    The dashboard used to open with six equally weighted KPI cards (including a
+    static configuration count) and never surfaced the failed runs, SLA breaches
+    or open alerts it already had in its payload — so nobody could tell what to
+    do first. These assertions lock the ordering and the fact that the decision
+    tier is pinned rather than draggable.
+    """
+    page = (SRC / "pages" / "DashboardPage.jsx").read_text(encoding="utf-8")
+    constants = (SRC / "lib" / "constants.js").read_text(encoding="utf-8")
+    signals = (SRC / "lib" / "opsSignals.js").read_text(encoding="utf-8")
+    queue = (SRC / "components" / "dashboard" / "TriageQueue.jsx").read_text(encoding="utf-8")
+    board = (SRC / "components" / "dashboard" / "HealthBoard.jsx").read_text(encoding="utf-8")
+
+    # One derivation feeds every tier, so they can never contradict each other.
+    assert "buildOpsSignals" in page and "buildHealthMetrics" in page
+    assert page.index("signals={signals}") < page.index("<TriageQueue") < page.index("<HealthBoard")
+    assert page.index("<HealthBoard") < page.index("<WidgetGrid")
+
+    # The decision tier is pinned: the draggable grid holds analytics only.
+    assert "{ i: 'kpis'" not in constants
+    assert page.index('<section id="triage-queue"') < page.index("dashboard.analytics.title")
+
+    # Every signal cites a field the server actually sends.
+    for field in ("failureDetailsAll", "SLAStatus", "SLATargetMinutes", "online_runners", "queue_depth", "recommendations"):
+        assert field in signals, field
+
+    # The queue is actionable, and the alert it acknowledges is a real mutation.
+    assert "onAcknowledge" in queue and "onDecide" in queue
+    assert "useSetAlertStatus" in page and "useUpdateRecommendationStatus" in page
+
+    # The health board judges every metric against a target.
+    assert "targetKey" in board and "verdictKey" in board
+
+
+def test_triage_and_health_copy_exist_in_both_locales():
+    """The decision tier must never leak untranslated keys into the Arabic UI."""
+    keys = (
+        "dashboard.verdict.critical",
+        "dashboard.verdict.degraded",
+        "dashboard.verdict.healthy",
+        "dashboard.verdict.allClear",
+        "dashboard.verdict.reasons.sla",
+        "dashboard.verdict.reasons.failures",
+        "dashboard.verdict.reasons.alerts",
+        "dashboard.triage.title",
+        "dashboard.triage.allClear",
+        "dashboard.triage.titles.sla",
+        "dashboard.triage.titles.failures",
+        "dashboard.triage.evidence.slaBreach",
+        "dashboard.triage.links.runs",
+        "dashboard.health.title",
+        "dashboard.health.verdicts.breach",
+        "dashboard.health.targets.successRate",
+        "dashboard.analytics.title",
+        "dashboard.tour.steps.dashboard.title",
+        "alerts.acknowledged",
+    )
+    for language in ("en", "ar"):
+        translations = _translations(language)
+        for key in keys:
+            assert _nested(translations, key), f"missing {language} translation: {key}"
 
 
 def test_rtl_grid_mirrors_positions_and_uses_the_logical_resize_corner():

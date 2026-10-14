@@ -1,13 +1,17 @@
 /**
  * Command-centre hero — the first three seconds of the product.
  *
- * Premium command-center wireframe (Wow plan):
+ * Decision-first layout (v5):
  *   [live status bar: Connected · server clock]   [Refresh] [Export]
- *   Good morning, Magdi  + shift actions
+ *   ██ VERDICT: Operational / Degraded / Critical + the factual reasons ██
+ *   Good morning, Magdi  (context line, no longer the headline)
  *   ─────────────────────────────────────────────────────
- *   Success · Active · Savings · SLA risk · Runs today   (five-KPI strip)
+ *   Success · Active · Savings · SLA risk                (four-KPI strip)
  *   ── 14-day run-volume sparkline strip ──
  *   ── live activity ticker (five most recent real runs) ──
+ *
+ * The verdict is computed by `lib/opsSignals.js` from the same payload as
+ * everything else, so the hero can never disagree with the triage queue below.
  *
  * The aurora/grid background is pure CSS (no canvas, no image request), so it
  * costs nothing on the critical path and animates on the compositor thread.
@@ -73,12 +77,71 @@ function SuccessGauge({ value, label, caption }) {
 }
 
 /**
+ * Operational verdict — the three-second answer.
+ *
+ * The hero used to open with a time-of-day greeting, which reads well but tells
+ * an on-call operator nothing. The verdict is now the first thing on the
+ * screen: one word (Operational / Degraded / Critical) plus the factual reasons
+ * behind it, computed from the same payload by `lib/opsSignals.js`.
+ */
+const VERDICT_TONE = {
+  critical: { className: 'is-critical', icon: ShieldAlert },
+  degraded: { className: 'is-degraded', icon: ShieldAlert },
+  healthy: { className: 'is-healthy', icon: ShieldCheck },
+}
+
+function VerdictBanner({ signals, loading }) {
+  const { t } = useTranslation()
+  const verdict = signals?.verdict || 'healthy'
+  const tone = VERDICT_TONE[verdict] || VERDICT_TONE.healthy
+  const reasons = signals?.reasons || []
+  const total = signals?.counts?.total ?? 0
+
+  const jumpToQueue = () => {
+    document.getElementById('triage-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  return (
+    <div className={cn('command-hero__verdict', tone.className)}>
+      <span className="command-hero__verdict-mark" aria-hidden>
+        <tone.icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        {/* A <div>, not a <p>: the loading placeholder (Skeleton) renders a div,
+            and a block element may never be nested inside a paragraph. */}
+        <div className="command-hero__verdict-label">
+          {loading ? <Skeleton className="h-7 w-40" /> : t(`dashboard.verdict.${verdict}`)}
+        </div>
+        {reasons.length > 0 ? (
+          <p className="command-hero__verdict-reasons">
+            {reasons.map((reason, index) => (
+              <span key={reason.key} className="command-hero__verdict-reason">
+                {index > 0 ? <span aria-hidden> · </span> : null}
+                <strong className="tabular">{reason.count}</strong> {t(reason.key)}
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p className="command-hero__verdict-reasons">{t('dashboard.verdict.allClear')}</p>
+        )}
+      </div>
+      {total > 0 ? (
+        <Button variant="secondary" size="sm" className="command-hero__verdict-cta" onClick={jumpToQueue}>
+          <span className="tabular">{total}</span>
+          <span className="hidden sm:inline">{t('dashboard.triage.cta')}</span>
+          <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden />
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
+/**
  * Wall clock anchored to the server payload time (not the workstation), so the
  * "ops room" always shows the same truth as the backend. Isolated component:
  * only this chip re-renders every second, never the hero.
  */
-function ServerClock({ generatedAt }) {
-  const { t } = useTranslation()
+function ServerClock({ generatedAt }) {  const { t } = useTranslation()
   const [offset] = useState(() => {
     const parsed = generatedAt ? Date.parse(generatedAt) : Number.NaN
     return Number.isFinite(parsed) ? parsed - Date.now() : 0
@@ -160,6 +223,7 @@ export default function CommandCenterHero({
   slaRisk = 0,
   scope,
   activity = [],
+  signals = null,
 }) {
   const { t } = useTranslation()
   const { status } = useRealtimeStatus()
@@ -220,13 +284,16 @@ export default function CommandCenterHero({
           </div>
         </div>
 
-        {/* ── greeting: text column + the gauge as the visual (≥1280 only) ─ */}
+        {/* ── verdict first: the three-second answer to "do I act now?" ──── */}
+        <VerdictBanner signals={signals} loading={loading && !kpis} />
+
+        {/* ── greeting: demoted to a context line, gauge kept as the visual ─ */}
         <div className="command-hero__greeting">
           <div className="command-hero__greeting-text">
-            <h2 className="command-hero__title text-display">
+            <h2 className="command-hero__title">
               {t(greetingKey, { name })}
             </h2>
-            <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">
+            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted sm:text-xs text-pretty">
               {t('dashboard.commandCenterSubtitle')}
             </p>
           </div>
