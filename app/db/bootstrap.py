@@ -107,7 +107,7 @@ def ensure_organization(
     *,
     name: str = "Organization",
     company_name: Optional[str] = None,
-    primary_color: str = "#4F46E5",
+    primary_color: str = "#5B21B6",
     accent_color: str = "#0D9488",
     provider: str = "generic_sql",
     locale: str = "en",

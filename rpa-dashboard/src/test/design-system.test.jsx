@@ -10,35 +10,36 @@ import ar from '../i18n/locales/ar.json'
 import en from '../i18n/locales/en.json'
 
 describe('design tokens', () => {
-  it('is light-first with the Hybrid control-room palette (Navy · Indigo · Teal · Orange)', () => {
+  it('is light-first with the purple-first palette (Purple · Lavender · Teal live-only)', () => {
     expect(colors.light).toMatchObject({
-      bg: '#F5F7FB',
+      bg: '#F8F5FF',
       surface: '#FFFFFF',
-      surface2: '#F8FAFC',
-      border: 'rgba(15, 23, 42, 0.06)',
-      text: '#14213A',
-      textMuted: '#5B6B82',
-      navy: '#1E3A5F',
-      navyDeep: '#122339',
-      brand: '#4F46E5',
-      brandStrong: '#3730A3',
+      surface2: '#FAF8FF',
+      border: 'rgba(91, 33, 182, 0.08)',
+      text: '#1E0B3A',
+      textMuted: '#6B5B8A',
+      navy: '#2E1065',
+      navyDeep: '#1E0B3A',
+      brand: '#5B21B6',
+      brandStrong: '#4C1D95',
+      brandLighter: '#7C3AED',
       accent: '#0D9488',
       orange: '#F58220',
       stripGreen: '#10B981',
-      stripBlue: '#3B82F6',
+      stripBlue: '#0EA5E9',
       stripRed: '#EF4444',
       info: '#0369A1',
     })
     expect(colors.dark).toMatchObject({
-      bg: '#0F1A2E',
-      surface: '#152238',
-      surface2: '#1B2A44',
-      border: 'rgba(255, 255, 255, 0.07)',
-      text: '#EFF5FF',
-      textMuted: '#98A8BF',
-      brand: '#818CF8',
+      bg: '#0B0618',
+      surface: '#130B24',
+      surface2: '#1A1030',
+      border: 'rgba(196, 181, 253, 0.12)',
+      text: '#F5F0FF',
+      textMuted: '#B8A9D4',
+      brand: '#A78BFA',
       accent: '#2DD4BF',
-      navy: '#1E3A5F',
+      navy: '#2E1065',
       orange: '#F58220',
     })
     for (const key of ['success', 'warning', 'danger', 'info']) expect(colors.light[key]).toMatch(/^#/)
@@ -89,19 +90,19 @@ describe('design tokens', () => {
     expect(radius.lg).toBe('1rem')
   })
 
-  it('ships the Hybrid mesh, glow and 20px card-radius tokens in both themes', () => {
+  it('ships the purple mesh, glow and card-radius tokens in both themes', () => {
     const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
     const lightBlock = css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] || ''
     const darkBlock = css.match(/\.dark\s*\{([\s\S]*?)\n\}/)?.[1] || ''
     const shell = css.slice(css.indexOf('.app-shell'))
 
     // static background mesh tokens exist per theme and drive the app canvas
-    expect(effects.light.mesh1).toBe('rgba(79, 70, 229, 0.12)')
-    expect(effects.dark.mesh1).toBe('rgba(129, 140, 248, 0.13)')
-    expect(lightBlock).toContain('--mesh-1: rgba(79, 70, 229, 0.12);')
-    expect(lightBlock).toContain('--mesh-2: rgba(13, 148, 136, 0.1);')
-    expect(darkBlock).toContain('--mesh-1: rgba(129, 140, 248, 0.13);')
-    expect(darkBlock).toContain('--mesh-2: rgba(45, 212, 191, 0.09);')
+    expect(effects.light.mesh1).toBe('rgba(91, 33, 182, 0.12)')
+    expect(effects.dark.mesh1).toBe('rgba(167, 139, 250, 0.14)')
+    expect(lightBlock).toContain('--mesh-1: rgba(91, 33, 182, 0.12);')
+    expect(lightBlock).toContain('--mesh-2: rgba(124, 58, 237, 0.08);')
+    expect(darkBlock).toContain('--mesh-1: rgba(167, 139, 250, 0.14);')
+    expect(darkBlock).toContain('--mesh-2: rgba(139, 92, 246, 0.10);')
     expect(shell).toContain('radial-gradient(1100px 620px at 100% -12%, var(--mesh-1)')
     expect(shell).toContain('radial-gradient(880px 520px at -10% 108%, var(--mesh-2)')
 

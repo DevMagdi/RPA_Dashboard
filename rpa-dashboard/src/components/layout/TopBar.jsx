@@ -28,7 +28,7 @@ import {
   Sparkles,
   Sun,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -89,7 +89,7 @@ export function BotsOnlineBadge() {
         {count > 0 ? <span className="live-dot absolute inset-0" style={{ color: 'var(--strip-green)' }} /> : null}
       </span>
       <span>{count}</span>
-      <span className="hidden font-medium opacity-80 xl:inline">{t('shell.botsOnline', { count })}</span>
+      <span className="hidden font-medium opacity-80 2xl:inline">{t('shell.botsOnline', { count })}</span>
     </span>
   )
 }
@@ -328,6 +328,19 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
   const { branding, companyName } = useBranding()
   const location = useLocation()
   useTicker(45_000)
+  const headerRef = useRef(null)
+
+  // Publish the real bar height (it is two rows at xl+ and may wrap) so sticky
+  // surfaces such as the dashboard filter bar sit exactly under it, never behind it.
+  useLayoutEffect(() => {
+    const node = headerRef.current
+    if (!node || typeof ResizeObserver === 'undefined') return undefined
+    const publish = () => document.documentElement.style.setProperty('--header-height', `${node.offsetHeight}px`)
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   const route = useMemo(() => matchRoute(location.pathname), [location.pathname])
   const title = route ? t(route.labelKey) : t('app.name')
@@ -336,7 +349,7 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
   const modifier = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl'
 
   return (
-    <header className="topbar sticky top-0 z-40 border-b border-border/70">
+    <header ref={headerRef} className="topbar sticky top-0 z-40 border-b border-border/70">
       <div className="flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
         {isMobile ? (
           <Button variant="ghost" size="icon" onClick={onOpenMobileNav} aria-label={t('nav.expand')}>

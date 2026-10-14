@@ -35,7 +35,7 @@ export default function KpiGrid({ kpis, loading, spark = [], savings = [], onSel
 
   if (loading && !kpis) {
     return (
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
         {Array.from({ length: 6 }).map((_, index) => (
           <Card key={index} className="p-4">
             <Skeleton className="h-3 w-20" />
@@ -48,7 +48,7 @@ export default function KpiGrid({ kpis, loading, spark = [], savings = [], onSel
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
       {KPI_CONFIG.map((item, index) => {
         const raw = kpis?.[item.key] ?? 0
         const display =

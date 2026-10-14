@@ -70,6 +70,11 @@ export function ThemeProvider({ children }) {
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 
+/** Non-throwing variant for providers that may render outside <ThemeProvider> (tests, isolated trees). */
+export function useOptionalTheme() {
+  return useContext(ThemeContext)
+}
+
 export function useTheme() {
   const context = useContext(ThemeContext)
   if (!context) throw new Error('useTheme must be used inside <ThemeProvider>')

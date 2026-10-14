@@ -7,12 +7,12 @@ Components: `src/components/ui/` (Radix + CVA, shadcn-style), re-exported by `sr
 ## Colors
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg` | `#F5F7FB` | `#0F1A2E` | app canvas (fixed radial mesh `--mesh-1`/`--mesh-2`) |
-| `--surface` / `--surface-2` | `#FFFFFF` / `#F8FAFC` | `#152238` / `#1B2A44` | cards / raised surfaces |
-| `--border` | `rgba(15, 23, 42, 0.06)` | `rgba(255, 255, 255, 0.07)` | dividers and controls |
-| `--text` / `--text-muted` | `#14213A` / `#5B6B82` | `#EFF5FF` / `#98A8BF` | primary / secondary text |
-| `--brand` / hover | `#4F46E5` / `#3730A3` | `#818CF8` / `#6D78F6` | Deep Indigo primary; dark foreground tuned for AA |
-| `--accent` | `#0D9488` | `#2DD4BF` | Electric Teal accent |
+| `--bg` | `#F8F5FF` | `#0B0618` | app canvas (fixed radial mesh `--mesh-1`/`--mesh-2`) |
+| `--surface` / `--surface-2` | `#FFFFFF` / `#FAF8FF` | `#130B24` / `#1A1030` | cards / raised surfaces |
+| `--border` | `rgba(91, 33, 182, 0.08)` | `rgba(196, 181, 253, 0.12)` | dividers and controls |
+| `--text` / `--text-muted` | `#1E0B3A` / `#6B5B8A` | `#F5F0FF` / `#B8A9D4` | primary / secondary text (AA) |
+| `--brand` / `--brand-strong` | `#5B21B6` / `#4C1D95` | `#A78BFA` / `#8B5CF6` | purple-first primary identity |
+| `--accent` | `#0D9488` | `#2DD4BF` | teal: live / status states only |
 | `--success/warning/danger` | `#047857/#B45309/#BE123C` | brightened equivalents | semantic status (AA-safe depths of the plan hues) |
 
 New utility classes (Premium plan): `.glass-premium` (frosted key panels),
@@ -35,6 +35,6 @@ Toast, Sidebar, TopBar, CommandPalette (Ctrl/⌘+K), PageHeader (`SectionTitle`)
 
 ## Geometry & motion
 Spacing uses the approved 4-pt rhythm (4, 8, 12, 16, 24, 32, 48 px); card radii are 12 px (controls) and 18 px (`--radius-card`) for main cards; soft two-layer shadows.
-Framer Motion page fade/slide (280 ms, `cubic-bezier(.22,1,.36,1)`), hover lifts ≤ 3 px,
+Framer Motion page fade/slide (280 ms, `cubic-bezier(.22,1,.36,1)`), hover lifts ≤ 2 px (`hover:-translate-y-0.5`),
 `prefers-reduced-motion` respected. Performance: lazy routes/charts, React Query caching,
 memoized stats, `content-visibility` for below-fold widgets, skeleton-first loading.

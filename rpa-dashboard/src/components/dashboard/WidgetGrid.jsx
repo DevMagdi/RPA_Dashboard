@@ -12,17 +12,23 @@
  */
 import { MotionConfig, motion } from 'framer-motion'
 import { Check, Eye, GripVertical, LayoutGrid, RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 
 import { DEFAULT_WIDGET_LAYOUT } from '../../lib/constants'
+import { useDirection } from '../../lib/direction'
 import storage from '../../lib/storage'
 import { Button, Card, Kbd, Notice, Popover, Skeleton, Tooltip, cn } from '../ui'
 
 const LAYOUT_KEY = 'layout.dashboard'
 const HIDDEN_KEY = 'widgets.hidden'
+
+/* Positions are physical in react-grid-layout, so the resize corner follows the mirrored
+   layout: bottom-right in LTR, bottom-left in RTL (a stable array, not re-created per render). */
+const RESIZE_CONFIG_LTR = { handles: ['se'] }
+const RESIZE_CONFIG_RTL = { handles: ['sw'] }
 
 export const BREAKPOINTS = { lg: 1200, md: 900, sm: 560, xs: 0 }
 export const COLS = { lg: 12, md: 8, sm: 4, xs: 2 }
@@ -34,6 +40,21 @@ function scaleLayout(layout, cols) {
     const x = Math.min(item.x, Math.max(0, cols - width))
     return { ...item, x, w: width, minW: Math.min(item.minW || 1, cols) }
   })
+}
+
+/**
+ * react-grid-layout is direction-agnostic: it positions items from the left.
+ * In Arabic (RTL) the logical start is the right edge, so x is mirrored per
+ * breakpoint (x' = cols − x − w). The mapping is its own inverse, so the same
+ * function converts the grid's output back to logical order before saving.
+ */
+function mirrorLayouts(layouts) {
+  return Object.fromEntries(
+    Object.entries(layouts).map(([breakpoint, items]) => {
+      const cols = COLS[breakpoint] || 12
+      return [breakpoint, items.map((item) => ({ ...item, x: Math.max(0, cols - item.x - item.w) }))]
+    }),
+  )
 }
 
 function defaultLayouts(enabledIds) {
@@ -84,6 +105,7 @@ export default function WidgetGrid({ widgets, hidden, onToggleHidden, onReset })
   const [savedAt, setSavedAt] = useState(null)
   const [hiddenOpen, setHiddenOpen] = useState(false)
   const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true })
+  const rtl = useDirection() === 'rtl'
 
   const enabledIds = useMemo(() => widgets.map((widget) => widget.id), [widgets])
 
@@ -101,11 +123,24 @@ export default function WidgetGrid({ widgets, hidden, onToggleHidden, onReset })
     return merged
   })
 
-  const persist = useCallback((_layout, allLayouts) => {
-    setLayouts(allLayouts)
-    storage.set(LAYOUT_KEY, allLayouts)
-    setSavedAt(Date.now())
-  }, [])
+  // Stable identity: a fresh object per render makes RGL report a change → setState → loop.
+  const gridLayouts = useMemo(() => (rtl ? mirrorLayouts(layouts) : layouts), [layouts, rtl])
+  const layoutsRef = useRef(layouts)
+  layoutsRef.current = layouts
+
+  // Only commit when the logical layout really changed: RGL reports on every mount and
+  // re-layout, and an unconditional setState here would re-render into another report.
+  const persist = useCallback(
+    (_layout, allLayouts) => {
+      const logical = rtl ? mirrorLayouts(allLayouts) : allLayouts
+      if (JSON.stringify(logical) === JSON.stringify(layoutsRef.current)) return
+      layoutsRef.current = logical
+      setLayouts(logical)
+      storage.set(LAYOUT_KEY, logical)
+      setSavedAt(Date.now())
+    },
+    [rtl],
+  )
 
   const reset = () => {
     const fresh = defaultLayouts(enabledIds)
@@ -189,12 +224,13 @@ export default function WidgetGrid({ widgets, hidden, onToggleHidden, onReset })
               width={width}
               breakpoints={BREAKPOINTS}
               cols={COLS}
-              layouts={layouts}
+              layouts={gridLayouts}
               rowHeight={56}
-              margin={[14, 14]}
+              margin={[16, 16]}
               containerPadding={[0, 0]}
               isDraggable={editing}
               isResizable={editing}
+              resizeConfig={rtl ? RESIZE_CONFIG_RTL : RESIZE_CONFIG_LTR}
               draggableHandle=".widget-drag-handle"
               onLayoutChange={persist}
               onDragStart={(_layout, _old, item) => setDraggingId(item?.i ?? null)}
@@ -203,25 +239,32 @@ export default function WidgetGrid({ widgets, hidden, onToggleHidden, onReset })
               onResizeStop={() => setDraggingId(null)}
               verticalCompact
             >
+              {/*
+                The direct child is the react-grid-layout item: RGL positions it with an
+                inline transform, so it must NOT be a motion element (framer-motion writes
+                its own transform and stacks every widget at the origin). The entrance
+                animation lives on the inner wrapper instead.
+              */}
               {widgets.map((widget, index) => (
-                <motion.div
-                  key={widget.id}
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.36, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
-                  className={cn('transition-shadow duration-200', editing && 'ring-1 ring-brand-soft ring-offset-2 ring-offset-bg rounded-2xl')}
-                >
-                  <WidgetFrame
-                    id={widget.id}
-                    title={widget.title}
-                    editing={editing}
-                    dragging={draggingId === widget.id}
-                    onHide={(id) => onToggleHidden(id, true)}
-                    actions={widget.actions}
+                <div key={widget.id} className="h-full">
+                  <motion.div
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.36, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
+                    className={cn('h-full transition-shadow duration-200', editing && 'ring-1 ring-brand-soft ring-offset-2 ring-offset-bg rounded-2xl')}
                   >
-                    {widget.render()}
-                  </WidgetFrame>
-                </motion.div>
+                    <WidgetFrame
+                      id={widget.id}
+                      title={widget.title}
+                      editing={editing}
+                      dragging={draggingId === widget.id}
+                      onHide={(id) => onToggleHidden(id, true)}
+                      actions={widget.actions}
+                    >
+                      {widget.render()}
+                    </WidgetFrame>
+                  </motion.div>
+                </div>
               ))}
             </ResponsiveGridLayout>
           </MotionConfig>

@@ -13,7 +13,7 @@
  * costs nothing on the critical path and animates on the compositor thread.
  * Every number is real payload data — no synthetic decoration.
  */
-import { Activity, ArrowRight, CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -25,14 +25,14 @@ import { compactNumber, durationFromMinutes, percent, relative, runStatusColor }
 import { rateDelta, seriesDelta } from '../../lib/stats'
 import { Badge, Button, CountUpStat, Skeleton, cn } from '../ui'
 
-/* Icon tones tuned for the navy gradient: light enough to read on dark glass. */
+/* Icon tones tuned for the violet gradient: light enough to read on dark glass. */
 const TONE_VARS = {
-  brand: '#a5b4fc',
+  brand: '#c4b5fd',
   info: '#7dd3fc',
   success: '#6ee7b7',
   warning: '#fcd34d',
   danger: '#fca5a5',
-  accent: '#5eead4',
+  highlight: '#f0abfc',
 }
 
 /**
@@ -67,7 +67,7 @@ function SuccessGauge({ value, label, caption }) {
         </svg>
         <span className="text-lg font-bold tabular text-white">{percent(pct, 1)}</span>
       </span>
-      <span className="hidden max-w-[7rem] text-xs leading-snug text-muted sm:block">{caption}</span>
+      <span className="command-hero__gauge-caption">{caption}</span>
     </div>
   )
 }
@@ -179,7 +179,6 @@ export default function CommandCenterHero({
   const rate = successRate ?? kpis?.successRate ?? 0
   const successTrend = rateDelta(spark)
   const savingsTrend = seriesDelta(savings, 'bar')
-  const runsTrend = seriesDelta(spark, 'volume')
 
   return (
     <section className="command-hero" aria-label={t('dashboard.commandCenter')}>
@@ -221,9 +220,9 @@ export default function CommandCenterHero({
           </div>
         </div>
 
-        {/* ── greeting ───────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
+        {/* ── greeting: text column + the gauge as the visual (≥1280 only) ─ */}
+        <div className="command-hero__greeting">
+          <div className="command-hero__greeting-text">
             <h2 className="command-hero__title text-display">
               {t(greetingKey, { name })}
             </h2>
@@ -231,16 +230,18 @@ export default function CommandCenterHero({
               {t('dashboard.commandCenterSubtitle')}
             </p>
           </div>
-          {loading && !kpis ? (
-            <Skeleton className="h-[92px] w-[92px] rounded-full" />
-          ) : (
-            <SuccessGauge value={rate} label={t('dashboard.hero.successGauge')} caption={t('dashboard.hero.gaugeCaption')} />
-          )}
+          <div className="command-hero__visual">
+            {loading && !kpis ? (
+              <Skeleton className="h-[92px] w-[92px] rounded-full" />
+            ) : (
+              <SuccessGauge value={rate} label={t('dashboard.hero.successGauge')} caption={t('dashboard.hero.gaugeCaption')} />
+            )}
+          </div>
         </div>
 
         <span className="divider" aria-hidden />
 
-        {/* ── four-KPI command strip ─────────────────────────────────────── */}
+        {/* ── four-KPI command strip (one row ≥1280, two rows below) ─────── */}
         <div className="command-hero__kpis">
           <HeroKpi
             icon={TrendingUp}
@@ -264,7 +265,7 @@ export default function CommandCenterHero({
           <HeroKpi
             icon={BadgeDollarSign}
             label={t('dashboard.costSaved')}
-            tone="accent"
+            tone="highlight"
             value={loading && !kpis ? <Skeleton className="h-7 w-24" /> : <CountUpStat value={Number(kpis?.costSaved) || 0} format="currency" />}
             delta={savingsTrend}
             hint={t('dashboard.filters.days', { count: 14 })}
@@ -278,15 +279,6 @@ export default function CommandCenterHero({
             hint={Number(slaRisk) > 0 ? t('dashboard.hero.attention') : t('dashboard.hero.allClear')}
             flashKey={slaRisk}
           />
-          <HeroKpi
-            icon={Activity}
-            label={t('dashboard.hero.runsToday')}
-            tone="brand"
-            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={Number(kpis?.runsToday) || 0} format="number" />}
-            delta={runsTrend}
-            hint={kpis?.targetRuns ? t('dashboard.hero.targetRuns', { total: compactNumber(kpis.targetRuns) }) : undefined}
-            flashKey={kpis?.runsToday}
-          />
         </div>
 
         {/* ── full-width 14-day sparkline strip ──────────────────────────── */}
@@ -299,7 +291,7 @@ export default function CommandCenterHero({
               <DeltaChip value={seriesDelta(spark, 'volume')} />
             </div>
             <div className="h-11 w-full">
-              <Sparkline data={spark} dataKey="volume" color="#a5f3fc" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
+              <Sparkline data={spark} dataKey="volume" color="#c4b5fd" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
             </div>
             <div className="command-hero__strip-axis mt-1">
               <span dir="auto">{spark[0]?.date}</span>
