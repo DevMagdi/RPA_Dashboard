@@ -199,7 +199,8 @@ def login(
     # fall through to token issuance.
     if challenge.mfa_required:
         AUTH_EVENTS.labels(event="login", result="mfa_challenge").inc()
-        audit_service.record_standalone(
+        audit_service.record(
+            db,
             action_type="Login_MFA_Challenge",
             user_id=challenge.user.user_id if challenge.user else None,
             new_values={"username": credentials.username},
@@ -214,7 +215,8 @@ def login(
         }
 
     if challenge.error:
-        audit_service.record_standalone(
+        audit_service.record(
+            db,
             action_type="Login_Failed" if challenge.error_code not in ("locked",) else "Login_Locked",
             user_id=challenge.user.user_id if challenge.user else None,
             new_values={"username": credentials.username, "reason": challenge.error_code},
@@ -222,6 +224,9 @@ def login(
             user_agent=meta.user_agent,
             is_success=False,
         )
+        # Preserve both the failed-attempt counter and its audit event before
+        # raising; the request dependency rolls back sessions on exceptions.
+        db.commit()
         AUTH_EVENTS.labels(event="login", result=challenge.error_code or "failed").inc()
         raise AuthError(challenge.error, code=challenge.error_code or "invalid_credentials")
 

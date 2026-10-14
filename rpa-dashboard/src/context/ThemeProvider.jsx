@@ -14,12 +14,16 @@ function resolve(theme) {
 }
 
 /**
- * Theme + density provider (light / dark / system), persisted per browser.
+ * Theme + density provider (light / dark / system), with Light as the default.
  * The `<html>` class is toggled directly so Tailwind's `dark:` variants and the
  * CSS variables in index.css both switch instantly.
  */
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => storage.get('theme', 'system'))
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = storage.get('theme', 'light')
+    // `system` was the previous implicit default; migrate those users to Light.
+    return savedTheme === 'system' ? 'light' : savedTheme
+  })
   const [density, setDensity] = useState(() => storage.get('density', 'comfortable'))
 
   const applied = resolve(theme)

@@ -1,25 +1,25 @@
 <!doctype html>
-<html lang="en" dir="ltr" class="dark">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#4b367c" />
+    <meta name="theme-color" content="#F3F6FA" />
     <meta name="description" content="RPA CoE Control Room — single-tenant, On-Premises, vendor-neutral RPA operations for banks and large enterprises" />
     <!-- Bank deployments are often air-gapped: no external CDN, fonts fall back to system stacks -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Control Room</title>
     <script>
-      // Apply the stored theme before first paint to avoid a flash of the wrong theme
+      // Apply an explicit saved theme before first paint; new and legacy-default visits start Light.
       try {
-        var theme = localStorage.getItem('rpa.theme')
-        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        var dark = theme ? theme === 'dark' : prefersDark
-        document.documentElement.classList.toggle('dark', dark)
+        var savedTheme = localStorage.getItem('rpa.theme')
+        var theme = savedTheme ? JSON.parse(savedTheme) : 'light'
+        if (theme === 'system') theme = 'light'
+        document.documentElement.classList.toggle('dark', theme === 'dark')
         var lang = localStorage.getItem('rpa.lang') || 'en'
         document.documentElement.lang = lang
         document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
       } catch (e) {
-        /* storage disabled — keep defaults */
+        /* storage disabled — keep Light defaults */
       }
     </script>
   </head>

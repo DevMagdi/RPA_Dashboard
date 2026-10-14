@@ -97,6 +97,52 @@
   "dashboard": {
     "title": "Operations Dashboard",
     "subtitle": "Real-time view of the automation estate",
+    "commandCenter": "Automation command center",
+    "commandCenterSubtitle": "One clear operational picture for every automation platform — secured inside your organisation’s perimeter.",
+    "privateInstallation": "ON-PREMISES · VENDOR-NEUTRAL",
+    "startTour": "Take a quick tour",
+    "hero": {
+      "running": "In flight",
+      "processes": "Managed processes",
+      "successRate": "Success rate",
+      "lastUpdated": "Updated {{time}}",
+      "snapshot": "Operational snapshot",
+      "controlPlane": "Private control plane"
+    },
+    "tour": {
+      "title": "Your control room, at a glance",
+      "subtitle": "A short guide to the operational areas available in this installation.",
+      "step": "Step {{current}} of {{total}}",
+      "progress": "Tour progress",
+      "previous": "Previous",
+      "next": "Next",
+      "finish": "Finish tour",
+      "skip": "Skip tour",
+      "openModule": "Explore this area",
+      "securityNote": "The tour only shows modules available to your role. Your data stays within this on-premises installation.",
+      "steps": {
+        "infrastructure": {
+          "title": "Connect your automation estate",
+          "description": "Review vendor platform connectivity, runner health and agent heartbeats from one operational view."
+        },
+        "processes": {
+          "title": "Understand your process catalogue",
+          "description": "See ownership, criticality, expected volume and the business value behind each automation."
+        },
+        "runs": {
+          "title": "Follow execution in real time",
+          "description": "Investigate run history, outcomes and failures, with controls shown only when your role permits them."
+        },
+        "capacity": {
+          "title": "Stay ahead of capacity and SLA risk",
+          "description": "Review utilisation, queue pressure and recommendations before they impact service targets."
+        },
+        "lifecycle": {
+          "title": "Govern every production change",
+          "description": "Track Dev, UAT and Production releases, approvals and audited credential access."
+        }
+      }
+    },
     "totalProcedures": "Automated processes",
     "totalTransactions": "Transactions processed",
     "runsToday": "Runs today",

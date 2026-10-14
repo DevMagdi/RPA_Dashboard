@@ -228,12 +228,13 @@ export default function AppShell() {
   const location = useLocation()
   const isMobile = useIsMobile()
   const { has, user } = useAuth()
-  const { companyName } = useBranding()
+  const { branding, companyName } = useBranding()
   const { toggleTheme, isDark } = useTheme()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mfaOpen, setMfaOpen] = useState(false)
+  const mobileSlideFrom = i18n.dir() === 'rtl' ? '100%' : '-100%'
 
   const { data: processes } = useProcessOptions()
   useRealtimeSync()
@@ -242,6 +243,15 @@ export default function AppShell() {
   useEffect(() => {
     setMobileOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!isMobile || !mobileOpen) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isMobile, mobileOpen])
 
   const navigation = useMemo(
     () =>
@@ -261,18 +271,32 @@ export default function AppShell() {
   const switchLanguage = () => applyLanguage(i18n.language === 'ar' ? 'en' : 'ar')
 
   return (
-    <div className="flex min-h-screen bg-bg">
+    <div className="app-shell flex min-h-screen bg-bg">
+      <AnimatePresence>
+        {isMobile && mobileOpen ? (
+          <motion.button
+            type="button"
+            aria-label={t('actions.close')}
+            className="fixed inset-0 z-40 cursor-default bg-black/55 backdrop-blur-[2px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobileOpen(false)}
+          />
+        ) : null}
+      </AnimatePresence>
+
       {/* Sidebar — persistent on desktop, drawer on mobile */}
       <AnimatePresence>
         {(mobileOpen || !isMobile) && (
           <motion.aside
-            initial={isMobile ? { x: '-100%' } : false}
+            initial={isMobile ? { x: mobileSlideFrom } : false}
             animate={{ x: 0, width: collapsed && !isMobile ? 76 : 264 }}
-            exit={isMobile ? { x: '-100%' } : undefined}
+            exit={isMobile ? { x: mobileSlideFrom } : undefined}
             transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
             className={cx(
-              'fixed inset-y-0 start-0 z-50 flex flex-col border-e border-border bg-surface/95 backdrop-blur-xl',
-              isMobile ? 'w-64 shadow-pop' : 'sticky top-0 h-screen',
+              'z-50 flex flex-col border-e border-border bg-surface/95 backdrop-blur-xl',
+              isMobile ? 'fixed inset-y-0 start-0 w-64 shadow-pop' : 'sticky top-0 h-screen shrink-0',
             )}
             aria-label={t('app.name')}
           >
@@ -359,11 +383,12 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="focus-ring hidden items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-1.5 text-xs text-muted transition hover:bg-surface md:flex"
+            aria-label={`${t('actions.commandPalette')} (Ctrl+K)`}
+            className="focus-ring inline-flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-2 py-1.5 text-xs text-muted transition hover:border-brand/25 hover:bg-surface md:px-3"
           >
             <SearchIcon />
-            <span>{t('actions.search')}</span>
-            <kbd className="rounded border border-border bg-surface px-1 text-[10px]">⌘K</kbd>
+            <span className="hidden md:inline">{t('actions.search')}</span>
+            <kbd className="hidden rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] md:inline-flex">Ctrl K</kbd>
           </button>
 
           <LivePill />
@@ -397,7 +422,7 @@ export default function AppShell() {
               {companyName} · {t('app.poweredBy')}
             </span>
             <span>
-              {t('app.version', { version: '3.0.0' })} · {user?.username}
+              {t('app.version', { version: branding.api_version || '4.0.0' })} · {user?.username}
             </span>
           </div>
         </footer>

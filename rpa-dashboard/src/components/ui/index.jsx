@@ -27,12 +27,12 @@ export function cx(...values) {
 /* ------------------------------------------------------------------ Button */
 
 const BUTTON_VARIANTS = {
-  primary: 'bg-brand text-brand-fg hover:opacity-90 shadow-soft',
-  secondary: 'bg-surface-2 text-text border border-border hover:bg-surface',
-  ghost: 'text-muted hover:text-text hover:bg-surface-2',
-  danger: 'bg-danger text-white hover:opacity-90 shadow-soft',
-  success: 'bg-success text-white hover:opacity-90 shadow-soft',
-  outline: 'border border-brand text-brand hover:bg-brand-soft',
+  primary: 'bg-brand text-brand-fg shadow-soft hover:brightness-110 hover:shadow-glow',
+  secondary: 'border border-border bg-surface-2 text-text hover:border-brand/25 hover:bg-surface',
+  ghost: 'text-muted hover:bg-surface-2 hover:text-text',
+  danger: 'bg-danger text-white shadow-soft hover:brightness-110',
+  success: 'bg-success text-white shadow-soft hover:brightness-110',
+  outline: 'border border-brand/45 bg-brand-soft/35 text-brand hover:border-brand hover:bg-brand-soft',
 }
 
 const BUTTON_SIZES = {
@@ -52,7 +52,7 @@ export const Button = forwardRef(function Button(
       type={props.type || 'button'}
       disabled={disabled || loading}
       className={cx(
-        'focus-ring inline-flex items-center rounded-xl font-medium transition-all duration-200 ease-premium disabled:cursor-not-allowed disabled:opacity-50',
+        'focus-ring inline-flex items-center rounded-xl font-medium transition-all duration-200 ease-premium active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100',
         BUTTON_VARIANTS[variant],
         BUTTON_SIZES[size],
         className,
@@ -71,7 +71,7 @@ export function Card({ as: Tag = 'section', className, glass = false, hover = fa
   return (
     <Tag
       className={cx(
-        'rounded-2xl border border-border shadow-card',
+        'rounded-2xl border border-border/90 shadow-card transition-colors duration-200',
         glass ? 'glass' : 'bg-surface',
         hover && 'card-hover',
         className,
@@ -184,8 +184,8 @@ export function SkeletonCard({ height = 160 }) {
 export function EmptyState({ icon: Icon = Inbox, title, description, action, className }) {
   return (
     <div className={cx('flex flex-col items-center justify-center gap-3 px-6 py-10 text-center', className)}>
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-2 text-muted">
-        <Icon className="h-6 w-6" aria-hidden />
+      <span className="grid h-12 w-12 place-items-center rounded-2xl border border-border bg-gradient-to-br from-brand-soft/70 to-surface-2 text-brand shadow-soft">
+        <Icon className="h-5 w-5" aria-hidden />
       </span>
       <div>
         <p className="text-sm font-semibold text-text">{title}</p>
@@ -721,11 +721,14 @@ export function DataTable({
                   column.align === 'center' && 'text-center',
                 )}
                 aria-sort={activeSort?.key === column.key ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                onClick={() => column.sortable && handleSort(column.key)}
+                onClick={(event) => {
+                  if (event.target.closest('button')) return
+                  if (column.sortable) handleSort(column.key)
+                }}
               >
                 {/* Sorting must be keyboard reachable too */}
                 {column.sortable ? (
-                  <button type="button" className="focus-ring inline-flex items-center gap-1 rounded" onClick={() => handleSort(column.key)}>
+                  <button type="button" className="focus-ring inline-flex items-center gap-1 rounded" onClick={(event) => { event.stopPropagation(); handleSort(column.key) }}>
                     {column.header}
                     <span className="text-[10px]">{activeSort?.key === column.key ? (activeSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                   </button>
@@ -741,8 +744,8 @@ export function DataTable({
             <tr
               key={rowKey ? rowKey(row, index) : index}
               className={cx(
-                'border-b border-border/70 transition-colors last:border-0',
-                onRowClick && 'cursor-pointer hover:bg-surface-2',
+                'border-b border-border/70 transition-colors last:border-0 hover:bg-surface-2/55',
+                onRowClick && 'cursor-pointer focus-within:bg-surface-2/70',
               )}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               tabIndex={onRowClick ? 0 : undefined}
@@ -839,10 +842,10 @@ export function Notice({ tone = 'info', title, children, icon: CustomIcon, actio
 
 export function SectionTitle({ title, subtitle, actions, className }) {
   return (
-    <div className={cx('mb-4 flex flex-wrap items-end justify-between gap-3', className)}>
-      <div>
-        <h1 className="text-lg font-semibold text-text sm:text-xl">{title}</h1>
-        {subtitle ? <p className="mt-0.5 text-xs text-muted sm:text-sm">{subtitle}</p> : null}
+    <div className={cx('mb-5 flex flex-wrap items-end justify-between gap-3', className)}>
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight text-text sm:text-2xl">{title}</h1>
+        {subtitle ? <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted sm:text-sm">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
