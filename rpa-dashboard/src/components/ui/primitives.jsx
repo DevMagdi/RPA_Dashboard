@@ -55,6 +55,7 @@ export const buttonVariants = cva(
         ghost: 'text-muted hover:bg-surface-2 hover:text-text',
         subtle: 'bg-surface-2 text-text hover:bg-surface-3',
         danger: 'bg-danger text-white shadow-soft hover:brightness-108 hover:shadow-[0_10px_30px_-12px_var(--danger)]',
+        destructive: 'bg-danger text-white shadow-soft hover:brightness-108 hover:shadow-[0_10px_30px_-12px_var(--danger)]',
         success: 'bg-success text-white shadow-soft hover:brightness-108',
         link: 'text-brand underline-offset-4 hover:underline',
       },
@@ -613,6 +614,36 @@ export function DialogContent({
         {footer ? <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border/80 bg-surface-2/60 px-5 py-3">{footer}</footer> : null}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
+  )
+}
+
+export function Drawer({ open, onOpenChange, title, description, children, side }) {
+  const dir = useDirection()
+  const rtl = dir === 'rtl'
+  const resolvedSide = side || (rtl ? 'left' : 'right')
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} dir={dir}>
+      <AnimatePresence>
+        {open ? (
+          <DialogPrimitive.Portal forceMount>
+            <DialogPrimitive.Overlay asChild>
+              <motion.div className="fixed inset-0 z-[70] bg-[color-mix(in_srgb,var(--bg-deep)_62%,transparent)] backdrop-blur-[3px]" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} />
+            </DialogPrimitive.Overlay>
+            <DialogPrimitive.Content asChild aria-describedby={description ? undefined : undefined}>
+              <motion.aside
+                className="ds-drawer fixed inset-y-0 z-[71] flex w-[min(26rem,92vw)] flex-col border-border bg-surface p-5"
+                style={resolvedSide === 'right' ? { right: 0, borderInlineStart: '1px solid var(--border)' } : { left: 0, borderInlineEnd: '1px solid var(--border)' }}
+                initial={{ x: resolvedSide === 'right' ? 40 : -40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: resolvedSide === 'right' ? 40 : -40, opacity: 0 }}
+                transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}>
+                {title ? <DialogPrimitive.Title className="text-base font-semibold text-text">{title}</DialogPrimitive.Title> : null}
+                {description ? <DialogPrimitive.Description className="mt-1 text-xs text-muted">{description}</DialogPrimitive.Description> : null}
+                <div className="mt-4 min-h-0 flex-1 overflow-y-auto">{children}</div>
+              </motion.aside>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        ) : null}
+      </AnimatePresence>
+    </DialogPrimitive.Root>
   )
 }
 
