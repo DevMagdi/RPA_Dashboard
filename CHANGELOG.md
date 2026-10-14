@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased — Hybrid control-room palette + classic banded dashboard (v6)
+
+Three asks, one release: make **every** colour match the Navy · Indigo · Teal ·
+Orange identity, delete the header's second row, and re-lay the dashboard as a
+classic BI screen. The violet identity (`#5B21B6` on a `#F8F5FF` canvas) and the
+full-bleed navy hero are both retired.
+
+- **Palette (everywhere)**: light canvas `#F5F7FB`, surface `#FFFFFF`/`#F8FAFC`,
+  text `#14213A` / muted `#5B6B82`, brand Deep Indigo `#4F46E5`
+  (`--brand-strong #3730A3`, `--brand-lighter #6366F1`), navy anchor `#1E3A5F` /
+  `#122339`, accent Electric Teal `#0D9488`, attention Orange `#F58220`; dark
+  canvas `#0F1A2E`, surfaces `#152238`/`#1B2A44`/`#223556`, brand `#818CF8`,
+  text `#EFF5FF`. One palette in six places that must never disagree:
+  `src/index.css`, `src/design-system/tokens.js`, `tailwind.config.js`,
+  `index.html` (boot screen + `theme-color`), the `BrandingProvider` fallbacks
+  and the backend defaults.
+- **Backend brand follows**: `bootstrap.DEFAULT_BRAND_PRIMARY = "#4F46E5"`,
+  `tables.Organization.BrandPrimaryColor` server default, the
+  `organization_service` / `export_service` fallbacks and the Teams/Slack/email
+  notification colours all moved off violet. An installation still carrying the
+  *seeded* violet default is upgraded on boot; a colour an admin chose on
+  purpose is never rewritten (`LEGACY_BRAND_PRIMARY`).
+- **Header is one row** (`TopBar`, `TopNav`): the second "first-run affordance"
+  row (tour hint + `Ctrl+K` hint + help) is gone — it repeated what the command
+  palette and the dashboard tour already say, on every screen, at every scroll
+  position. The dead keys (`onboarding.tourHint`, `nav.commandHint`) were removed
+  from **both** locale bundles, and the labels now un-hide one breakpoint earlier
+  (`xl:not-sr-only`) because the row is shorter.
+- **Status console replaces the hero** (`.command-hero` → `.status-panel`): a
+  **light** card that inherits the theme tokens instead of re-declaring white
+  text, with the navy gradient reserved for the verdict band alone — the one
+  sentence an operator must not miss. The hero's eyebrow row (live chip + server
+  clock + tour link) moved into the toolbar, where it belongs.
+- **Classic banded dashboard** (`DashboardPage`): seven titled bands read top to
+  bottom — toolbar → KPI row → status console → decisions → health → analytics →
+  departments. New `DashboardToolbar` (sticky at `--header-height`, owns the
+  page's only `h1`, carries the scope chips, live chip, server clock, refresh,
+  export, tour and every filter) and a reinstated `KpiGrid` (six `.kpi-strip`
+  cards, pinned, never draggable). Only the analytics band uses `WidgetGrid`.
+- **Docs**: `docs/DESIGN_SYSTEM.md` and `src/design-system/DESIGN_SYSTEM.md`
+  rewritten for the new palette and band layout; the plan for this change is in
+  `docs/UI_NAVY_REDESIGN_PLAN_AR.md`.
+- **Tests**: frontend `npm test` 113 passed / 4 skipped — `statusPanel`,
+  `dashboardToolbar` (8 new) and `dashboardLayout` (5 new) replace the
+  hero-specific suites; backend contracts now lock the palette hexes in all six
+  sources, the single-row header and the band order
+  (`test_control_room_palette_is_navy_indigo_teal_orange_everywhere`,
+  `test_global_header_is_a_single_row`,
+  `test_status_panel_is_a_light_surface_with_a_navy_verdict_band`).
+  `npm run lint` 0/0; production build unchanged at ~65 kB entry.
+
 ## Unreleased — Decision-first dashboard (v5): verdict, triage queue, health board
 
 The dashboard rendered metrics; it did not support decisions. Every signal an

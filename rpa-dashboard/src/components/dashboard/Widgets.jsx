@@ -321,7 +321,7 @@ export function ActiveRunBanner({ kpis }) {
   const running = kpis?.status === 'Running' || kpis?.runningNow > 0
   if (!running || !kpis?.activeProcess) {
     return (
-      <Card className="flex items-center gap-3 p-3.5 text-sm text-muted">
+      <Card className="active-run-band flex items-center gap-3 p-3.5 text-sm text-muted">
         <span className="grid h-8 w-8 place-items-center rounded-xl bg-surface-2 text-muted">
           <Bot className="h-4 w-4" aria-hidden />
         </span>
@@ -331,7 +331,7 @@ export function ActiveRunBanner({ kpis }) {
   }
 
   return (
-    <Card glass className="relative flex flex-wrap items-center gap-3 overflow-hidden p-3.5">
+    <Card glass className="active-run-band relative flex flex-wrap items-center gap-3 overflow-hidden p-3.5">
       <span aria-hidden className="pointer-events-none absolute inset-y-0 start-0 w-1 bg-info" />
       <span className="grid h-9 w-9 place-items-center rounded-xl bg-info-soft text-info">
         <Activity className="h-4 w-4 animate-pulse-soft" aria-hidden />

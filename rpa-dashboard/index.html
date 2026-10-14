@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#F8F5FF" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0B0618" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F5F7FB" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F1A2E" media="(prefers-color-scheme: dark)" />
     <meta name="description" content="RPA CoE Control Room — single-tenant, On-Premises, vendor-neutral RPA operations for banks and large enterprises" />
     <!-- Bank deployments are often air-gapped: every font is self-hosted. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -16,10 +16,10 @@
       /* First-paint canvas: matches the light-first tokens in src/index.css so
          the boot screen and the app never disagree about the background. */
       html {
-        background: #f8f5ff;
+        background: #f5f7fb;
       }
       html.dark {
-        background: #0b0618;
+        background: #0f1a2e;
       }
       #boot {
         position: fixed;
@@ -30,17 +30,17 @@
         justify-content: center;
         gap: 14px;
         font-family: 'Inter Variable', 'Cairo Variable', system-ui, sans-serif;
-        color: #5b21b6;
+        color: #4f46e5;
         background:
-          radial-gradient(900px 520px at 100% -10%, rgba(91, 33, 182, 0.1), transparent 70%),
-          radial-gradient(700px 420px at -10% 110%, rgba(124, 58, 237, 0.08), transparent 72%);
+          radial-gradient(900px 520px at 100% -10%, rgba(79, 70, 229, 0.1), transparent 70%),
+          radial-gradient(700px 420px at -10% 110%, rgba(13, 148, 136, 0.08), transparent 72%);
       }
       #boot .ring {
         width: 34px;
         height: 34px;
         border-radius: 999px;
-        border: 2.5px solid rgba(91, 33, 182, 0.18);
-        border-top-color: #5b21b6;
+        border: 2.5px solid rgba(79, 70, 229, 0.18);
+        border-top-color: #4f46e5;
         animation: boot-spin 0.9s linear infinite;
       }
       #boot .label {

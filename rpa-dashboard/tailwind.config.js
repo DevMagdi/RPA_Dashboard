@@ -117,10 +117,10 @@ export default {
       },
       backdropBlur: { xs: '2px', '2xl': '30px' },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 55%, var(--brand-lighter) 130%)',
+        'brand-gradient': 'linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 55%, var(--accent) 130%)',
         'brand-sheen': 'linear-gradient(120deg, transparent 20%, color-mix(in srgb, var(--brand-fg) 26%, transparent) 50%, transparent 80%)',
         grid: 'linear-gradient(var(--border-soft) 1px, transparent 1px), linear-gradient(90deg, var(--border-soft) 1px, transparent 1px)',
-        'surface-sheen': 'linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, var(--brand)) 0%, var(--surface) 45%, color-mix(in srgb, var(--surface) 97%, var(--brand-lighter)) 100%)',
+        'surface-sheen': 'linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, var(--brand)) 0%, var(--surface) 45%, color-mix(in srgb, var(--surface) 97%, var(--accent)) 100%)',
       },
       backgroundSize: { grid: '34px 34px', 'sheen-200': '200% 100%' },
       keyframes: {
