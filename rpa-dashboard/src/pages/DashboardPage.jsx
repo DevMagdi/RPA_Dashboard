@@ -1,25 +1,29 @@
 /**
  * Dashboard — the Control Room's command centre.
  *
- * Information architecture (v5, "decision-first")
- * -----------------------------------------------
- * The screen is ordered by *how fast an operator can act*, not by how
- * attractive a widget is:
+ * Information architecture (v7, "Hybrid Premium Control Room")
+ * -----------------------------------------------------------
+ * One tidy page, ordered by *how fast an operator can act*, with a clear
+ * heading for every band and no decorative chrome rows:
  *
- *   1. Hero + verdict      — "is anything wrong right now?" (3 seconds)
- *   2. Filters             — the scope those answers apply to (shareable URL)
- *   3. Triage queue        — the ranked list of decisions, each with its action
- *   4. Health board        — the four metrics that carry a decision, vs target
- *   5. Active run          — what the fleet is doing this second
- *   6. Analytics widgets   — trends and evidence, below the fold
+ *   1. Toolbar (sticky)  — page identity + freshness, Live/server clock,
+ *                          Refresh · Export · Tour, and the filters that scope
+ *                          every number below (shareable through the URL)
+ *   2. Command hero      — navy hero: greeting + success gauge + decision KPIs
+ *                          + volume sparkline (the fold, the current state)
+ *   3. KPI row           — the six headline figures, pinned (never draggable)
+ *   4. Decision queue    — the ranked list of decisions, each with its action
+ *   5. Health board      — the four metrics that carry a decision, vs target
+ *   6. Active run        — what the fleet is doing this second
+ *   7. Analytics         — trends and evidence, the only rearrangeable band
+ *   8. Departments + onboarding checklist
  *
- * Tiers 1–5 are pinned: they never move, so muscle memory works and a
- * wallboard cannot be rearranged into something unreadable. Only the
- * analytics widgets are draggable.
+ * Bands 1–6 are pinned: they never move, so muscle memory works and a wallboard
+ * cannot be rearranged into something unreadable.
  *
  * Performance architecture (this is the screen everyone opens first):
- *  1. the shell + hero + triage + health board render from the *critical*
- *     chunk only — no charting library is parsed before first paint;
+ *  1. the toolbar + KPI row + status console + decision tier render from the
+ *     *critical* chunk only — no charting library is parsed before first paint;
  *  2. recharts-backed widgets arrive through `React.lazy` + `<Suspense>` with
  *     layout-stable skeletons, and the drag-and-drop grid is split again;
  *  3. filters are applied inside `startTransition`, so typing in a filter never
@@ -27,7 +31,7 @@
  *  4. refresh invalidates *only* the queries it actually changes.
  */
 import { useQueryClient } from '@tanstack/react-query'
-import { Filter, RefreshCw, Sparkles, X } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -46,17 +50,19 @@ import {
 } from '../hooks/api'
 import { useUrlFilters } from '../hooks/ui'
 import api from '../lib/api'
-import { DATE_RANGES, DEFAULT_WIDGET_LAYOUT } from '../lib/constants'
+import { DEFAULT_WIDGET_LAYOUT } from '../lib/constants'
 import { useOnboardingProgress } from '../lib/onboarding'
 import { buildContextMetrics, buildHealthMetrics, buildOpsSignals } from '../lib/opsSignals'
 import storage from '../lib/storage'
 import CommandCenterHero from '../components/dashboard/CommandCenterHero'
+import DashboardToolbar from '../components/dashboard/DashboardToolbar'
 import HealthBoard from '../components/dashboard/HealthBoard'
+import KpiGrid from '../components/dashboard/KpiGrid'
 import OnboardingChecklist from '../components/dashboard/OnboardingChecklist'
 import TriageQueue from '../components/dashboard/TriageQueue'
 import ExportMenu from '../components/features/ExportMenu'
 import RouteFallback from '../components/common/RouteFallback'
-import { Button, Card, EmptyState, SegmentedControl, SectionTitle, Select, Skeleton, cn } from '../components/ui'
+import { Button, Card, EmptyState, SectionTitle, Skeleton, cn } from '../components/ui'
 
 /* Heavy, below-the-fold modules: separate chunks, requested after first paint. */
 const ProductTourDialog = lazy(() => import('../components/dashboard/ProductTourDialog'))
@@ -117,10 +123,11 @@ export default function DashboardPage() {
   const data = dashboard.data
   const spark = data?.charts?.volume || []
   const savings = data?.charts?.savings || []
+  const booting = dashboard.isLoading && !data
 
   /**
-   * One derivation feeds the hero verdict, the triage queue and the health
-   * board, so the three can never disagree with each other.
+   * One derivation feeds the verdict, the triage queue and the health board, so
+   * the three can never disagree with each other.
    */
   const signals = useMemo(
     () =>
@@ -283,6 +290,20 @@ export default function DashboardPage() {
   const hidden = useMemo(() => allWidgets.filter((widget) => hiddenIds.includes(widget.id)), [allWidgets, hiddenIds])
   const filtersDirty = filters.department !== DEFAULTS.department || filters.process !== DEFAULTS.process || filters.days !== DEFAULTS.days
 
+  /* The command hero owns the operator's greeting and live chip; the toolbar
+     keeps identity, freshness and scope. Hero KPIs are a trimmed decision view. */
+  const heroKpis = [
+    { key: 'totalProcedures', label: t('dashboard.totalProcedures'), value: data?.kpis?.totalProcedures },
+    { key: 'runningNow', label: t('dashboard.activeRun'), value: data?.kpis?.runningNow },
+    {
+      key: 'costSaved',
+      label: t('dashboard.costSaved'),
+      value: `$${Math.round((data?.kpis?.costSaved || 0) / 1000)}k`,
+    },
+    { key: 'runsToday', label: t('dashboard.runsToday'), value: data?.kpis?.runsToday },
+    { key: 'timeSaved', label: t('dashboard.timeSaved'), value: `${Math.round(data?.kpis?.timeSaved || 0)}h` },
+  ]
+
   if (dashboard.isError && !data) {
     return (
       <Card>
@@ -301,159 +322,108 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <CommandCenterHero
-        kpis={data?.kpis}
-        successRate={data?.sidebarStats?.successRate}
+    <div className="dashboard-page space-y-5">
+      {/* ── Band 1: identity, freshness and scope — sticky, one surface ─── */}
+      <DashboardToolbar
+        title={t('dashboard.title')}
         generatedAt={data?.meta?.generated_at}
-        loading={dashboard.isLoading && !data}
+        scope={data?.scope?.department}
         refreshing={refreshing}
         onRefresh={onRefresh}
         onOpenTour={() => setTourOpen(true)}
         actions={<ExportMenu days={filters.days} />}
-        spark={spark}
-        savings={savings}
-        slaRisk={signals.totals.slaBreach}
-        scope={data?.scope?.department}
-        activity={data?.table || []}
-        signals={signals}
+        filters={filters}
+        onFilterChange={applyFilter}
+        onResetFilters={reset}
+        filtersDirty={filtersDirty}
+        departments={departments.data || []}
+        processes={processes.data || []}
+        onGenerate={() => generate.mutate()}
+        generating={generate.isPending}
+        canGenerate={has('capacity:act') || has('*')}
       />
 
-      {/* Filters — persisted in the URL so a view can be shared with a colleague */}
-      <Card className="sticky top-[var(--header-height)] z-20 p-3 backdrop-blur-md">
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-          <span className="flex items-center gap-2 text-xs font-medium text-muted">
-            <Filter className="h-4 w-4" aria-hidden />
-            {t('common.filters')}
-          </span>
-          <label className="space-y-1">
-            <span className="block text-[11px] text-muted">{t('dashboard.filters.department')}</span>
-            <Select
-              className="h-9 w-44 py-0 text-xs"
-              value={filters.department}
-              onChange={(event) => applyFilter({ department: event.target.value, process: 'ALL' })}
-            >
-              <option value="ALL">{t('dashboard.filters.all')}</option>
-              {(departments.data || []).map((row) => {
-                const name = typeof row === 'string' ? row : row.Department || row.department || row.name
-                return (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                )
-              })}
-            </Select>
-          </label>
-          <label className="space-y-1">
-            <span className="block text-[11px] text-muted">{t('dashboard.filters.process')}</span>
-            <Select
-              className="h-9 w-52 py-0 text-xs"
-              value={filters.process}
-              onChange={(event) => applyFilter({ process: event.target.value })}
-            >
-              <option value="ALL">{t('dashboard.filters.all')}</option>
-              {(processes.data || []).map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <div className="space-y-1">
-            <span className="block text-[11px] text-muted" id="dashboard-range-label">
-              {t('dashboard.filters.range')}
-            </span>
-            <div role="group" aria-labelledby="dashboard-range-label">
-              <SegmentedControl
-                size="sm"
-                value={String(filters.days)}
-                onValueChange={(next) => applyFilter({ days: Number(next) })}
-                items={DATE_RANGES.map((range) => ({
-                  value: String(range.value),
-                  label: t('dashboard.filters.days', { count: range.count }),
-                }))}
-              />
-            </div>
-          </div>
-          {filtersDirty ? (
-            <Button variant="ghost" size="sm" icon={X} onClick={reset}>
-              {t('actions.clearFilters')}
-            </Button>
-          ) : null}
-          {has('capacity:act') || has('*') ? (
-            <Button
-              variant="outline"
-              size="sm"
-              icon={Sparkles}
-              loading={generate.isPending}
-              onClick={() => generate.mutate()}
-              className="ms-auto"
-            >
-              {generate.isPending ? t('capacity.generating') : t('capacity.generate')}
-            </Button>
-          ) : null}
-        </div>
-      </Card>
-
-      {/* ── Tier 2: the ranked list of decisions, pinned above the fold ──── */}
-      <section id="triage-queue" className="scroll-mt-[calc(var(--header-height)+1rem)]" aria-label={t('dashboard.triage.title')}>
-        <TriageQueue
+      {/* ── Band 2: the navy command hero — the fold, the current state ─── */}
+      <section aria-label={t('dashboard.status.title')}>
+        <CommandCenterHero
+          kpis={heroKpis}
+          successRate={data?.sidebarStats?.successRate ?? data?.kpis?.successRate}
+          generatedAt={data?.meta?.generated_at}
+          loading={booting}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          onOpenTour={() => setTourOpen(true)}
+          actions={<ExportMenu days={filters.days} />}
+          spark={spark}
+          savings={savings}
+          slaRisk={signals.slaRisk}
+          scope={data?.scope?.department}
+          activity={data?.table || []}
           signals={signals}
-          loading={dashboard.isLoading && !data}
-          busy={busy}
-          onAcknowledge={acknowledgeAlert}
-          onDecide={requestCapacity}
         />
       </section>
 
-      {/* ── Tier 3: the four metrics that carry a decision, versus target ── */}
+      {/* ── Band 3: the six headline figures, pinned ────────────────────── */}
+      <section aria-label={t('dashboard.overview.title')}>
+        <SectionTitle
+          as="h2"
+          className="mb-3"
+          eyebrow={t('dashboard.overview.eyebrow')}
+          title={t('dashboard.overview.title')}
+          subtitle={t('dashboard.overview.subtitle')}
+        />
+        <KpiGrid kpis={data?.kpis} loading={booting} spark={spark} savings={savings} />
+      </section>
+
+      {/* ── Band 4: the ranked list of decisions ────────────────────────── */}
+      <section id="triage-queue" className="scroll-mt-[calc(var(--header-height)+1rem)]" aria-label={t('dashboard.triage.title')}>
+        <TriageQueue signals={signals} loading={booting} busy={busy} onAcknowledge={acknowledgeAlert} onDecide={requestCapacity} />
+      </section>
+
+      {/* ── Band 5: the four metrics that carry a decision, versus target ── */}
       <section aria-label={t('dashboard.health.title')}>
         <SectionTitle
+          as="h2"
+          className="mb-3"
           eyebrow={t('dashboard.health.eyebrow')}
           title={t('dashboard.health.title')}
           subtitle={t('dashboard.health.subtitle')}
         />
-        <HealthBoard
-          className="mt-3"
-          metrics={healthMetrics}
-          context={contextMetrics}
-          spark={spark}
-          loading={dashboard.isLoading && !data}
-        />
+        <HealthBoard metrics={healthMetrics} context={contextMetrics} spark={spark} loading={booting} />
       </section>
 
       <Suspense fallback={<Skeleton className="h-14" />}>
         <ActiveRunBanner kpis={data?.kpis} />
       </Suspense>
 
-      {/* ── Tier 4: trends and evidence. Only this tier is rearrangeable. ── */}
+      {/* ── Band 6: trends and evidence. Only this band is rearrangeable. ── */}
       <section aria-label={t('dashboard.analytics.title')}>
         <SectionTitle
+          as="h2"
+          className="mb-3"
           eyebrow={t('dashboard.analytics.eyebrow')}
           title={t('dashboard.analytics.title')}
           subtitle={t('dashboard.analytics.subtitle')}
         />
-        <div className="mt-3">
-          {dashboard.isLoading && !data ? (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Skeleton className="h-64" />
-              <Skeleton className="h-64 lg:col-span-2" />
-            </div>
-          ) : (
-            <Suspense fallback={<RouteFallback variant="dashboard" />}>
-              <WidgetGrid
-                widgets={visible}
-                hidden={hidden}
-                onReset={() => setHiddenIds([])}
-                onToggleHidden={(id, hide) => {
-                  const next = hide ? [...new Set([...hiddenIds, id])] : hiddenIds.filter((item) => item !== id)
-                  setHiddenIds(next)
-                  storage.set('widgets.hidden', next)
-                }}
-              />
-            </Suspense>
-          )}
-        </div>
+        {booting ? (
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-64 lg:col-span-2" />
+          </div>
+        ) : (
+          <Suspense fallback={<RouteFallback variant="dashboard" />}>
+            <WidgetGrid
+              widgets={visible}
+              hidden={hidden}
+              onReset={() => setHiddenIds([])}
+              onToggleHidden={(id, hide) => {
+                const next = hide ? [...new Set([...hiddenIds, id])] : hiddenIds.filter((item) => item !== id)
+                setHiddenIds(next)
+                storage.set('widgets.hidden', next)
+              }}
+            />
+          </Suspense>
+        )}
       </section>
 
       <div className={cn('grid gap-4', 'lg:grid-cols-2')}>

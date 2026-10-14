@@ -30,7 +30,7 @@ primary chart series at runtime without a rebuild.
 | `--text` | `#14213A` | `#EEF3FA` | primary type (15.0:1 light / 14.3:1 dark on the canvas) |
 | `--text-muted` | `#5B6B82` | `#A6B4C8` | secondary type, labels (5.06:1 light / 7.6:1 dark) |
 | `--navy` / `--navy-deep` | `#1E3A5F` / `#122339` | same | **dominant presence**: hero, live badge, active nav pill, KPI strips |
-| `--brand` / `--brand-strong` / `--brand-lighter` | `#3F51B5` / `#33439C` / `#6C7CE0` | `#A5B4FC` / `#8C9DF2` / `#C7D0FB` | refined Indigo for brand **actions** (buttons, focus, selection) — never the dominant presence colour |
+| `--brand` / `--brand-strong` / `--brand-lighter` | `#4F46E5` / `#3730A3` / `#6366F1` | `#818CF8` / `#6D78F6` / `#A5B4FC` | refined Indigo for brand **actions** (buttons, focus, selection) — never the dominant presence colour |
 | `--accent` | `#0D9488` | `#2DD4BF` | **live/telemetry states only**: live dots, pulses, "online" badges. Never body text and never a primary action. |
 | `--orange` | `#F58220` | `#FF9640` | attention accent (fills, strips, live dots; never a text background) |
 | `--success` | `#047857` | `#34D399` | healthy runs |
@@ -45,11 +45,11 @@ primary chart series at runtime without a rebuild.
 > strips. Orange `#F58220` is the attention accent — **fills, strips and live
 > accents only** (white on orange is 2.59:1, so it is never a text background).
 > Teal `#0D9488` stays reserved for live/telemetry states. A refined Indigo
-> `#3F51B5` is allowed for brand *actions* (buttons, focus rings) — Navy must
+> `#4F46E5` is allowed for brand *actions* (buttons, focus rings) — Navy must
 > always dominate the presence. The palette is defined identically in
 > `src/index.css`, `src/design-system/tokens.js`, `tailwind.config.js`,
 > `index.html` (boot screen), the `BrandingProvider` fallbacks and the backend
-> brand defaults (`#3F51B5`).
+> brand defaults (`#4F46E5`).
 > Dark mode: `BrandingProvider` lifts a tenant's brand colour for dark surfaces
 > instead of applying the light value, so an organisation colour never overrides
 > the dark theme with a low-contrast light value.

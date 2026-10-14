@@ -12,7 +12,7 @@ Components: `src/components/ui/` (Radix + CVA, shadcn-style), re-exported by `sr
 | `--border` | `rgba(15, 23, 42, 0.07)` | `rgba(163, 190, 228, 0.14)` | dividers and controls |
 | `--text` / `--text-muted` | `#14213A` / `#5B6B82` | `#EEF3FA` / `#A6B4C8` | primary / secondary text (AA) |
 | `--navy` / `--navy-deep` | `#1E3A5F` / `#122339` | same | **dominant presence**: hero gradient, live badge, active pill, KPI strips |
-| `--brand` / `--brand-strong` | `#3F51B5` / `#33439C` | `#A5B4FC` / `#8C9DF2` | refined Indigo — brand actions only (buttons, focus) |
+| `--brand` / `--brand-strong` | `#4F46E5` / `#3730A3` | `#818CF8` / `#6D78F6` | refined Indigo — brand actions only (buttons, focus) |
 | `--accent` | `#0D9488` | `#2DD4BF` | teal: live / telemetry states only |
 | `--orange` | `#F58220` | `#FF9640` | attention accent (fills, strips, dots — never a text background) |
 | `--success/warning/danger` | `#047857/#B45309/#BE123C` | brightened equivalents | semantic status (AA-safe depths of the plan hues) |

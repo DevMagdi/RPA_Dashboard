@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import check_password_policy, hash_password
-from app.db.repository import fetch_one, fetch_scalar, insert_row
+from app.db.repository import fetch_one, fetch_scalar, insert_row, update_rows
 from app.db.session import dispose_engine, get_engine, session_scope
 from app.db.tables import (
     BotInfrastructure,
@@ -41,6 +41,14 @@ from app.db.tables import (
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "4.1.0"
+
+# Shipped brand identity (Navy · Indigo · Teal · Orange). The SPA tokens
+# (`rpa-dashboard/src/index.css` → `--brand`) and the seeded organization row
+# must always agree, so the value lives here once and is referenced by name.
+DEFAULT_BRAND_PRIMARY = "#4F46E5"
+#: Previously shipped defaults. A row still carrying one of these follows the
+#: new identity on bootstrap; an admin-chosen colour is never rewritten.
+LEGACY_BRAND_PRIMARY = ("#5B21B6",)
 
 # --------------------------------------------------------------------------- #
 # Role → permission matrix (kept in the DB so banks can customise it live)
@@ -107,7 +115,7 @@ def ensure_organization(
     *,
     name: str = "Organization",
     company_name: Optional[str] = None,
-    primary_color: str = "#4F46E5",
+    primary_color: str = DEFAULT_BRAND_PRIMARY,
     accent_color: str = "#0D9488",
     provider: str = "generic_sql",
     locale: str = "en",
@@ -120,6 +128,17 @@ def ensure_organization(
     row = fetch_one(session, "SELECT OrganizationID FROM Organization ORDER BY OrganizationID")
     if row:
         organization_id = int(row["OrganizationID"])
+        # Identity upgrade: an installation still carrying a *seeded* legacy
+        # brand follows the shipped palette. A colour an admin chose on purpose
+        # is never touched — only the exact previous defaults are rewritten.
+        upgraded = update_rows(
+            session,
+            Organization,
+            {"BrandPrimaryColor": primary_color},
+            [Organization.OrganizationID == organization_id, Organization.BrandPrimaryColor.in_(LEGACY_BRAND_PRIMARY)],
+        )
+        if upgraded:
+            logger.info("Organization brand upgraded to %s (id=%s)", primary_color, organization_id)
     else:
         organization_id = insert_row(
             session,

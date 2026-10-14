@@ -183,34 +183,83 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     assert "if (theme === 'system') theme = 'light'" in html
 
 
-def test_hybrid_control_room_tokens_and_top_nav_are_wired():
-    """Hybrid plan: navy presence (#1E3A5F/#122339), orange signal, teal live-only,
-    premium radii, top pill nav and the live bots badge."""
+def test_control_room_palette_is_navy_indigo_teal_orange_everywhere():
+    """Identity contract: one locked palette in the CSS tokens, the JS tokens,
+    the boot screen and the seeded backend brand — Navy presence · refined
+    Indigo actions · Teal live-only · Orange accents.
+
+    The violet identity (``#5B21B6`` on a ``#F8F5FF`` canvas) was replaced
+    wholesale; a single leftover hex is enough to make the sidebar, the top bar
+    and the charts disagree with each other, so every source is asserted.
+    """
     css = (SRC / "index.css").read_text(encoding="utf-8")
     tokens = (SRC / "design-system" / "tokens.js").read_text(encoding="utf-8")
+    html = (FRONTEND / "index.html").read_text(encoding="utf-8")
+    tailwind = (FRONTEND / "tailwind.config.js").read_text(encoding="utf-8")
+    branding = (SRC / "context" / "BrandingProvider.jsx").read_text(encoding="utf-8")
+    bootstrap = (REPO_ROOT / "app" / "db" / "bootstrap.py").read_text(encoding="utf-8")
+
+    root_block = css[css.index(":root {") : css.index(".dark {")]
+    dark_block = css[css.index(".dark {") :]
+    for declaration in (
+        "--bg: #f5f7fb;",
+        "--surface-2: #f8fafc;",
+        "--text: #14213a;",
+        "--text-muted: #5b6b82;",
+        "--brand: #4f46e5;",
+        "--brand-strong: #3730a3;",
+        "--brand-lighter: #6366f1;",
+        "--navy: #1e3a5f;",
+        "--navy-deep: #122339;",
+        "--accent: #0d9488;",
+        "--orange: #f58220;",
+        "--hero-from: #122339;",
+        "--hero-mid: #1e3a5f;",
+        "--hero-to: #0d9488;",
+        "--strip-navy: #1e3a5f;",
+        "--strip-indigo: #4f46e5;",
+        "--strip-teal: #14b8a6;",
+        "--chart-1: #1e3a5f;",
+        "--border: rgba(15, 23, 42, 0.07);",
+        "--radius-card: 1.25rem;",
+        "--radius-ctrl: 0.75rem;",
+    ):
+        assert declaration in root_block, declaration
+    for declaration in ("--bg: #0f1a2e;", "--surface: #152238;", "--brand: #818cf8;", "--hero-to: #0d9488;"):
+        assert declaration in dark_block, declaration
+
+    # The JS mirror (charts, canvas, tests) carries the same palette.
+    assert "navy: '#1E3A5F'" in tokens and "brand: '#4F46E5'" in tokens
+    assert "orange: '#F58220'" in tokens and "accent: '#0D9488'" in tokens
+
+    # First paint agrees with the app: boot canvas, spinner and theme-color.
+    assert 'content="#F5F7FB"' in html and "background: #f5f7fb;" in html
+    assert "border-top-color: #1e3a5f;" in html  # navy presence on the boot spinner
+
+    # The locked hero gradient is assembled from its stop tokens (45% mid, teal end).
+    assert "background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);" in css
+    assert "'hero-gradient'" in tailwind and "'navy-gradient'" in tailwind
+
+    # The backend seeds the same brand the SPA falls back to.
+    assert "DEFAULT_PRIMARY = '#4F46E5'" in branding
+    assert 'DEFAULT_BRAND_PRIMARY = "#4F46E5"' in bootstrap
+
+    # No violet leftover anywhere in the shipped sources.  ``#a78bfa`` stays out
+    # of the list on purpose: it is the target palette's *dark-mode* chart-6 hue,
+    # not part of the retired light-mode identity.
+    for path in (SRC / "index.css", SRC / "design-system" / "tokens.js", FRONTEND / "index.html"):
+        body = path.read_text(encoding="utf-8").lower()
+        for violet in ("#5b21b6", "#4c1d95", "#7c3aed", "#2e1065", "#1e0b3a", "#f8f5ff", "#0b0618", "#6d28d9", "#6b5b8a"):
+            assert violet not in body, f"{path.name} still carries {violet}"
+
+    assert ".kpi-strip" in css and ".nav-pill-active" in css and ".live-badge" in css
+
+def test_top_nav_and_collapsed_rail_stay_wired_to_the_shell():
+    """Primary navigation is the centred pill; the sidebar is a collapsed rail."""
     topbar = (SRC / "components" / "layout" / "TopBar.jsx").read_text(encoding="utf-8")
     top_nav = (SRC / "components" / "layout" / "TopNav.jsx").read_text(encoding="utf-8")
     shell = (SRC / "components" / "layout" / "AppShell.jsx").read_text(encoding="utf-8")
 
-    root_block = css[css.index(":root {") : css.index(".dark {")]
-    for declaration in (
-        "--navy: #1e3a5f;",
-        "--navy-deep: #122339;",
-        "--orange: #f58220;",
-        "--radius-card: 1.25rem;",
-        "--radius-ctrl: 0.75rem;",
-        "--hero-from: #122339;",
-        "--hero-mid: #1e3a5f;",
-        "--hero-to: #0d9488;",
-    ):
-        assert declaration in root_block, declaration
-    assert "--bg: #f5f7fb;" in root_block
-    assert "--text-muted: #5b6b82;" in root_block
-    assert "navy: '#1E3A5F'" in tokens and "orange: '#F58220'" in tokens
-    assert "background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);" in css
-    assert ".kpi-strip" in css and ".nav-pill-active" in css and ".live-badge" in css
-
-    # Primary navigation is the centred pill; the sidebar becomes a collapsed rail by default.
     assert "<TopNav />" in topbar and "BotsOnlineBadge" in topbar
     assert "useConnectedAgents({ refetchInterval: 30_000 })" in topbar  # shared hook, real API
     assert "PRIMARY_NAV_IDS = ['dashboard', 'processes', 'runs', 'alerts', 'capacity']" in top_nav
@@ -234,6 +283,32 @@ def test_command_hero_layers_and_min_height_follow_the_redesign_plan():
         assert z in block[: block.index("}")], layer
     # Desktop two-column hero: the gauge gains its breathing room from 1280px up.
     assert "@media (min-width: 1280px)" in css[css.index(".command-hero__visual") - 400 : css.index(".command-hero__visual") + 400]
+
+
+def test_global_header_is_a_single_row():
+    """The header's second "first-run affordance" row is gone for good.
+
+    It repeated what the command palette and the dashboard tour already say, on
+    every screen, at every scroll position — and it pushed the data down by a
+    row on wide displays. With one row the bar keeps its height on every
+    breakpoint, so the sticky dashboard toolbar never jumps.
+    """
+    topbar = (SRC / "components" / "layout" / "TopBar.jsx").read_text(encoding="utf-8")
+    top_nav = (SRC / "components" / "layout" / "TopNav.jsx").read_text(encoding="utf-8")
+
+    assert "onboarding.tourHint" not in topbar
+    assert "nav.commandHint" not in topbar
+    assert topbar.count("<header") == 1
+    # the dead copy is removed from *both* bundles (parity is enforced below)
+    for language in ("en", "ar"):
+        assert "tourHint" not in _translations(language)["onboarding"]
+        assert "commandHint" not in _translations(language)["nav"]
+    # a single row means the labels can come back one breakpoint earlier
+    assert "xl:not-sr-only" in top_nav and "2xl:not-sr-only" not in top_nav
+    assert "xl:inline" in topbar
+    # the sticky offset is still measured, never guessed
+    assert "--header-height" in topbar and "ResizeObserver" in topbar
+
 
 
 def test_locked_hybrid_palette_and_kpi_identity_map():
@@ -291,6 +366,14 @@ def test_dashboard_leads_with_a_pinned_decision_tier():
     assert "buildOpsSignals" in page and "buildHealthMetrics" in page
     assert page.index("signals={signals}") < page.index("<TriageQueue") < page.index("<HealthBoard")
     assert page.index("<HealthBoard") < page.index("<WidgetGrid")
+
+    # Classic banded layout: toolbar → hero → KPI row → decisions.
+    assert page.index("<DashboardToolbar") < page.index("<CommandCenterHero") < page.index("<KpiGrid")
+    assert page.index("<CommandCenterHero") < page.index("<TriageQueue")
+    kpi_grid = (SRC / "components" / "dashboard" / "KpiGrid.jsx").read_text(encoding="utf-8")
+    assert "kpi-strip" in kpi_grid and "var(--strip-" in kpi_grid
+    toolbar = (SRC / "components" / "dashboard" / "DashboardToolbar.jsx").read_text(encoding="utf-8")
+    assert "sticky top-[var(--header-height)]" in toolbar
 
     # The decision tier is pinned: the draggable grid holds analytics only.
     assert "{ i: 'kpis'" not in constants

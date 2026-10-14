@@ -52,7 +52,7 @@ def _send_slack(webhook: str, subject: str, body: str, severity: str) -> tuple[b
     """Post a Block-Kit message to a Slack incoming webhook."""
     import httpx
 
-    colour = {"Critical": "#EF4444", "Warning": "#F37920", "Info": "#4B367C"}.get(severity, "#4B367C")
+    colour = {"Critical": "#EF4444", "Warning": "#F58220", "Info": "#4F46E5"}.get(severity, "#1E3A5F")
     payload = {
         "text": f"[{severity}] {subject}",
         "attachments": [
@@ -83,7 +83,7 @@ def _send_teams(webhook: str, subject: str, body: str, severity: str) -> tuple[b
     payload = {
         "@type": "MessageCard",
         "@context": "https://schema.org/extensions",
-        "themeColor": {"Critical": "EF4444", "Warning": "F37920", "Info": "4B367C"}.get(severity, "4B367C"),
+        "themeColor": {"Critical": "EF4444", "Warning": "F58220", "Info": "4F46E5"}.get(severity, "1E3A5F"),
         "summary": subject,
         "title": subject,
         "text": body,
@@ -115,8 +115,8 @@ def _send_email(recipients: List[str], subject: str, body: str, severity: str) -
     message.add_alternative(
         f"""
         <html><body style="font-family:Segoe UI,Arial,sans-serif;color:#1e293b">
-          <div style="border-left:4px solid #F37920;padding:12px 18px;background:#f8fafc">
-            <h2 style="margin:0 0 6px;color:#4B367C">{subject}</h2>
+          <div style="border-left:4px solid #F58220;padding:12px 18px;background:#f8fafc">
+            <h2 style="margin:0 0 6px;color:#1E3A5F">{subject}</h2>
             <p style="margin:0 0 12px;font-size:12px;color:#64748b">Severity: <b>{severity}</b></p>
             <pre style="white-space:pre-wrap;font-size:13px">{body}</pre>
           </div>

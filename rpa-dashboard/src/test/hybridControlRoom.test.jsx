@@ -5,8 +5,8 @@
  *    other module the user may open into "More" — permission-aware, active
  *    state on the current module;
  *  • the navy "bots online" badge reads the live connected-agent count;
- *  • the hero exposes an accessible success gauge;
- *  • the hero leads with the operational verdict and its tone is token-driven.
+ *  • the status panel exposes an accessible success gauge;
+ *  • the panel leads with the operational verdict and its tone is token-driven.
  */
 import { render, screen, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
@@ -117,11 +117,11 @@ describe('navy bots-online badge', () => {
   })
 })
 
-describe('hybrid hero, verdict and KPI strip', () => {
+describe('hybrid status panel, verdict and KPI strip', () => {
   it('exposes the success rate as an accessible gauge', () => {
     render(
       <MemoryRouter>
-        <CommandCenterHero kpis={kpis} successRate={98.4} spark={spark} savings={savings} slaRisk={0} onRefresh={vi.fn()} onOpenTour={vi.fn()} />
+        <CommandCenterHero successRate={98.4} spark={spark} savings={savings} />
       </MemoryRouter>,
     )
     const gauge = screen.getByRole('img', { name: `${en.dashboard.hero.successGauge}: 98.4%` })
@@ -139,7 +139,7 @@ describe('hybrid hero, verdict and KPI strip', () => {
 
     const { container } = render(
       <MemoryRouter>
-        <CommandCenterHero kpis={kpis} successRate={84.6} spark={spark} savings={savings} slaRisk={1} signals={degraded} onRefresh={vi.fn()} onOpenTour={vi.fn()} />
+        <CommandCenterHero successRate={84.6} spark={spark} savings={savings} signals={degraded} />
       </MemoryRouter>,
     )
 
@@ -167,7 +167,7 @@ describe('hybrid hero, verdict and KPI strip', () => {
 
     const { container } = render(
       <MemoryRouter>
-        <CommandCenterHero kpis={kpis} successRate={99.2} spark={spark} savings={savings} slaRisk={0} signals={clean} onRefresh={vi.fn()} onOpenTour={vi.fn()} />
+        <CommandCenterHero successRate={99.2} spark={spark} savings={savings} signals={clean} />
       </MemoryRouter>,
     )
     expect(container.querySelector('.command-hero__verdict.is-healthy')).toBeTruthy()

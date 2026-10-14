@@ -14,8 +14,6 @@ import {
   Check,
   ChevronRight,
   ChevronsUpDown,
-  Command as CommandIcon,
-  HelpCircle,
   Keyboard,
   Languages,
   LogOut,
@@ -25,7 +23,6 @@ import {
   Search,
   Settings as SettingsIcon,
   ShieldCheck,
-  Sparkles,
   Sun,
 } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -89,7 +86,7 @@ export function BotsOnlineBadge() {
         {count > 0 ? <span className="live-dot absolute inset-0" style={{ color: 'var(--strip-green)' }} /> : null}
       </span>
       <span>{count}</span>
-      <span className="hidden font-medium opacity-80 2xl:inline">{t('shell.botsOnline', { count })}</span>
+      <span className="hidden font-medium opacity-80 xl:inline">{t('shell.botsOnline', { count })}</span>
     </span>
   )
 }
@@ -322,7 +319,6 @@ function UserMenu({ onOpenMfa, onOpenShortcuts }) {
 
 export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts, onOpenMfa }) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const isMobile = useIsMobile()
   const { toggleTheme, isDark } = useTheme()
   const { branding, companyName } = useBranding()
@@ -416,26 +412,6 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
           <span className="mx-0.5 hidden h-5 w-px bg-border/80 sm:block" aria-hidden />
           <UserMenu onOpenMfa={onOpenMfa} onOpenShortcuts={onOpenShortcuts} />
         </div>
-      </div>
-
-      {/* First-run affordance: the welcome banner links straight into the tour. */}
-      <div className="hidden items-center gap-2 border-t border-border/60 px-5 py-1.5 text-[11px] text-muted xl:flex">
-        <Sparkles className="h-3 w-3 text-brand" aria-hidden />
-        <span className="truncate">{t('onboarding.tourHint')}</span>
-        <span className="ms-auto inline-flex items-center gap-3">
-          <span className="inline-flex items-center gap-1">
-            <CommandIcon className="h-3 w-3" aria-hidden />
-            {t('nav.commandHint')}
-          </span>
-          <button
-            type="button"
-            onClick={() => navigate('/settings')}
-            className="focus-ring inline-flex items-center gap-1 rounded text-muted transition-colors hover:text-brand"
-          >
-            <HelpCircle className="h-3 w-3" aria-hidden />
-            {t('common.help')}
-          </button>
-        </span>
       </div>
     </header>
   )

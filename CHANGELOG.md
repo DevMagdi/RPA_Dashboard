@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased — Hybrid Premium Control Room (v7): navy hero + banded dashboard
+
+Three asks, one release: make **every** colour match the Navy · Indigo · Teal ·
+Orange identity, delete the header's second row, and re-lay the dashboard as a
+classic BI screen — while keeping the **navy command hero** the spec locks in.
+This reconciles the "status panel" direction (which replaced the hero with a
+light card and drifted from the locked gradient) back onto the exact spec, and
+keeps everything useful that came with it.
+
+- **Palette (everywhere)**: light canvas `#F5F7FB`, surface `#FFFFFF`/`#F8FAFC`,
+  text `#14213A` / muted `#5B6B82`, brand Deep Indigo `#4F46E5`
+  (`--brand-strong #3730A3`, `--brand-lighter #6366F1`), navy anchor `#1E3A5F` /
+  `#122339`, accent Electric Teal `#0D9488`, attention Orange `#F58220`; dark
+  canvas `#0F1A2E`, surfaces `#152238`/`#1B2A44`/`#223556`, brand `#818CF8`,
+  text `#EFF5FF`. One palette in six places that must never disagree:
+  `src/index.css`, `src/design-system/tokens.js`, `tailwind.config.js`,
+  `index.html` (boot screen + `theme-color`), the `BrandingProvider` fallbacks
+  and the backend defaults. Border locked at `rgba(15,23,42,0.07)`.
+- **Backend brand follows**: `bootstrap.DEFAULT_BRAND_PRIMARY = "#4F46E5"`,
+  `tables.Organization.BrandPrimaryColor` server default, the
+  `organization_service` / `export_service` fallbacks and the Teams/Slack/email
+  notification colours all moved off violet. An installation still carrying the
+  *seeded* violet default is upgraded on boot; a colour an admin chose on
+  purpose is never rewritten (`LEGACY_BRAND_PRIMARY`).
+- **Header is one row** (`TopBar`, `TopNav`): the second "first-run affordance"
+  row (tour hint + `Ctrl+K` hint + help) is gone — it repeated what the command
+  palette and the dashboard tour already say, on every screen, at every scroll
+  position. The dead keys (`onboarding.tourHint`, `nav.commandHint`) were removed
+  from **both** locale bundles, and the labels now un-hide one breakpoint earlier
+  (`xl:not-sr-only`) because the row is shorter.
+- **Navy command hero stays** (`.command-hero`, spec-locked): full-bleed
+  `linear-gradient(135deg, #122339 0%, #1E3A5F 45%, #0D9488 100%)` with a
+  tokenised contrast scrim, time-aware greeting + one context line, large SVG
+  success gauge, full-width 14-day sparkline, a five-KPI command strip on
+  identity strips (`kpiTones`: totalProcedures navy · running orange · costSaved
+  teal · runsToday green · timeSaved indigo), Refresh/Export/Tour inside the
+  hero, and local token overrides so the strips stay legible on the gradient.
+- **Classic banded dashboard** (`DashboardPage`): seven titled bands read top to
+  bottom — toolbar → command hero → KPI row → decisions → health → active run →
+  analytics → departments. New `DashboardToolbar` (sticky at `--header-height`,
+  owns the page's only `h1`, carries the scope chips, live chip, server clock,
+  refresh, export, tour and every filter) and `KpiGrid` (six `.kpi-strip` cards,
+  pinned, never draggable). Only the analytics band uses `WidgetGrid`.
+- **Docs**: `docs/DESIGN_SYSTEM.md` and `src/design-system/DESIGN_SYSTEM.md`
+  for the locked palette; `docs/HYBRID_UI_PLAN_AR.md` is the plan + honest
+  audit (incl. the reconciliation with the "status panel" direction in §6);
+  `docs/UI_NAVY_REDESIGN_PLAN_AR.md` kept as history with a supersession note.
+- **Tests**: frontend `npm test` 119 passed — hero suites restored
+  (`commandCenterHero`, `hybridControlRoom`) alongside `dashboardToolbar` (8)
+  and `dashboardLayout` (5, adapted to hero-first order); the light-panel suite
+  (`statusPanel`) is gone with its premise. Backend contracts lock the palette
+  hexes in all six sources, the single-row header, the hero layer stack and the
+  band order (`test_control_room_palette_is_navy_indigo_teal_orange_everywhere`,
+  `test_global_header_is_a_single_row`,
+  `test_command_hero_layers_and_min_height_follow_the_redesign_plan`).
+  `npm run lint` 0/0; `verify_contrast.mjs` 73/73 (incl. the hero scrim).
+
 ## Unreleased — Decision-first dashboard (v5): verdict, triage queue, health board
 
 The dashboard rendered metrics; it did not support decisions. Every signal an
