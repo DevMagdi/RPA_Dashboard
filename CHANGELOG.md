@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Design System v5 "Premium" (UI rebuild on 4.1.0 backend)
+
+- **Formal Design System** (`rpa-dashboard/src/design-system/`): machine-readable
+  tokens (Light `#F8FAFC`/white surfaces, Indigo `#4F46E5`, Teal `#0D9488`,
+  semantic + Dark palettes, 4-pt spacing, 0.75–1rem radius, soft shadows,
+  Inter/Cairo Variable, Framer Motion presets) mirrored 1:1 in CSS variables,
+  plus `DESIGN_SYSTEM.md`. Still single-tenant, On-Premises only.
+- **Components**: Button gains `destructive`, new RTL-aware `Drawer`, premium
+  gradient `SectionTitle`/page headers applied to every screen; existing
+  Button/Card/Badge/Input/Table/Modal/Skeleton/EmptyState/Toast/Sidebar/
+  TopBar/Command Palette (Ctrl+K) contracts unchanged for all pages.
+- **Tests**: new `design-system.test.jsx` (tokens, variants, Drawer, Arabic
+  `????`-freedom, ar/en key parity). Frontend 52/52, backend suite green
+  (coverage gate 80%), production build ~1.1 s, entry chunk ~59 kB,
+  Dashboard chunk ~19 kB (charts lazy).
+
+
 
 ## 4.1.0 — "Private Operations" (2026-10-14)
 

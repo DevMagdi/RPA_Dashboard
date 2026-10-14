@@ -252,9 +252,13 @@ export function SectionTitle({ title, subtitle, actions, className, eyebrow, bre
       <div className="min-w-0">
         {breadcrumb ? <div className="mb-1.5 flex items-center gap-1.5 text-2xs text-muted">{breadcrumb}</div> : null}
         {eyebrow ? <p className="mb-1.5 text-2xs font-semibold tracking-[0.16em] text-brand uppercase">{eyebrow}</p> : null}
-        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-[-0.02em] text-text sm:text-2xl">
-          {Icon ? <Icon className="h-5 w-5 text-brand" aria-hidden /> : null}
-          {title}
+        <h1 className="flex items-center gap-3 text-xl font-semibold tracking-[-0.02em] text-text sm:text-2xl">
+          {Icon ? (
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-gradient text-brand-fg shadow-glow" aria-hidden>
+              <Icon className="h-5 w-5" />
+            </span>
+          ) : null}
+          <span className="min-w-0">{title}</span>
         </h1>
         {subtitle ? <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">{subtitle}</p> : null}
       </div>
