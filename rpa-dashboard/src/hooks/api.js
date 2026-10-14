@@ -331,11 +331,12 @@ export function useRealtimeSnapshot() {
   })
 }
 
-export function useConnectedAgents() {
+export function useConnectedAgents({ refetchInterval } = {}) {
   return useQuery({
     queryKey: ['agents', 'connected'],
     queryFn: () => api.get('/api/agents/connected'),
     staleTime: 10_000,
+    refetchInterval,
   })
 }
 

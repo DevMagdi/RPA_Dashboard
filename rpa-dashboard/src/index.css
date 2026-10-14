@@ -51,25 +51,26 @@
   color-scheme: light;
 
   /* — surfaces & ink (Premium command-center palette) ———— */
-  --bg: #f1f5fb;
-  --bg-soft: #f1f5f9;
-  --bg-deep: #e8edf4;
+  --bg: #f5f7fb;
+  --bg-soft: #eef2f8;
+  --bg-deep: #e6ecf5;
   --surface: #ffffff;
   --surface-2: #f8fafc;
   --surface-3: #f1f5f9;
-  --surface-sunken: #e9eef5;
+  --surface-sunken: #eaf0f7;
 
   /* fixed background mesh — static radial depth, never animated */
-  --mesh-1: rgba(79, 70, 229, 0.1);
-  --mesh-2: rgba(13, 148, 136, 0.08);
+  --mesh-1: rgba(79, 70, 229, 0.12);
+  --mesh-2: rgba(13, 148, 136, 0.1);
 
   --border: rgba(15, 23, 42, 0.06);
   --border-strong: rgba(15, 23, 42, 0.12);
   --border-soft: rgba(15, 23, 42, 0.035);
+  --line: rgba(100, 116, 139, 0.16);
 
-  --text: #0f172a;
+  --text: #14213a;
   --text-soft: #334155;
-  --text-muted: #5d6c85; /* AA (≥4.5:1) on the #F1F5FB canvas */
+  --text-muted: #5b6b82; /* AA (≥4.5:1) on the #F5F7FB canvas — 5.06:1 */
 
   /* — brand (Deep Indigo) ———————————————————————————————— */
   --brand: #4f46e5;
@@ -79,11 +80,33 @@
   --brand-ring: rgba(79, 70, 229, 0.38);
   --brand-fg: #ffffff;
 
+  /* Navy — the "control room" anchor colour (hero, live badge, KPI strip). */
+  --navy: #1e3a5f;
+  --navy-deep: #122339;
+  --navy-fg: #ffffff;
+  --hero-from: #122339;
+  --hero-mid: #1e3a5f;
+  --hero-to: #0d9488;
+
   /* — accent (Electric Teal) ————————————————————————————————— */
   --accent: #0d9488;
   --accent-strong: #0f766e;
   --accent-soft: rgba(13, 148, 136, 0.11);
   --accent-fg: #ffffff;
+
+  /* Orange — live / attention signal (fills, strips, dots; never body text). */
+  --orange: #f58220;
+  --orange-soft: rgba(245, 130, 32, 0.14);
+  --orange-fg: #14213a;
+
+  /* KPI strip tones — bright fills for bars & dots (AA text uses the semantic tokens). */
+  --strip-navy: #1e3a5f;
+  --strip-indigo: #4f46e5;
+  --strip-green: #10b981;
+  --strip-orange: #f58220;
+  --strip-blue: #3b82f6;
+  --strip-teal: #0d9488;
+  --strip-red: #ef4444;
 
   /* — semantics ————————————————————————————————————— */
   --success: #047857;
@@ -129,8 +152,8 @@
   /* — elevation (soft / elevated / pop — two-layer: contact + ambient) — */
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.08);
-  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 12px 28px -14px rgba(15, 23, 42, 0.1);
-  --shadow-elevated: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 20px 40px -20px rgba(15, 23, 42, 0.18);
+  --shadow-card: 0 1px 2px rgba(20, 33, 58, 0.04), 0 12px 34px rgba(20, 33, 58, 0.06);
+  --shadow-elevated: 0 2px 6px rgba(20, 33, 58, 0.06), 0 22px 50px rgba(30, 58, 95, 0.16);
   --shadow-pop: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 24px 52px -24px rgba(15, 23, 42, 0.24);
   --shadow-modal: 0 4px 8px rgba(15, 23, 42, 0.06), 0 40px 80px -32px rgba(15, 23, 42, 0.45);
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
@@ -143,7 +166,8 @@
   /* — geometry & motion ————————————————————————————— */
   --radius: 1rem;
   --radius-sm: 0.75rem;
-  --radius-card: 1.125rem;
+  --radius-ctrl: 0.75rem;
+  --radius-card: 1.25rem;
   --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
@@ -164,17 +188,18 @@
 .dark {
   color-scheme: dark;
 
-  --bg: #020617;
-  --bg-soft: #0b1120;
-  --bg-deep: #010409;
-  --surface: #0f172a;
-  --surface-2: #131c31;
-  --surface-3: #1b2741;
-  --surface-sunken: #0b1120;
+  --bg: #0f1a2e;
+  --bg-soft: #0b1424;
+  --bg-deep: #08101e;
+  --surface: #152238;
+  --surface-2: #1b2a44;
+  --surface-3: #223556;
+  --surface-sunken: #0b1424;
 
   --border: rgba(255, 255, 255, 0.07);
   --border-strong: rgba(255, 255, 255, 0.14);
   --border-soft: rgba(255, 255, 255, 0.045);
+  --line: rgba(148, 163, 184, 0.2);
 
   --mesh-1: rgba(129, 140, 248, 0.13);
   --mesh-2: rgba(45, 212, 191, 0.09);
@@ -190,10 +215,29 @@
   --brand-ring: rgba(129, 140, 248, 0.5);
   --brand-fg: #0b1220;
 
+  --navy: #1e3a5f;
+  --navy-deep: #122339;
+  --navy-fg: #ffffff;
+  --hero-from: #0a1626;
+  --hero-mid: #1e3a5f;
+  --hero-to: #0f766e;
+
   --accent: #2dd4bf;
   --accent-strong: #14b8a6;
   --accent-soft: rgba(45, 212, 191, 0.15);
   --accent-fg: #04211d;
+
+  --orange: #f58220;
+  --orange-soft: rgba(245, 130, 32, 0.18);
+  --orange-fg: #1a0f05;
+
+  --strip-navy: #7da3d6;
+  --strip-indigo: #818cf8;
+  --strip-green: #34d399;
+  --strip-orange: #f58220;
+  --strip-blue: #60a5fa;
+  --strip-teal: #2dd4bf;
+  --strip-red: #f87171;
 
   --success: #34d399;
   --success-strong: #10b981;
@@ -353,7 +397,7 @@ h4 {
       linear-gradient(90deg, color-mix(in srgb, var(--border-soft) 60%, transparent) 1px, transparent 1px);
     background-size: 46px 46px;
     mask-image: radial-gradient(ellipse 120% 90% at 50% 0%, black 12%, transparent 78%);
-    opacity: 0.5;
+    opacity: 0.28;
   }
 
   /* --------------------------------------------------------------- glass */
@@ -530,30 +574,34 @@ h4 {
     }
   }
 
-  /* ---------------------------------------------------------- hero panel */
+  /* ---------------------------------------------------------- hero panel
+     Hybrid plan: full-width Navy → Indigo/Teal gradient with white type. The
+     hero re-declares its text / surface / border tokens locally, so every
+     child (chips, KPI tiles, eyebrow, activity ticker) adapts without forks. */
   .command-hero {
+    --text: #ffffff;
+    --text-soft: rgba(255, 255, 255, 0.88);
+    --text-muted: rgba(219, 232, 255, 0.74);
+    --surface: #0a1a2f;
+    --surface-2: #10233b;
+    --border: rgba(255, 255, 255, 0.16);
+    --border-strong: rgba(255, 255, 255, 0.26);
+
     position: relative;
     isolation: isolate;
     overflow: hidden;
     min-height: 268px;
-    border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--border));
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 1.75rem;
-    background: linear-gradient(
-      118deg,
-      color-mix(in srgb, var(--surface) 96%, var(--brand)) 0%,
-      color-mix(in srgb, var(--surface) 97%, var(--brand-lighter)) 46%,
-      color-mix(in srgb, var(--surface) 96%, var(--accent)) 100%
-    );
-    box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);
+    box-shadow: 0 24px 60px -30px rgba(18, 35, 57, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   }
   .dark .command-hero {
-    background: linear-gradient(
-      118deg,
-      color-mix(in srgb, var(--surface) 94%, var(--brand)) 0%,
-      color-mix(in srgb, var(--surface) 95%, #1b1440) 46%,
-      color-mix(in srgb, var(--surface) 94%, #072a2b) 100%
-    );
-    box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-shadow: 0 28px 64px -32px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .command-hero__kpi { backdrop-filter: none; }
   }
 
   .command-hero__aurora {
@@ -561,7 +609,7 @@ h4 {
     inset: -40% -10%;
     z-index: 0;
     filter: blur(48px);
-    opacity: 0.62;
+    opacity: 0.4;
     pointer-events: none;
     background:
       radial-gradient(38% 44% at 18% 26%, color-mix(in srgb, var(--brand) 42%, transparent), transparent 70%),
@@ -601,15 +649,16 @@ h4 {
   }
 
   .command-hero__eyebrow {
+    color: #ccfbf1;
+    border-color: rgba(204, 251, 241, 0.34);
+    background: rgba(255, 255, 255, 0.1);
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     min-height: 1.85rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border: 1px solid rgba(204, 251, 241, 0.34);
     border-radius: 999px;
     padding: 0.3rem 0.75rem;
-    color: color-mix(in srgb, var(--accent) 78%, var(--text));
-    background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
     font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.03em;
@@ -648,7 +697,7 @@ h4 {
     border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
     border-radius: 1rem;
     padding: 0.75rem 0.9rem 0.8rem;
-    background: color-mix(in srgb, var(--surface) 66%, transparent);
+    background: color-mix(in srgb, var(--surface) 46%, transparent);
     backdrop-filter: blur(8px);
     transition: transform 220ms var(--ease-premium), border-color 220ms ease, background-color 220ms ease,
       box-shadow 220ms ease;
@@ -656,7 +705,7 @@ h4 {
   .command-hero__kpi:hover {
     transform: translateY(-3px);
     border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
     box-shadow: var(--shadow-elevated);
   }
 
@@ -817,6 +866,68 @@ h4 {
     border-radius: 999px;
     background: currentColor;
     animation: pulse-ring 2.4s var(--ease-premium) infinite;
+  }
+
+  /* ------------------------------------------- hybrid control-room utilities */
+  /* Premium card: 20px radius, two-layer shadow, hairline border. */
+  .card-premium {
+    @apply border border-border bg-surface shadow-card;
+    border-radius: var(--radius-card);
+  }
+
+  /* 4px coloured strip across the top edge of a KPI card (tone via --strip). */
+  .kpi-strip {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 4px;
+    background: var(--strip, var(--brand));
+    pointer-events: none;
+  }
+
+  /* Active top-pill item: indigo gradient + soft glow (Hybrid plan). */
+  .nav-pill-active {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--brand-strong) 0%, var(--brand) 100%);
+    box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--brand) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  /* Navy live badge in the top bar: "● N bots online". */
+  .live-badge {
+    background: linear-gradient(135deg, var(--navy-deep) 0%, var(--navy) 100%);
+    color: var(--navy-fg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 6px 16px -10px rgba(18, 35, 57, 0.8);
+  }
+
+  /* Hero success gauge (SVG ring) — track & progress use tokens. */
+  .command-hero__gauge-track {
+    stroke: rgba(255, 255, 255, 0.16);
+  }
+  .command-hero__gauge-value {
+    stroke: #5eead4;
+    transition: stroke-dashoffset 900ms var(--ease-premium);
+  }
+  .command-hero__link {
+    color: #c7d2fe;
+  }
+  /* Semantic text inside the navy hero: lifted tints keep AA on the dark gradient. */
+  .command-hero .text-brand {
+    color: #c7d2fe;
+  }
+  .command-hero .text-success {
+    color: #6ee7b7;
+  }
+  .command-hero .text-warning {
+    color: #fcd34d;
+  }
+  .command-hero .text-danger {
+    color: #fca5a5;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .command-hero__gauge-value {
+      transition: none;
+    }
   }
 }
 

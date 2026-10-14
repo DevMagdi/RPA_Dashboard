@@ -33,6 +33,8 @@ export default {
         border: { DEFAULT: 'var(--border)', strong: 'var(--border-strong)', soft: 'var(--border-soft)' },
         text: { DEFAULT: 'var(--text)', soft: 'var(--text-soft)' },
         muted: { DEFAULT: 'var(--text-muted)', foreground: 'var(--text-muted)', surface: 'var(--surface-2)' },
+        navy: { DEFAULT: 'var(--navy)', deep: 'var(--navy-deep)', fg: 'var(--navy-fg)' },
+        orange: { DEFAULT: 'var(--orange)', soft: 'var(--orange-soft)', fg: 'var(--orange-fg)' },
         brand: {
           DEFAULT: 'var(--brand)',
           strong: 'var(--brand-strong)',

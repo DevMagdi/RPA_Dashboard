@@ -51,7 +51,9 @@ export default function AppShell() {
   const isMobile = useIsMobile()
   const { has, user } = useAuth()
   const { branding, companyName } = useBranding()
-  const [collapsed, setCollapsed] = usePersistentState('shell.collapsed', false)
+  // Hybrid layout: the centred top pill is the primary navigation, so the sidebar
+  // rail starts collapsed on desktop. Users who expand it keep their choice.
+  const [collapsed, setCollapsed] = usePersistentState('shell.collapsed', true)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mfaOpen, setMfaOpen] = useState(false)

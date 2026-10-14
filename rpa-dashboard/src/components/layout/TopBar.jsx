@@ -35,13 +35,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthProvider'
 import { useBranding } from '../../context/BrandingProvider'
 import { useTheme } from '../../context/ThemeProvider'
-import { useAlertCount, useAlerts } from '../../hooks/api'
+import { useAlertCount, useAlerts, useConnectedAgents } from '../../hooks/api'
 import { useIsMobile, useRealtimeStatus, useTicker } from '../../hooks/ui'
 import { applyLanguage, currentLanguage, LANGUAGES } from '../../i18n'
 import { relative, severityColor } from '../../lib/format'
 import { matchRoute, ROUTE_SECTIONS } from '../../lib/routeMeta'
 import { cn } from '../../lib/utils'
 import { Badge, Button, DropdownItem, DropdownLabel, DropdownMenu, DropdownSeparator, Kbd, Popover, Tooltip } from '../ui'
+import TopNav from './TopNav'
 
 export function LivePill() {
   const { t } = useTranslation()
@@ -65,6 +66,31 @@ export function LivePill() {
         {label}
       </span>
     </Tooltip>
+  )
+}
+
+/**
+ * Navy "bots online" badge — the live count of connected automation agents,
+ * read from the real `/api/agents/connected` inventory (refreshed every 30s).
+ */
+export function BotsOnlineBadge() {
+  const { t } = useTranslation()
+  const { data } = useConnectedAgents({ refetchInterval: 30_000 })
+  const count = Number(data?.count) || 0
+  return (
+    <span
+      className="live-badge hidden h-8 shrink-0 items-center gap-2 rounded-full px-3 text-xs font-semibold tabular whitespace-nowrap lg:inline-flex"
+      data-testid="bots-online"
+      aria-label={t('shell.botsOnlineLabel', { count })}
+      title={t('shell.botsOnlineLabel', { count })}
+    >
+      <span className="relative flex h-2 w-2" aria-hidden>
+        <span className="h-2 w-2 rounded-full" style={{ background: count > 0 ? 'var(--strip-green)' : 'var(--text-muted)' }} />
+        {count > 0 ? <span className="live-dot absolute inset-0" style={{ color: 'var(--strip-green)' }} /> : null}
+      </span>
+      <span>{count}</span>
+      <span className="hidden font-medium opacity-80 xl:inline">{t('shell.botsOnline', { count })}</span>
+    </span>
   )
 }
 
@@ -318,7 +344,8 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
           </Button>
         ) : null}
 
-        <div className="min-w-0 flex-1">
+        {/* On desktop the centred pill nav names the active module, so the title block steps aside. */}
+        <div className="min-w-0 flex-1 lg:hidden">
           <div className="flex items-center gap-1.5">
             {sectionLabel ? (
               <>
@@ -334,17 +361,23 @@ export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts
           <p className="hidden truncate text-[11px] text-muted sm:block">{subtitle}</p>
         </div>
 
+        <div className="hidden min-w-0 flex-1 justify-center lg:flex">
+          <TopNav />
+        </div>
+
+        <BotsOnlineBadge />
+
         <button
           type="button"
           onClick={onOpenPalette}
           aria-label={`${t('palette.title')} (${modifier}+K)`}
-          className="focus-ring group inline-flex h-9 items-center gap-2 rounded-full border border-border/80 bg-surface-2/60 px-3 text-xs text-muted transition-colors hover:border-brand/35 hover:bg-surface hover:text-text sm:min-w-[15rem] sm:justify-between"
+          className="focus-ring group inline-flex h-9 items-center gap-2 rounded-full border border-border/80 bg-surface-2/60 px-3 text-xs text-muted transition-colors hover:border-brand/35 hover:bg-surface hover:text-text sm:px-2.5 sm:justify-center 2xl:min-w-[15rem] 2xl:justify-between 2xl:px-3"
         >
           <span className="flex items-center gap-2">
             <Search className="h-4 w-4"  aria-hidden/>
-            <span className="hidden sm:inline">{t('palette.placeholder')}</span>
+            <span className="hidden 2xl:inline">{t('palette.placeholder')}</span>
           </span>
-          <span className="hidden items-center gap-1 sm:flex">
+          <span className="hidden items-center gap-1 2xl:flex">
             <Kbd>{modifier}</Kbd>
             <Kbd>K</Kbd>
           </span>
