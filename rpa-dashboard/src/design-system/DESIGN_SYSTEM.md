@@ -1,4 +1,4 @@
-# RPA CoE Control Room — Design System v5 "Premium"
+# RPA CoE Control Room — Design System v5 "Hybrid Premium"
 
 Single-tenant, On-Premises only. Light-first, full Dark, full Arabic/RTL.
 Tokens: `src/design-system/tokens.js` ⇄ CSS variables in `src/index.css` (`:root` / `.dark`).
@@ -7,22 +7,33 @@ Components: `src/components/ui/` (Radix + CVA, shadcn-style), re-exported by `sr
 ## Colors
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg` | `#F8F5FF` | `#0B0618` | app canvas (fixed radial mesh `--mesh-1`/`--mesh-2`) |
-| `--surface` / `--surface-2` | `#FFFFFF` / `#FAF8FF` | `#130B24` / `#1A1030` | cards / raised surfaces |
-| `--border` | `rgba(91, 33, 182, 0.08)` | `rgba(196, 181, 253, 0.12)` | dividers and controls |
-| `--text` / `--text-muted` | `#1E0B3A` / `#6B5B8A` | `#F5F0FF` / `#B8A9D4` | primary / secondary text (AA) |
-| `--brand` / `--brand-strong` | `#5B21B6` / `#4C1D95` | `#A78BFA` / `#8B5CF6` | purple-first primary identity |
-| `--accent` | `#0D9488` | `#2DD4BF` | teal: live / status states only |
+| `--bg` | `#F5F7FB` | `#0F1A2E` | app canvas (fixed radial mesh `--mesh-1`/`--mesh-2`) |
+| `--surface` / `--surface-2` | `#FFFFFF` / `#F8FAFC` | `#152238` / `#1B2A44` | cards / raised surfaces |
+| `--border` | `rgba(15, 23, 42, 0.07)` | `rgba(163, 190, 228, 0.14)` | dividers and controls |
+| `--text` / `--text-muted` | `#14213A` / `#5B6B82` | `#EEF3FA` / `#A6B4C8` | primary / secondary text (AA) |
+| `--navy` / `--navy-deep` | `#1E3A5F` / `#122339` | same | **dominant presence**: hero gradient, live badge, active pill, KPI strips |
+| `--brand` / `--brand-strong` | `#3F51B5` / `#33439C` | `#A5B4FC` / `#8C9DF2` | refined Indigo — brand actions only (buttons, focus) |
+| `--accent` | `#0D9488` | `#2DD4BF` | teal: live / telemetry states only |
+| `--orange` | `#F58220` | `#FF9640` | attention accent (fills, strips, dots — never a text background) |
 | `--success/warning/danger` | `#047857/#B45309/#BE123C` | brightened equivalents | semantic status (AA-safe depths of the plan hues) |
+| `--strip-*` | navy/indigo/green/orange/blue/teal/red | brightened equivalents | 4px KPI card strips + matching icon tones (`kpiTones`) |
 
-New utility classes (Premium plan): `.glass-premium` (frosted key panels),
+Hero gradient (locked): `linear-gradient(135deg, #122339 0%, #1E3A5F 45%, #0D9488 100%)`
+behind `--hero-scrim` (keeps white/muted text ≥ 4.5:1 across the whole gradient).
+The hero re-declares text/surface/border/semantic/strip tokens locally, so every
+child component adapts without forks.
+
+New utility classes (Hybrid plan): `.glass-premium` (frosted key panels),
 `.card-elevated` / `--shadow-elevated` (plan "Elevated" shadow), `.glow-brand`
 (token `--glow-brand`, plus `--glow-accent` for the live accent),
 `.text-display` 680 / `.text-page-title` 650 / `.text-section-title` 600
-(display → page → section weight ladder, RTL-safe), `.stat-flash` (soft value tick).
+(display → page → section weight ladder, RTL-safe), `.stat-flash` (soft value tick),
+`.kpi-strip` (4px identity strip), `.nav-pill-active` (navy gradient pill),
+`.live-badge` (navy "● N bots online").
 Command-centre hero: live status bar (Connected · server clock), an operational
-**verdict** as the headline, a demoted greeting line, a four-KPI strip, a 14-day
-sparkline and a live-activity ticker of the five most recent real runs.
+**verdict** as the headline, a demoted greeting line with the circular success
+gauge, a five-KPI identity strip (Success · Active · Savings · Runs today · SLA),
+a 14-day sparkline and a live-activity ticker of the five most recent real runs.
 
 ## Decision tier (v5)
 The dashboard is ordered by decision speed, not by widget attractiveness. Three

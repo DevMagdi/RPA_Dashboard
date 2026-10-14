@@ -132,7 +132,7 @@ def _branding() -> Dict[str, Any]:
             return get_branding(session)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Branding lookup failed: %s", exc)
-        return {"company_name": "RPA CoE", "name": "RPA CoE Control Room", "primary_color": "#5B21B6", "accent_color": "#0D9488"}
+        return {"company_name": "RPA CoE", "name": "RPA CoE Control Room", "primary_color": "#3F51B5", "accent_color": "#0D9488"}
 
 
 def build_excel(
@@ -157,7 +157,7 @@ def build_excel(
     branding = _branding()
     labels = _copy(locale)
     rtl = is_arabic_locale(locale) or detect_direction(title, *columns) == "rtl"
-    header_bg = str(branding.get("primary_color") or "#5B21B6").replace("#", "")
+    header_bg = str(branding.get("primary_color") or "#3F51B5").replace("#", "")
     accent = str(branding.get("accent_color") or "#0D9488").replace("#", "")
     cell_font = EXCEL_FONT_ARABIC if rtl else EXCEL_FONT
 
@@ -289,7 +289,7 @@ def build_pdf(
     branding = _branding()
     fonts = _register_pdf_fonts()
     labels = _copy(locale)
-    primary = colors.HexColor(str(branding.get("primary_color") or "#5B21B6"))
+    primary = colors.HexColor(str(branding.get("primary_color") or "#3F51B5"))
     accent = colors.HexColor(str(branding.get("accent_color") or "#0D9488"))
 
     body_text = " ".join(

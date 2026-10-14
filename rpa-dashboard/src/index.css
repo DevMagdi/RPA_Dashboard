@@ -50,62 +50,63 @@
 :root {
   color-scheme: light;
 
-  /* — surfaces & ink (Premium command-center palette) ———— */
-  --bg: #f8f5ff;
-  --bg-soft: #f3eeff;
-  --bg-deep: #ebe3fb;
+  /* — surfaces & ink (Hybrid command-center palette) ———— */
+  --bg: #f5f7fb;
+  --bg-soft: #eaeff7;
+  --bg-deep: #e0e7f1;
   --surface: #ffffff;
-  --surface-2: #faf8ff;
-  --surface-3: #f3eeff;
-  --surface-sunken: #eee7fc;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f5f9;
+  --surface-sunken: #e9eef5;
 
   /* fixed background mesh — static radial depth, never animated */
-  --mesh-1: rgba(91, 33, 182, 0.12);
-  --mesh-2: rgba(124, 58, 237, 0.08);
+  --mesh-1: rgba(30, 58, 95, 0.10);
+  --mesh-2: rgba(13, 148, 136, 0.07);
 
-  --border: rgba(91, 33, 182, 0.08);
-  --border-strong: rgba(91, 33, 182, 0.16);
-  --border-soft: rgba(91, 33, 182, 0.05);
-  --line: rgba(107, 91, 138, 0.18);
+  --border: rgba(15, 23, 42, 0.07);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --border-soft: rgba(15, 23, 42, 0.04);
+  --line: rgba(91, 107, 130, 0.22);
 
-  --text: #1e0b3a;
-  --text-soft: #3b2a5e;
-  --text-muted: #6b5b8a; /* AA (≥4.5:1) on the #F8F5FF canvas — 5.59:1 */
+  --text: #14213a;
+  --text-soft: #2c4260;
+  --text-muted: #5b6b82; /* AA (≥4.5:1) on the #F5F7FB canvas — 5.06:1 */
 
-  /* — brand (Deep Violet · purple-first identity) ——————————————— */
-  --brand: #5b21b6;
-  --brand-strong: #4c1d95;
-  --brand-lighter: #7c3aed;
-  --brand-soft: rgba(91, 33, 182, 0.12);
-  --brand-ring: rgba(91, 33, 182, 0.40);
+  /* — brand (refined Indigo — brand ACTIONS only; Navy carries presence) — */
+  --brand: #3f51b5;
+  --brand-strong: #33439c;
+  --brand-lighter: #6c7ce0;
+  --brand-soft: rgba(63, 81, 181, 0.12);
+  --brand-ring: rgba(63, 81, 181, 0.40);
   --brand-fg: #ffffff;
 
-  /* Navy tokens carry the deep-violet anchor (hero, live badge, KPI strip). Names kept for compatibility. */
-  --navy: #2e1065;
-  --navy-deep: #1e0b3a;
+  /* Navy — the dominant presence colour (hero, live badge, active nav, strips). */
+  --navy: #1e3a5f;
+  --navy-deep: #122339;
   --navy-fg: #ffffff;
-  --hero-from: #1e0b3a;
-  --hero-mid: #4c1d95;
-  --hero-to: #6d28d9;
+  --hero-from: #122339;
+  --hero-mid: #1e3a5f;
+  --hero-to: #0d9488;
+  --hero-scrim: rgba(10, 26, 42, 0.40);
 
-  /* — accent (Electric Teal) — LIVE STATES ONLY: dots, pulses, live badges. Never body text (#0D9488 is 3.5:1 on canvas). */
+  /* — accent (Teal) — LIVE/TELEMETRY STATES ONLY: dots, pulses, live badges. Never body text (#0D9488 is 3.5:1 on canvas). */
   --accent: #0d9488;
   --accent-strong: #0f766e;
   --accent-soft: rgba(13, 148, 136, 0.11);
   --accent-fg: #ffffff;
 
-  /* Orange — live / attention signal (fills, strips, dots; never body text). */
+  /* Orange — attention accent (fills, strips, live dots; never a text background). */
   --orange: #f58220;
   --orange-soft: rgba(245, 130, 32, 0.14);
   --orange-fg: #14213a;
 
-  /* KPI strip tones — bright fills for bars & dots (AA text uses the semantic tokens). */
-  --strip-navy: #5b21b6;
-  --strip-indigo: #7c3aed;
+  /* KPI strip tones — strong fills for bars & dots (AA text uses the semantic tokens). */
+  --strip-navy: #1e3a5f;
+  --strip-indigo: #4c63d2;
   --strip-green: #10b981;
   --strip-orange: #f58220;
   --strip-blue: #0ea5e9;
-  --strip-teal: #c026d3;
+  --strip-teal: #14b8a6;
   --strip-red: #ef4444;
 
   /* — semantics ————————————————————————————————————— */
@@ -123,14 +124,14 @@
   --info-soft: rgba(2, 132, 199, 0.12);
 
   /* — data-viz ————————————————————————————————————— */
-  --chart-1: #5b21b6;
-  --chart-2: #8b5cf6;
-  --chart-3: #c026d3;
+  --chart-1: #1e3a5f;
+  --chart-2: #4c63d2;
+  --chart-3: #14b8a6;
   --chart-4: #0ea5e9;
   --chart-5: #f58220;
-  --chart-6: #4c1d95;
-  --chart-grid: rgba(91, 33, 182, 0.08);
-  --chart-axis: #6b5b8a;
+  --chart-6: #2b5b9c;
+  --chart-grid: rgba(30, 58, 95, 0.08);
+  --chart-axis: #5b6b82;
 
   /* — shadcn/ui conventional tokens —————————————————— */
   --background: var(--bg);
@@ -188,55 +189,56 @@
 .dark {
   color-scheme: dark;
 
-  --bg: #0b0618;
-  --bg-soft: #0f0820;
-  --bg-deep: #07030f;
-  --surface: #130b24;
-  --surface-2: #1a1030;
-  --surface-3: #22153c;
-  --surface-sunken: #0b0618;
+  --bg: #0f1a2e;
+  --bg-soft: #122036;
+  --bg-deep: #0a1424;
+  --surface: #152238;
+  --surface-2: #1b2a44;
+  --surface-3: #243652;
+  --surface-sunken: #0d1930;
 
-  --border: rgba(196, 181, 253, 0.12);
-  --border-strong: rgba(196, 181, 253, 0.22);
-  --border-soft: rgba(196, 181, 253, 0.06);
-  --line: rgba(184, 169, 212, 0.2);
+  --border: rgba(163, 190, 228, 0.14);
+  --border-strong: rgba(163, 190, 228, 0.24);
+  --border-soft: rgba(163, 190, 228, 0.07);
+  --line: rgba(154, 181, 218, 0.22);
 
-  --mesh-1: rgba(167, 139, 250, 0.14);
-  --mesh-2: rgba(139, 92, 246, 0.10);
+  --mesh-1: rgba(127, 169, 222, 0.12);
+  --mesh-2: rgba(45, 212, 191, 0.08);
 
-  --text: #f5f0ff;
-  --text-soft: #ddd3f0;
-  --text-muted: #b8a9d4;
+  --text: #eef3fa;
+  --text-soft: #c7d3e4;
+  --text-muted: #a6b4c8;
 
-  --brand: #a78bfa;
-  --brand-strong: #8b5cf6;
-  --brand-lighter: #c4b5fd;
-  --brand-soft: rgba(167, 139, 250, 0.18);
-  --brand-ring: rgba(167, 139, 250, 0.50);
-  --brand-fg: #0b0618;
+  --brand: #a5b4fc;
+  --brand-strong: #8c9df2;
+  --brand-lighter: #c7d0fb;
+  --brand-soft: rgba(165, 180, 252, 0.18);
+  --brand-ring: rgba(165, 180, 252, 0.50);
+  --brand-fg: #0f1a2e;
 
-  --navy: #2e1065;
-  --navy-deep: #1e0b3a;
+  --navy: #1e3a5f;
+  --navy-deep: #122339;
   --navy-fg: #ffffff;
-  --hero-from: #0b0618;
-  --hero-mid: #2e1065;
-  --hero-to: #5b21b6;
+  --hero-from: #122339;
+  --hero-mid: #1e3a5f;
+  --hero-to: #0d9488;
+  --hero-scrim: rgba(10, 26, 42, 0.40);
 
   --accent: #2dd4bf;
   --accent-strong: #14b8a6;
   --accent-soft: rgba(45, 212, 191, 0.15);
   --accent-fg: #04211d;
 
-  --orange: #f58220;
-  --orange-soft: rgba(245, 130, 32, 0.18);
+  --orange: #ff9640; /* night shift: slightly brighter attention accent */
+  --orange-soft: rgba(255, 150, 64, 0.18);
   --orange-fg: #1a0f05;
 
-  --strip-navy: #8b5cf6;
-  --strip-indigo: #c4b5fd;
+  --strip-navy: #7fa9de;
+  --strip-indigo: #a5b4fc;
   --strip-green: #34d399;
-  --strip-orange: #f58220;
+  --strip-orange: #ff9640;
   --strip-blue: #38bdf8;
-  --strip-teal: #e879f9;
+  --strip-teal: #2dd4bf;
   --strip-red: #f87171;
 
   --success: #34d399;
@@ -252,14 +254,14 @@
   --info-strong: #0ea5e9;
   --info-soft: rgba(56, 189, 248, 0.15);
 
-  --chart-1: #a78bfa;
-  --chart-2: #c4b5fd;
-  --chart-3: #e879f9;
+  --chart-1: #7fa9de;
+  --chart-2: #a5b4fc;
+  --chart-3: #2dd4bf;
   --chart-4: #38bdf8;
-  --chart-5: #f58220;
-  --chart-6: #8b5cf6;
-  --chart-grid: rgba(196, 181, 253, 0.10);
-  --chart-axis: #b8a9d4;
+  --chart-5: #ff9640;
+  --chart-6: #9bc0ec;
+  --chart-grid: rgba(163, 190, 228, 0.10);
+  --chart-axis: #a6b4c8;
 
   --destructive-foreground: #160a10;
   --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.4);
@@ -321,12 +323,19 @@ html[dir='rtl'] {
   letter-spacing: normal;
 }
 
+/* Arabic typography contract: line-height 1.75 (Cairo needs the extra
+   leading), and letter-spacing is always reset — tracking that flatters
+   Latin display text breaks Arabic joining and rhythm. */
+html[dir='rtl'] body {
+  line-height: 1.75;
+}
+
 html[dir='rtl'] h1,
 html[dir='rtl'] h2,
 html[dir='rtl'] h3,
 html[dir='rtl'] .display-tight {
   letter-spacing: normal;
-  line-height: 1.45;
+  line-height: 1.75;
 }
 
 h1,
@@ -521,7 +530,7 @@ h4 {
   html[dir='rtl'] .text-display {
     font-family: var(--font-arabic);
     letter-spacing: normal;
-    line-height: 1.35;
+    line-height: 1.75;
   }
 
   /* Type scale (premium plan): display 680 → page 650 → section 600 → body 400. */
@@ -535,7 +544,7 @@ h4 {
   html[dir='rtl'] .text-page-title {
     font-family: var(--font-arabic);
     letter-spacing: normal;
-    line-height: 1.5;
+    line-height: 1.75;
   }
   .text-section-title {
     font-weight: 600;
@@ -575,36 +584,57 @@ h4 {
   }
 
   /* ---------------------------------------------------------- hero panel
-     Purple-first command hero ("Private Operations"). The hero re-declares its
-     text / surface / border tokens locally, so every child adapts without forks.
+     Navy-dominant command hero ("Private Operations"). The locked background is
+     `linear-gradient(135deg, #122339 0%, #1E3A5F 45%, #0D9488 100%)` behind a
+     navy scrim that keeps white/muted text ≥ 4.5:1 at every point of that
+     gradient. The hero re-declares its text / surface / border / semantic /
+     strip tokens locally, so every child adapts without forks.
 
      Stacking contract (explicit, never implicit):
-       aurora 0 → grid 1 → content 2 → KPI tiles 3.
+       aurora 0 → scrim + grid 1 → content 2 → KPI tiles 3.
      Breakpoints:
-       < 768   one column, KPIs in two rows, no visual
-       768–1279 one column, KPIs in two rows, no visual
-       ≥ 1280  KPIs in one row; the success gauge becomes the small visual column
-       ≥ 1536  the gauge also shows its caption
+       < 1280   KPIs in two rows (the odd tile fills its row)
+       ≥ 1280   KPIs in one row of five; the gauge is the visual column
+       ≥ 1536   the gauge also shows its caption
      Spacing follows the 4/8/12/16/24/32 scale; the hero never grows a
      decorative layer that competes with its numbers. */
   .command-hero {
-    --text: #ffffff;
-    --text-soft: rgba(255, 255, 255, 0.88);
-    --text-muted: rgba(233, 224, 255, 0.92); /* ≥4.5:1 across the whole hero gradient */
-    --surface: #1a1030;
-    --surface-2: #22153c;
-    --border: rgba(255, 255, 255, 0.16);
-    --border-strong: rgba(255, 255, 255, 0.26);
-
+    /* geometry first, so the layer contract reads in one screen */
     position: relative;
     isolation: isolate;
     overflow: hidden;
     min-height: 232px;
+
+    /* local token overrides — all child components adapt automatically */
+    --text: #ffffff;
+    --text-soft: rgba(255, 255, 255, 0.92);
+    --text-muted: rgba(226, 236, 246, 0.94); /* ≥4.5:1 across the whole hero gradient */
+    --surface: #1b3150;
+    --surface-2: #24405f;
+    --surface-3: #2d4a6b;
+    --border: rgba(255, 255, 255, 0.16);
+    --border-strong: rgba(255, 255, 255, 0.26);
+    --brand: #c7d2fe;
+    --brand-soft: rgba(199, 210, 254, 0.18);
+    --accent: #5eead4;
+    --accent-soft: rgba(94, 234, 212, 0.16);
+    --success: #6ee7b7;
+    --warning: #fcd34d;
+    --danger: #fca5a5;
+    --info: #7dd3fc;
+    --strip-navy: #7fa9de;
+    --strip-indigo: #a5b4fc;
+    --strip-green: #34d399;
+    --strip-orange: #ff9640;
+    --strip-blue: #38bdf8;
+    --strip-teal: #2dd4bf;
+    --strip-red: #f87171;
+
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 1.75rem;
     color: #ffffff;
     background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);
-    box-shadow: 0 24px 60px -30px rgba(30, 11, 58, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    box-shadow: 0 24px 60px -30px rgba(18, 35, 57, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   }
   .dark .command-hero {
     box-shadow: 0 28px 64px -32px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -619,8 +649,17 @@ h4 {
     opacity: 0.24;
     pointer-events: none;
     background:
-      radial-gradient(38% 44% at 18% 26%, color-mix(in srgb, var(--brand-lighter) 55%, transparent), transparent 70%),
-      radial-gradient(32% 40% at 82% 32%, color-mix(in srgb, var(--chart-3) 30%, transparent), transparent 72%);
+      radial-gradient(38% 44% at 18% 26%, color-mix(in srgb, var(--strip-navy) 55%, transparent), transparent 70%),
+      radial-gradient(32% 40% at 82% 32%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 72%);
+  }
+
+  /* z 1 — navy scrim: keeps white/muted text ≥ 4.5:1 over the teal corner */
+  .command-hero__scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(18, 35, 57, 0.34) 0%, rgba(13, 32, 50, 0.34) 45%, var(--hero-scrim) 100%);
   }
 
   /* z 1 — faint structural grid */
@@ -664,13 +703,13 @@ h4 {
   }
 
   .command-hero__eyebrow {
-    color: #ede9fe;
+    color: #e2ecf6;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     min-height: 1.85rem;
     max-width: 100%;
-    border: 1px solid rgba(237, 233, 254, 0.34);
+    border: 1px solid rgba(226, 236, 246, 0.34);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.1);
     padding: 0.3rem 0.75rem;
@@ -719,7 +758,7 @@ h4 {
   }
   html[dir='rtl'] .command-hero__verdict-label {
     letter-spacing: normal;
-    line-height: 1.5;
+    line-height: 1.75;
   }
   .command-hero__verdict-reasons {
     display: flex;
@@ -730,6 +769,9 @@ h4 {
     font-size: 0.72rem;
     line-height: 1.45;
     color: var(--text-muted);
+  }
+  html[dir='rtl'] .command-hero__verdict-reasons {
+    line-height: 1.75;
   }
   .command-hero__verdict-reason { display: inline-flex; align-items: center; gap: 0.2rem; }
   .command-hero__verdict-reason strong { color: #ffffff; font-weight: 700; }
@@ -759,11 +801,14 @@ h4 {
     flex: 1 1 18rem;
   }
   .command-hero__visual {
-    display: none;
+    display: flex;
     flex-shrink: 0;
   }
   @media (min-width: 1280px) {
-    .command-hero__visual { display: flex; }
+    .command-hero__visual {
+      /* one-row KPI strip from here on — the gauge settles beside the greeting */
+      padding-inline-start: 0.5rem;
+    }
   }
   .command-hero__gauge-caption {
     display: none;
@@ -789,11 +834,11 @@ h4 {
   }
   html[dir='rtl'] .command-hero__title {
     letter-spacing: normal;
-    line-height: 1.5;
+    line-height: 1.75;
     font-size: clamp(1rem, 1.8vw, 1.25rem);
   }
 
-  /* z 3 — KPI strip: one row from 1280px, two rows below; 12px gap mobile, 16px desktop */
+  /* z 3 — KPI strip: one row of five from 1280px, two rows below; 12px gap mobile, 16px desktop */
   .command-hero__kpis {
     position: relative;
     z-index: 3;
@@ -801,10 +846,16 @@ h4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
   }
+  .command-hero__kpis > .command-hero__kpi:last-child:nth-child(odd) {
+    grid-column: span 2; /* five tiles: the odd one out fills its row */
+  }
   @media (min-width: 1280px) {
     .command-hero__kpis {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 1rem;
+    }
+    .command-hero__kpis > .command-hero__kpi:last-child:nth-child(odd) {
+      grid-column: auto;
     }
   }
 
@@ -1018,7 +1069,7 @@ h4 {
     inset-inline: 0;
     top: 0;
     height: 4px;
-    background: var(--strip, var(--brand));
+    background: var(--strip, var(--strip-navy));
     pointer-events: none;
   }
 
@@ -1056,11 +1107,11 @@ h4 {
   .context-strip { box-shadow: var(--shadow-xs); }
   .dark .context-strip > div { background: var(--surface-2); }
 
-  /* Active top-pill item: indigo gradient + soft glow (Hybrid plan). */
+  /* Active top-pill item: navy gradient + soft shadow (Hybrid plan). */
   .nav-pill-active {
-    color: #ffffff;
-    background: linear-gradient(135deg, var(--brand-strong) 0%, var(--brand) 100%);
-    box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--brand) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    color: var(--navy-fg);
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
+    box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--navy) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
 
   /* Navy live badge in the top bar: "● N bots online". */
@@ -1076,15 +1127,15 @@ h4 {
     stroke: rgba(255, 255, 255, 0.16);
   }
   .command-hero__gauge-value {
-    stroke: #c4b5fd;
+    stroke: #5eead4; /* telemetry teal — the live success readout */
     transition: stroke-dashoffset 900ms var(--ease-premium);
   }
   .command-hero__link {
-    color: #ddd6fe;
+    color: #d9e4f0;
   }
   /* Semantic text inside the navy hero: lifted tints keep AA on the dark gradient. */
   .command-hero .text-brand {
-    color: #ddd6fe;
+    color: #c7d2fe;
   }
   .command-hero .text-success {
     color: #6ee7b7;
@@ -1281,4 +1332,14 @@ html[data-density='compact'] .skeleton {
   .app-shell::before {
     display: none;
   }
+}
+
+/* ==========================================================================
+   8. ARABIC TYPE OVERRIDES (unlayered — must beat utility tracking)
+   ========================================================================== */
+/* Arabic never takes letter-spacing: tracking breaks the cursive joining and
+   the rhythm of Cairo. Latin eyebrows inside an RTL page lose their tracking
+   too — the Arabic contract wins. */
+html[dir='rtl'] * {
+  letter-spacing: normal;
 }

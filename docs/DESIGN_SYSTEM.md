@@ -22,46 +22,68 @@ primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#F8F5FF` | `#0B0618` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
-| `--surface` | `#FFFFFF` | `#130B24` | cards, panels, menus |
-| `--surface-2` | `#FAF8FF` | `#1A1030` | inputs, table headers, hover |
-| `--surface-3` | `#F3EEFF` | `#22153C` | pressed / selected rows |
-| `--border` | `rgba(91, 33, 182, 0.08)` | `rgba(196, 181, 253, 0.12)` | 1px separation, low but visible |
-| `--text` | `#1E0B3A` | `#F5F0FF` | primary type (15.9:1 light / 15.2:1 dark on the canvas) |
-| `--text-muted` | `#6B5B8A` | `#B8A9D4` | secondary type, labels (5.3:1+ light / 7.8:1+ dark) |
-| `--brand` | `#5B21B6` | `#A78BFA` | **primary identity**: buttons, active nav, focus, selection, charts |
-| `--brand-strong` / `--brand-lighter` | `#4C1D95` / `#7C3AED` | `#8B5CF6` / `#C4B5FD` | hover and gradient stops (`#7C3AED` is text-safe at 5.0:1) |
-| `--accent` | `#0D9488` | `#2DD4BF` | **live states only**: live dots, pulses, "online" badges. Never body text and never a primary action. |
-| `--orange` | `#F58220` | `#F58220` | attention signal (fills, strips, dots) |
+| `--bg` | `#F5F7FB` | `#0F1A2E` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
+| `--surface` | `#FFFFFF` | `#152238` | cards, panels, menus |
+| `--surface-2` | `#F8FAFC` | `#1B2A44` | inputs, table headers, hover |
+| `--surface-3` | `#F1F5F9` | `#243652` | pressed / selected rows |
+| `--border` | `rgba(15, 23, 42, 0.07)` | `rgba(163, 190, 228, 0.14)` | 1px separation, low but visible |
+| `--text` | `#14213A` | `#EEF3FA` | primary type (15.0:1 light / 14.3:1 dark on the canvas) |
+| `--text-muted` | `#5B6B82` | `#A6B4C8` | secondary type, labels (5.06:1 light / 7.6:1 dark) |
+| `--navy` / `--navy-deep` | `#1E3A5F` / `#122339` | same | **dominant presence**: hero, live badge, active nav pill, KPI strips |
+| `--brand` / `--brand-strong` / `--brand-lighter` | `#3F51B5` / `#33439C` / `#6C7CE0` | `#A5B4FC` / `#8C9DF2` / `#C7D0FB` | refined Indigo for brand **actions** (buttons, focus, selection) — never the dominant presence colour |
+| `--accent` | `#0D9488` | `#2DD4BF` | **live/telemetry states only**: live dots, pulses, "online" badges. Never body text and never a primary action. |
+| `--orange` | `#F58220` | `#FF9640` | attention accent (fills, strips, live dots; never a text background) |
 | `--success` | `#047857` | `#34D399` | healthy runs |
 | `--warning` | `#B45309` | `#FBBF24` | SLA risk, queue growth |
 | `--danger` | `#BE123C` | `#FB7185` | failures, breaches |
 | `--info` | `#0369A1` | `#38BDF8` | neutral information |
 
-> **Purple-first identity (2026-10).** Purple is the dominant brand colour; the
-> deep violet `--hero-from` → `--hero-mid` → `--hero-to` gradient (`#1E0B3A` →
-> `#4C1D95` → `#6D28D9` in light) carries the command-centre hero. Teal
-> `#0D9488` (light) / `#2DD4BF` (dark) is reserved for **live or status states**
-> and must not be used as a decorative or primary colour. The palette is defined
-> identically in `src/index.css`, `src/design-system/tokens.js`,
-> `tailwind.config.js`, `index.html` (boot screen), the `BrandingProvider`
-> fallbacks and the backend brand defaults (`#5B21B6`).
+> **Hybrid Premium Control Room identity (2026-10).** Navy `#1E3A5F` /
+> Navy-deep `#122339` carry the presence: the command-centre hero gradient
+> (`linear-gradient(135deg, #122339 0%, #1E3A5F 45%, #0D9488 100%)` behind a
+> navy AA scrim), the top-bar live badge, the active top-pill item and the KPI
+> strips. Orange `#F58220` is the attention accent — **fills, strips and live
+> accents only** (white on orange is 2.59:1, so it is never a text background).
+> Teal `#0D9488` stays reserved for live/telemetry states. A refined Indigo
+> `#3F51B5` is allowed for brand *actions* (buttons, focus rings) — Navy must
+> always dominate the presence. The palette is defined identically in
+> `src/index.css`, `src/design-system/tokens.js`, `tailwind.config.js`,
+> `index.html` (boot screen), the `BrandingProvider` fallbacks and the backend
+> brand defaults (`#3F51B5`).
 > Dark mode: `BrandingProvider` lifts a tenant's brand colour for dark surfaces
 > instead of applying the light value, so an organisation colour never overrides
 > the dark theme with a low-contrast light value.
 > Static background depth comes from the fixed mesh tokens `--mesh-1`/`--mesh-2`
-> (never animated); hover/focus glow is tokenised as `--glow-brand`/`--glow-accent`.
+> (never animated; overlay opacity ≤ 0.28); hover/focus glow is tokenised as
+> `--glow-brand`/`--glow-accent`.
 > The semantic trio keeps AA-safe text depths (`#047857` / `#B45309` / `#BE123C`);
-> the plan hues are used for fills and `*-soft` backgrounds.
+> the bright plan hues live in `--strip-*` for fills and `*-soft` backgrounds.
 
 Rules:
 
 * **Status is never colour-only.** Every state pairs colour with an icon, a text
   label or a shape (`SeverityBadge`, `StatusDot` + label, `DeltaChip` with ▲/▼).
 * **Contrast** targets WCAG AA: body text ≥ 4.5:1, large/bold ≥ 3:1, UI borders
-  ≥ 3:1 against their surface.
+  ≥ 3:1 against their surface. Verify with `node scripts/verify_contrast.mjs`.
 * Charts use `CHART_TOKENS` in `src/components/charts/primitives.jsx` — series
   colours are token-driven, so a rebrand recolours the charts too.
+
+### 1.1.1 KPI identity map
+
+Every KPI card (hero strip + health board) carries a 4px top strip and a
+matching icon colour resolved from one map (`kpiTones` in
+`src/design-system/tokens.js`). A metric keeps its colour everywhere; its
+*state* is carried by the verdict badge (icon + label) and the card border.
+
+| Metric | Strip family | Token |
+|---|---|---|
+| `totalProcedures`, `successRate` | Navy | `--strip-navy` |
+| `runsToday` / `throughput` | Green | `--strip-green` |
+| `costSaved` | Teal | `--strip-teal` |
+| `runningNow`, `queueDepth` | Orange | `--strip-orange` |
+| `sla`, `timeSaved` | Indigo | `--strip-indigo` |
+| `failedToday` | Red | `--strip-red` |
+| `totalTransactions` | Blue | `--strip-blue` |
 
 ### 1.2 Typography
 

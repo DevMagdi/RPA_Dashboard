@@ -6,7 +6,7 @@
  *   ██ VERDICT: Operational / Degraded / Critical + the factual reasons ██
  *   Good morning, Magdi  (context line, no longer the headline)
  *   ─────────────────────────────────────────────────────
- *   Success · Active · Savings · SLA risk                (four-KPI strip)
+ *   Success · Active · Savings · Runs today · SLA risk   (five-KPI command strip)
  *   ── 14-day run-volume sparkline strip ──
  *   ── live activity ticker (five most recent real runs) ──
  *
@@ -17,27 +17,18 @@
  * costs nothing on the critical path and animates on the compositor thread.
  * Every number is real payload data — no synthetic decoration.
  */
-import { ArrowRight, CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign, ListChecks } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { DeltaChip, Sparkline } from '../charts/primitives'
 import { useAuth } from '../../context/AuthProvider'
+import { kpiStripVar } from '../../design-system/tokens'
 import { useRealtimeStatus } from '../../hooks/ui'
 import { compactNumber, durationFromMinutes, percent, relative, runStatusColor } from '../../lib/format'
 import { rateDelta, seriesDelta } from '../../lib/stats'
 import { Badge, Button, CountUpStat, Skeleton, cn } from '../ui'
-
-/* Icon tones tuned for the violet gradient: light enough to read on dark glass. */
-const TONE_VARS = {
-  brand: '#c4b5fd',
-  info: '#7dd3fc',
-  success: '#6ee7b7',
-  warning: '#fcd34d',
-  danger: '#fca5a5',
-  highlight: '#f0abfc',
-}
 
 /**
  * Radial success gauge — the ring fills with the success rate (0–100).
@@ -185,12 +176,14 @@ function ActivityItem({ run }) {
   )
 }
 
-/** KPI block inside the hero strip. */
-function HeroKpi({ icon: Icon, label, value, tone = 'brand', delta, hint, live, flashKey, glow }) {
+/** KPI block inside the hero strip: 4px identity strip + matching icon tone. */
+function HeroKpi({ icon: Icon, label, value, metric = 'totalProcedures', delta, hint, live, flashKey, glow }) {
+  const tone = kpiStripVar(metric)
   return (
     <div className={cn('command-hero__kpi', glow && 'glow-brand')}>
+      <span aria-hidden className="kpi-strip" style={{ '--strip': tone }} />
       <div className="command-hero__kpi-head">
-        <span key={flashKey} className="command-hero__kpi-icon stat-flash" style={{ '--tone': TONE_VARS[tone] || TONE_VARS.brand }}>
+        <span key={flashKey} className="command-hero__kpi-icon stat-flash" style={{ '--tone': tone }}>
           <Icon className="h-4 w-4" aria-hidden />
         </span>
         {live ? (
@@ -247,6 +240,7 @@ export default function CommandCenterHero({
   return (
     <section className="command-hero" aria-label={t('dashboard.commandCenter')}>
       <span aria-hidden className="command-hero__aurora" />
+      <span aria-hidden className="command-hero__scrim" />
       <span aria-hidden className="command-hero__grid" />
 
       <div className="command-hero__content">
@@ -308,12 +302,14 @@ export default function CommandCenterHero({
 
         <span className="divider" aria-hidden />
 
-        {/* ── four-KPI command strip (one row ≥1280, two rows below) ─────── */}
+        {/* ── five-KPI command strip (one row ≥1280, two rows below) ───────
+            Identity tones come from `kpiTones`: successRate navy · running
+            orange · costSaved teal · runsToday green · SLA indigo. */}
         <div className="command-hero__kpis">
           <HeroKpi
             icon={TrendingUp}
             label={t('dashboard.hero.successRate')}
-            tone="success"
+            metric="successRate"
             value={loading && !kpis ? <Skeleton className="h-7 w-16" /> : <CountUpStat value={rate} format="percent" />}
             delta={successTrend}
             hint={successTrend !== null ? undefined : t('dashboard.runVolume')}
@@ -322,7 +318,7 @@ export default function CommandCenterHero({
           <HeroKpi
             icon={Bot}
             label={t('dashboard.hero.running')}
-            tone={isRunning ? 'info' : 'success'}
+            metric="runningNow"
             value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={running} format="number" />}
             live={isRunning}
             glow={isRunning}
@@ -332,16 +328,25 @@ export default function CommandCenterHero({
           <HeroKpi
             icon={BadgeDollarSign}
             label={t('dashboard.costSaved')}
-            tone="highlight"
+            metric="costSaved"
             value={loading && !kpis ? <Skeleton className="h-7 w-24" /> : <CountUpStat value={Number(kpis?.costSaved) || 0} format="currency" />}
             delta={savingsTrend}
             hint={t('dashboard.filters.days', { count: 14 })}
             flashKey={kpis?.costSaved}
           />
           <HeroKpi
+            icon={ListChecks}
+            label={t('dashboard.hero.runsToday')}
+            metric="runsToday"
+            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={Number(kpis?.runsToday) || 0} format="number" />}
+            delta={seriesDelta(spark, 'volume')}
+            hint={t('dashboard.hero.targetRuns', { total: Number(kpis?.targetRuns) || 0 })}
+            flashKey={kpis?.runsToday}
+          />
+          <HeroKpi
             icon={Number(slaRisk) > 0 ? ShieldAlert : Clock}
             label={t('dashboard.slaBreaches')}
-            tone={Number(slaRisk) > 0 ? 'danger' : 'success'}
+            metric="sla"
             value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={Number(slaRisk) || 0} format="number" />}
             hint={Number(slaRisk) > 0 ? t('dashboard.hero.attention') : t('dashboard.hero.allClear')}
             flashKey={slaRisk}
@@ -358,7 +363,7 @@ export default function CommandCenterHero({
               <DeltaChip value={seriesDelta(spark, 'volume')} />
             </div>
             <div className="h-11 w-full">
-              <Sparkline data={spark} dataKey="volume" color="#c4b5fd" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
+              <Sparkline data={spark} dataKey="volume" color="var(--strip-teal)" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
             </div>
             <div className="command-hero__strip-axis mt-1">
               <span dir="auto">{spark[0]?.date}</span>

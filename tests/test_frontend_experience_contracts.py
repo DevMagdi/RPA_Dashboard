@@ -173,7 +173,7 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     assert ":root {" in css
     assert ".dark {" in css
-    assert "--bg: #0b0618;" in css
+    assert "--bg: #0f1a2e;" in css
     assert "prefers-reduced-motion: reduce" in css
     assert ".command-hero" in css
     assert "storage.get('theme', 'light')" in theme_provider
@@ -184,7 +184,8 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
 
 
 def test_hybrid_control_room_tokens_and_top_nav_are_wired():
-    """Purple-first plan: deep-violet hero/navy anchors, orange signal, premium radii, top pill nav and live bots badge."""
+    """Hybrid plan: navy presence (#1E3A5F/#122339), orange signal, teal live-only,
+    premium radii, top pill nav and the live bots badge."""
     css = (SRC / "index.css").read_text(encoding="utf-8")
     tokens = (SRC / "design-system" / "tokens.js").read_text(encoding="utf-8")
     topbar = (SRC / "components" / "layout" / "TopBar.jsx").read_text(encoding="utf-8")
@@ -193,17 +194,19 @@ def test_hybrid_control_room_tokens_and_top_nav_are_wired():
 
     root_block = css[css.index(":root {") : css.index(".dark {")]
     for declaration in (
-        "--navy: #2e1065;",
-        "--navy-deep: #1e0b3a;",
+        "--navy: #1e3a5f;",
+        "--navy-deep: #122339;",
         "--orange: #f58220;",
         "--radius-card: 1.25rem;",
         "--radius-ctrl: 0.75rem;",
-        "--hero-to: #6d28d9;",
+        "--hero-from: #122339;",
+        "--hero-mid: #1e3a5f;",
+        "--hero-to: #0d9488;",
     ):
         assert declaration in root_block, declaration
-    assert "--bg: #f8f5ff;" in root_block
-    assert "--text-muted: #6b5b8a;" in root_block
-    assert "navy: '#2E1065'" in tokens and "orange: '#F58220'" in tokens
+    assert "--bg: #f5f7fb;" in root_block
+    assert "--text-muted: #5b6b82;" in root_block
+    assert "navy: '#1E3A5F'" in tokens and "orange: '#F58220'" in tokens
     assert "background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);" in css
     assert ".kpi-strip" in css and ".nav-pill-active" in css and ".live-badge" in css
 
@@ -215,17 +218,58 @@ def test_hybrid_control_room_tokens_and_top_nav_are_wired():
 
 
 def test_command_hero_layers_and_min_height_follow_the_redesign_plan():
-    """Hero: aurora 0 → grid 1 → content 2, isolated and clipped, min-height 220–240px."""
+    """Hero: aurora 0 → scrim/grid 1 → content 2, isolated and clipped, min-height 220–240px."""
     css = (SRC / "index.css").read_text(encoding="utf-8")
     hero = css[css.index(".command-hero {") :]
     assert "isolation: isolate;" in hero[:800]
     assert "overflow: hidden;" in hero[:800]
     assert "min-height: 232px;" in hero[:800]
-    for layer, z in ((".command-hero__aurora", "z-index: 0"), (".command-hero__grid", "z-index: 1"), (".command-hero__content", "z-index: 2")):
+    for layer, z in (
+        (".command-hero__aurora", "z-index: 0"),
+        (".command-hero__scrim", "z-index: 1"),
+        (".command-hero__grid", "z-index: 1"),
+        (".command-hero__content", "z-index: 2"),
+    ):
         block = hero[hero.index(layer + " {") :]
         assert z in block[: block.index("}")], layer
-    # Desktop two-column hero: the visual column only appears at 1280px and up.
+    # Desktop two-column hero: the gauge gains its breathing room from 1280px up.
     assert "@media (min-width: 1280px)" in css[css.index(".command-hero__visual") - 400 : css.index(".command-hero__visual") + 400]
+
+
+def test_locked_hybrid_palette_and_kpi_identity_map():
+    """The hybrid palette is locked: navy presence, orange accents, teal live-only,
+    and one identity strip colour per KPI metric in both locales of the system."""
+    css = (SRC / "index.css").read_text(encoding="utf-8")
+    tokens = (SRC / "design-system" / "tokens.js").read_text(encoding="utf-8")
+    hero_component = (SRC / "components" / "dashboard" / "CommandCenterHero.jsx").read_text(encoding="utf-8")
+
+    dark_block = css[css.index(".dark {") :]
+    for declaration in (
+        "--bg: #0f1a2e;",
+        "--surface: #152238;",
+        "--surface-2: #1b2a44;",
+        "--orange: #ff9640;",  # night-shift strips run slightly brighter
+    ):
+        assert declaration in dark_block, declaration
+
+    # KPI identity mapping from the plan (metric → strip family), shared by the
+    # hero strip and the health board so a metric never changes colour.
+    for pair in (
+        "totalProcedures: 'navy'",
+        "runsToday: 'green'",
+        "costSaved: 'teal'",
+        "runningNow: 'orange'",
+    ):
+        assert pair in tokens, pair
+    assert "kpiStripVar" in tokens and "kpiStripVar(" in hero_component
+
+    # hero KPI tiles carry the 4px strip and the icon matches it — token-driven
+    assert 'className="kpi-strip"' in hero_component
+    assert "kpiStripVar(metric)" in hero_component and "'--strip': tone" in hero_component
+
+    # Arabic typography contract: line-height 1.75, no letter-spacing in RTL
+    assert "line-height: 1.75" in css
+    assert "html[dir='rtl'] *" in css and "letter-spacing: normal" in css
 
 
 def test_dashboard_leads_with_a_pinned_decision_tier():

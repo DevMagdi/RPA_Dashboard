@@ -7,8 +7,10 @@ import { useOptionalTheme } from './ThemeProvider'
 
 const BrandingContext = createContext(null)
 
-/* Built-in purple-first identity (Deep Violet). Matches --brand in src/index.css. */
-const DEFAULT_PRIMARY = '#5B21B6'
+/* Built-in hybrid identity: refined Indigo for brand *actions* (buttons, focus);
+   Navy `#1E3A5F` carries the static presence and is never re-coloured here.
+   Matches --brand in src/index.css. */
+const DEFAULT_PRIMARY = '#3F51B5'
 
 const FALLBACK = {
   name: 'RPA CoE Control Room',
@@ -21,11 +23,11 @@ const FALLBACK = {
   features: {},
 }
 
-/** Convert '#5b21b6' into an 'r, g, b' triple so CSS can build translucent variants. */
+/** Convert '#3f51b5' into an 'r, g, b' triple so CSS can build translucent variants. */
 function rgbTriple(hex) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '5b21b6', 16)
+  const int = Number.parseInt(full || '3f51b5', 16)
   /* eslint-disable no-bitwise */
   return `${(int >> 16) & 255}, ${(int >> 8) & 255}, ${int & 255}`
   /* eslint-enable no-bitwise */
@@ -34,7 +36,7 @@ function rgbTriple(hex) {
 function shade(hex, amount) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '5b21b6', 16)
+  const int = Number.parseInt(full || '3f51b5', 16)
   /* eslint-disable no-bitwise */
   const clamp = (channel) => Math.max(0, Math.min(255, Math.round(channel * (1 + amount))))
   const r = clamp((int >> 16) & 255)
@@ -48,7 +50,7 @@ function shade(hex, amount) {
 function lift(hex, weight) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '5b21b6', 16)
+  const int = Number.parseInt(full || '3f51b5', 16)
   /* eslint-disable no-bitwise */
   const mix = (channel) => Math.round(channel + (255 - channel) * weight)
   const parts = [mix((int >> 16) & 255), mix((int >> 8) & 255), mix(int & 255)]
@@ -92,7 +94,7 @@ export function BrandingProvider({ children }) {
       root.style.setProperty('--brand-lighter', lift(primary, 0.65))
       root.style.setProperty('--brand-soft', `rgba(${rgbTriple(lifted)}, 0.18)`)
       root.style.setProperty('--brand-ring', `rgba(${rgbTriple(lifted)}, 0.5)`)
-      root.style.setProperty('--brand-fg', '#0b0618')
+      root.style.setProperty('--brand-fg', '#0f1a2e')
       root.style.setProperty('--chart-1', lifted)
     } else {
       root.style.setProperty('--brand', primary)
