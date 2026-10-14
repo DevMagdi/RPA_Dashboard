@@ -10,7 +10,7 @@
 
 export const colors = {
   light: {
-    bg: '#F8FAFC',
+    bg: '#F1F5FB',
     bgSoft: '#F1F5F9',
     surface: '#FFFFFF',
     surface2: '#F8FAFC',
@@ -19,7 +19,7 @@ export const colors = {
     borderStrong: 'rgba(15, 23, 42, 0.12)',
     text: '#0F172A',
     textSoft: '#334155',
-    textMuted: '#64748B',
+    textMuted: '#5D6C85',
     brand: '#4F46E5',
     brandStrong: '#3730A3',
     brandLighter: '#6366F1',
@@ -62,9 +62,29 @@ export const radius = {
   sm: '0.6rem',
   md: '0.75rem',
   lg: '1rem',
+  card: '1.125rem',
   xl: '1.25rem',
   '2xl': '1.5rem',
   full: '999px',
+}
+
+/**
+ * Static background mesh + glow rings (premium plan, phase 0).
+ * Values mirror the CSS custom properties in `src/index.css`.
+ */
+export const effects = {
+  light: {
+    mesh1: 'rgba(79, 70, 229, 0.1)',
+    mesh2: 'rgba(13, 148, 136, 0.08)',
+    glowBrand: '0 0 0 1px var(--brand-soft), 0 14px 34px -14px var(--brand)',
+    glowAccent: '0 0 0 1px var(--accent-soft), 0 14px 34px -14px var(--accent)',
+  },
+  dark: {
+    mesh1: 'rgba(129, 140, 248, 0.13)',
+    mesh2: 'rgba(45, 212, 191, 0.09)',
+    glowBrand: '0 0 0 1px var(--brand-soft), 0 18px 44px -16px color-mix(in srgb, var(--brand) 78%, transparent)',
+    glowAccent: '0 0 0 1px var(--accent-soft), 0 18px 44px -16px color-mix(in srgb, var(--accent) 72%, transparent)',
+  },
 }
 
 export const shadows = {
@@ -88,6 +108,15 @@ export const motion = {
   page: { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
 }
 
+/** Premium type scale: display 680 → page title 650 → section 600 → body 400. */
+export const typeScale = {
+  display: { size: 'clamp(1.55rem, 3.2vw, 2.3rem)', weight: 680 },
+  pageTitle: { size: 'clamp(1.375rem, 2.2vw, 1.5rem)', weight: 650 },
+  sectionTitle: { weight: 600 },
+  body: { size: '0.875rem', weight: 400 },
+  caption: { size: '0.75rem', weight: 400 },
+}
+
 export const breakpoints = { sm: 640, md: 768, lg: 1024, xl: 1280, '2xl': 1536 }
 
-export default { colors, spacing, radius, shadows, fonts, motion, breakpoints }
+export default { colors, spacing, radius, shadows, fonts, motion, typeScale, effects, breakpoints }

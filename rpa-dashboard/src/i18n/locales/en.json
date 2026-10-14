@@ -145,7 +145,12 @@
       "greetingAfternoon": "Good afternoon, {{name}}",
       "greetingEvening": "Good evening, {{name}}",
       "kicker": "Private Operations",
-      "standby": "Runners on standby"
+      "standby": "Runners on standby",
+      "runsToday": "Runs today",
+      "serverTime": "Server time",
+      "liveActivity": "Live activity",
+      "viewAllRuns": "View all runs",
+      "targetRuns": "Target {{total}} / day"
     },
     "tour": {
       "title": "Your control room, at a glance",

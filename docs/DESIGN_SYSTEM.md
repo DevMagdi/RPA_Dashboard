@@ -22,13 +22,13 @@ primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#F8FAFC` | `#020617` | application canvas |
+| `--bg` | `#F1F5FB` | `#020617` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
 | `--surface` | `#FFFFFF` | `#0F172A` | cards, panels, menus |
 | `--surface-2` | `#F8FAFC` | `#131C31` | inputs, table headers, hover |
 | `--surface-3` | `#F1F5F9` | `#1B2741` | pressed / selected rows |
 | `--border` | `rgba(15, 23, 42, 0.06)` | `rgba(255, 255, 255, 0.07)` | 1px separation, low but visible |
 | `--text` | `#0F172A` | `#EFF5FF` | primary type |
-| `--text-muted` | `#64748B` | `#98A8BF` | secondary type, labels (AA on light canvas) |
+| `--text-muted` | `#5D6C85` | `#98A8BF` | secondary type, labels (AA on light canvas) |
 | `--brand` / hover | `#4F46E5` / `#3730A3` | `#818CF8` / `#6D78F6` | primary action, focus, selection (dark foreground tuned for AA) |
 | `--accent` | `#0D9488` | `#2DD4BF` | live/telemetry affordances |
 | `--success` | `#047857` | `#34D399` | healthy runs |
@@ -37,7 +37,9 @@ primary chart series at runtime without a rebuild.
 | `--info` | `#0369A1` | `#38BDF8` | neutral information |
 
 > Premium command-center refresh (2026-10): the light canvas/surfaces/brand/accent
-> follow the Premium plan (`#F8FAFC`, Deep Indigo `#4F46E5`, Electric Teal `#0D9488`).
+> follow the Premium plan (`#F1F5FB` canvas, Deep Indigo `#4F46E5`, Electric Teal `#0D9488`).
+> Static background depth comes from the fixed mesh tokens `--mesh-1`/`--mesh-2`
+> (never animated); hover/focus glow is tokenised as `--glow-brand`/`--glow-accent`.
 > The semantic trio keeps the plan's hue families at **AA-safe depth**
 > (`#059669`/`#D97706`/`#E11D48` fail 4.5:1 as text on `#F8FAFC`), while their
 > `*-soft` backgrounds carry the plan hexes exactly.
@@ -62,7 +64,9 @@ Rules:
 
 Scale (rem): `2xs .6875` · `xs .75` · `sm .8125` · `base .875` · `lg 1` ·
 `xl 1.25` · `2xl 1.5` · `3xl 1.875`. Body copy is 14px — an operator scans
-tables, so density beats air. `text-pretty` is used on descriptions to avoid
+tables, so density beats air. Headline weight ladder (Premium plan):
+`.text-display` 680 (command-centre title only) → `.text-page-title` 650 →
+`.text-section-title` 600 → body 400; KPI numbers are tabular figures at 650–680. `text-pretty` is used on descriptions to avoid
 widows in both scripts.
 
 **Arabic specifics:** line-height is raised (`1.75`) for Arabic paragraphs
@@ -72,8 +76,8 @@ applies `letter-spacing` to Arabic (it breaks the joins); Italic is never faked.
 ### 1.3 Space, radius, elevation
 
 * Approved 4-pt spacing rhythm: `4 / 8 / 12 / 16 / 24 / 32 / 48px`; component padding steps follow these tokens.
-* Radius: `12px` (`rounded-lg`) for controls and compact surfaces, `16px`
-  (`rounded-2xl`) for cards; larger hero/dialog radii are used sparingly.
+* Radius: `12px` (`rounded-lg`) for controls, `18px` (`--radius-card: 1.125rem`)
+  for main cards; larger hero/dialog radii are used sparingly.
 * Elevation: `shadow-xs` (inputs), `shadow-soft` (cards), `shadow-lift`
   (menus/popovers), `shadow-glow` (primary action hover). Dark mode uses
   0.5–0.7 alpha black plus a 1px inner highlight so surfaces stay separable.

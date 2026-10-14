@@ -170,7 +170,7 @@ export default function LoginPage() {
           transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
           className="relative z-[2] w-full max-w-sm"
         >
-          <div className="glass-premium relative overflow-hidden rounded-3xl p-6 sm:p-7">
+          <div className="glass-premium shadow-modal relative overflow-hidden rounded-3xl p-6 sm:p-7">
             <span
               aria-hidden
               className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/50 to-transparent"

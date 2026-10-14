@@ -264,6 +264,7 @@ export default function DashboardPage() {
         savings={savings}
         slaRisk={slaRisk}
         scope={data?.scope?.department}
+        activity={data?.table || []}
       />
 
       {/* Filters — persisted in the URL so a view can be shared with a colleague */}
