@@ -22,27 +22,37 @@ primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#F5F7FB` | `#0F1A2E` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
-| `--surface` | `#FFFFFF` | `#152238` | cards, panels, menus |
-| `--surface-2` | `#F8FAFC` | `#1B2A44` | inputs, table headers, hover |
-| `--surface-3` | `#F1F5F9` | `#223556` | pressed / selected rows |
-| `--border` | `rgba(15, 23, 42, 0.06)` | `rgba(255, 255, 255, 0.07)` | 1px separation, low but visible |
-| `--text` | `#14213A` | `#EFF5FF` | primary type |
-| `--text-muted` | `#5B6B82` | `#98A8BF` | secondary type, labels (AA on light canvas) |
-| `--brand` / hover | `#4F46E5` / `#3730A3` | `#818CF8` / `#6D78F6` | primary action, focus, selection (dark foreground tuned for AA) |
-| `--accent` | `#0D9488` | `#2DD4BF` | live/telemetry affordances |
+| `--bg` | `#F8F5FF` | `#0B0618` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
+| `--surface` | `#FFFFFF` | `#130B24` | cards, panels, menus |
+| `--surface-2` | `#FAF8FF` | `#1A1030` | inputs, table headers, hover |
+| `--surface-3` | `#F3EEFF` | `#22153C` | pressed / selected rows |
+| `--border` | `rgba(91, 33, 182, 0.08)` | `rgba(196, 181, 253, 0.12)` | 1px separation, low but visible |
+| `--text` | `#1E0B3A` | `#F5F0FF` | primary type (15.9:1 light / 15.2:1 dark on the canvas) |
+| `--text-muted` | `#6B5B8A` | `#B8A9D4` | secondary type, labels (5.3:1+ light / 7.8:1+ dark) |
+| `--brand` | `#5B21B6` | `#A78BFA` | **primary identity**: buttons, active nav, focus, selection, charts |
+| `--brand-strong` / `--brand-lighter` | `#4C1D95` / `#7C3AED` | `#8B5CF6` / `#C4B5FD` | hover and gradient stops (`#7C3AED` is text-safe at 5.0:1) |
+| `--accent` | `#0D9488` | `#2DD4BF` | **live states only**: live dots, pulses, "online" badges. Never body text and never a primary action. |
+| `--orange` | `#F58220` | `#F58220` | attention signal (fills, strips, dots) |
 | `--success` | `#047857` | `#34D399` | healthy runs |
 | `--warning` | `#B45309` | `#FBBF24` | SLA risk, queue growth |
 | `--danger` | `#BE123C` | `#FB7185` | failures, breaches |
 | `--info` | `#0369A1` | `#38BDF8` | neutral information |
 
-> Premium command-center refresh (2026-10): the light canvas/surfaces/brand/accent
-> follow the Hybrid control-room plan (`#F5F7FB` canvas, Navy `#1E3A5F`, Deep Indigo `#4F46E5`, Electric Teal `#0D9488`, Orange `#F58220`). See `docs/HYBRID_UI_PLAN_AR.md`.
+> **Purple-first identity (2026-10).** Purple is the dominant brand colour; the
+> deep violet `--hero-from` → `--hero-mid` → `--hero-to` gradient (`#1E0B3A` →
+> `#4C1D95` → `#6D28D9` in light) carries the command-centre hero. Teal
+> `#0D9488` (light) / `#2DD4BF` (dark) is reserved for **live or status states**
+> and must not be used as a decorative or primary colour. The palette is defined
+> identically in `src/index.css`, `src/design-system/tokens.js`,
+> `tailwind.config.js`, `index.html` (boot screen), the `BrandingProvider`
+> fallbacks and the backend brand defaults (`#5B21B6`).
+> Dark mode: `BrandingProvider` lifts a tenant's brand colour for dark surfaces
+> instead of applying the light value, so an organisation colour never overrides
+> the dark theme with a low-contrast light value.
 > Static background depth comes from the fixed mesh tokens `--mesh-1`/`--mesh-2`
 > (never animated); hover/focus glow is tokenised as `--glow-brand`/`--glow-accent`.
-> The semantic trio keeps the plan's hue families at **AA-safe depth**
-> (`#059669`/`#D97706`/`#E11D48` fail 4.5:1 as text on `#F8FAFC`), while their
-> `*-soft` backgrounds carry the plan hexes exactly.
+> The semantic trio keeps AA-safe text depths (`#047857` / `#B45309` / `#BE123C`);
+> the plan hues are used for fills and `*-soft` backgrounds.
 
 Rules:
 

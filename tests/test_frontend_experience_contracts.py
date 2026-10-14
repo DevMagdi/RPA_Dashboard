@@ -168,7 +168,7 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
     assert ":root {" in css
     assert ".dark {" in css
-    assert "--bg: #0f1a2e" in css
+    assert "--bg: #0b0618;" in css
     assert "prefers-reduced-motion: reduce" in css
     assert ".command-hero" in css
     assert "storage.get('theme', 'light')" in theme_provider
@@ -179,7 +179,7 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
 
 
 def test_hybrid_control_room_tokens_and_top_nav_are_wired():
-    """Hybrid plan: Navy/Orange anchors, premium radii, top pill nav and live bots badge."""
+    """Purple-first plan: deep-violet hero/navy anchors, orange signal, premium radii, top pill nav and live bots badge."""
     css = (SRC / "index.css").read_text(encoding="utf-8")
     tokens = (SRC / "design-system" / "tokens.js").read_text(encoding="utf-8")
     topbar = (SRC / "components" / "layout" / "TopBar.jsx").read_text(encoding="utf-8")
@@ -188,17 +188,17 @@ def test_hybrid_control_room_tokens_and_top_nav_are_wired():
 
     root_block = css[css.index(":root {") : css.index(".dark {")]
     for declaration in (
-        "--navy: #1e3a5f;",
-        "--navy-deep: #122339;",
+        "--navy: #2e1065;",
+        "--navy-deep: #1e0b3a;",
         "--orange: #f58220;",
         "--radius-card: 1.25rem;",
         "--radius-ctrl: 0.75rem;",
-        "--hero-to: #0d9488;",
+        "--hero-to: #6d28d9;",
     ):
         assert declaration in root_block, declaration
-    assert "--bg: #f5f7fb;" in root_block
-    assert "--text-muted: #5b6b82;" in root_block
-    assert "navy: '#1E3A5F'" in tokens and "orange: '#F58220'" in tokens
+    assert "--bg: #f8f5ff;" in root_block
+    assert "--text-muted: #6b5b8a;" in root_block
+    assert "navy: '#2E1065'" in tokens and "orange: '#F58220'" in tokens
     assert "background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);" in css
     assert ".kpi-strip" in css and ".nav-pill-active" in css and ".live-badge" in css
 
@@ -207,6 +207,36 @@ def test_hybrid_control_room_tokens_and_top_nav_are_wired():
     assert "useConnectedAgents({ refetchInterval: 30_000 })" in topbar  # shared hook, real API
     assert "PRIMARY_NAV_IDS = ['dashboard', 'processes', 'runs', 'alerts', 'capacity']" in top_nav
     assert "usePersistentState('shell.collapsed', true)" in shell
+
+
+def test_command_hero_layers_and_min_height_follow_the_redesign_plan():
+    """Hero: aurora 0 → grid 1 → content 2, isolated and clipped, min-height 220–240px."""
+    css = (SRC / "index.css").read_text(encoding="utf-8")
+    hero = css[css.index(".command-hero {") :]
+    assert "isolation: isolate;" in hero[:800]
+    assert "overflow: hidden;" in hero[:800]
+    assert "min-height: 232px;" in hero[:800]
+    for layer, z in ((".command-hero__aurora", "z-index: 0"), (".command-hero__grid", "z-index: 1"), (".command-hero__content", "z-index: 2")):
+        block = hero[hero.index(layer + " {") :]
+        assert z in block[: block.index("}")], layer
+    # Desktop two-column hero: the visual column only appears at 1280px and up.
+    assert "@media (min-width: 1280px)" in css[css.index(".command-hero__visual") - 400 : css.index(".command-hero__visual") + 400]
+
+
+def test_rtl_grid_mirrors_positions_and_uses_the_logical_resize_corner():
+    """RGL positions are physical, so the grid mirrors x in code and resizes from the bottom-left in RTL.
+
+    The mirrored layout must be memoised and persistence must skip unchanged layouts; otherwise
+    react-grid-layout reports a change on every render and React throws "Maximum update depth".
+    """
+    grid = (SRC / "components" / "dashboard" / "WidgetGrid.jsx").read_text(encoding="utf-8")
+    assert "const gridLayouts = useMemo(() => (rtl ? mirrorLayouts(layouts) : layouts), [layouts, rtl])" in grid
+    assert "resizeConfig={rtl ? RESIZE_CONFIG_RTL : RESIZE_CONFIG_LTR}" in grid
+    assert "const RESIZE_CONFIG_RTL = { handles: ['sw'] }" in grid
+    assert "const RESIZE_CONFIG_LTR = { handles: ['se'] }" in grid
+    assert "if (JSON.stringify(logical) === JSON.stringify(layoutsRef.current)) return" in grid
+    css = (SRC / "index.css").read_text(encoding="utf-8")
+    assert ".rpa-grid-container .react-grid-layout {\n  direction: ltr;" in css
 
 
 def test_ui_version_stays_aligned_with_control_room_v4():

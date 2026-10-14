@@ -268,8 +268,8 @@ export default function DashboardPage() {
       />
 
       {/* Filters — persisted in the URL so a view can be shared with a colleague */}
-      <Card className="sticky top-[3.35rem] z-20 p-3 backdrop-blur-md">
-        <div className="flex flex-wrap items-end gap-3">
+      <Card className="sticky top-[var(--header-height)] z-20 p-3 backdrop-blur-md">
+        <div className="flex flex-wrap items-end gap-4">
           <span className="flex items-center gap-2 text-xs font-medium text-muted">
             <Filter className="h-4 w-4" aria-hidden />
             {t('common.filters')}
@@ -348,13 +348,13 @@ export default function DashboardPage() {
       </Suspense>
 
       {dashboard.isLoading && !data ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={index} className="h-20" />
             ))}
           </div>
-          <div className="grid gap-3 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-3">
             <Skeleton className="h-64" />
             <Skeleton className="h-64 lg:col-span-2" />
           </div>
@@ -374,7 +374,7 @@ export default function DashboardPage() {
         </Suspense>
       )}
 
-      <div className={cn('grid gap-3', 'lg:grid-cols-2')}>
+      <div className={cn('grid gap-4', 'lg:grid-cols-2')}>
         <Suspense fallback={<Skeleton className="h-64 rounded-2xl" />}>
           <DepartmentBars data={data?.analytics?.departments} loading={dashboard.isLoading} height={240} />
         </Suspense>

@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Purple-first control room: overlap, RTL and palette fixes
+
+- **Palette (purple-first)**: light `--brand` `#5B21B6`, `--brand-strong` `#4C1D95`,
+  `--brand-lighter` `#7C3AED`, canvas `#F8F5FF`, text `#1E0B3A`, muted text
+  `#6B5B8A`; dark canvas `#0B0618`, surface `#130B24`, brand `#A78BFA`, text
+  `#F5F0FF`. Teal `#0D9488` (dark `#2DD4BF`) is reserved for live/status states.
+  Applied identically in `index.css`, `tokens.js`, `tailwind.config.js`,
+  `index.html`, `BrandingProvider` fallbacks and backend brand defaults
+  (`bootstrap`, `tables` server default, `organization_service`, `export_service`).
+  Existing database rows keep their stored brand colour; no migration runs.
+- **Dark mode branding**: `BrandingProvider` no longer writes light-theme
+  variables over `.dark`; dark mode lifts the organisation colour instead.
+- **Hero**: four KPI tiles in one row at ≥1280 (the "Runs today" tile is removed),
+  full-width sparkline, static aurora at z 0, grid z 1, content z 2, KPI tiles z 3,
+  `overflow: hidden` and `isolation: isolate`. Two-column layout at ≥1280;
+  single column below.
+- **Dashboard grid**: fixed the widget overlap (react-grid-layout transforms were
+  overridden by the framer-motion wrapper). RTL mirrors the grid positions in code
+  and uses the bottom-left resize corner; persistence is guarded against
+  unchanged layouts, which previously caused a render loop.
+- **Shell**: the sticky filter bar sits below the measured top-bar height
+  (`--header-height`, ResizeObserver). The "bots online" label and the top-nav
+  item labels move to ≥1536px (icons with tooltips and screen-reader text below), so
+  the top bar no longer collides at 1280–1535px, including in Arabic.
+- **Spacing and motion**: 4/8/12/16/24/32 scale and 16px grid and KPI gaps; hover
+  lift is `-translate-y-0.5` (2px); reduced-motion rules remain in place.
+- **Accessibility**: hero muted text is `rgba(233, 224, 255, 0.92)` so it stays
+  ≥4.5:1 across the whole hero gradient.
+- **Tests**: design-system and frontend contract tests updated to the purple-first
+  values, including the hero `--hero-to` and the RTL resize-corner contract.
+
 ## Unreleased — Hybrid control-room UI (Navy · Indigo · Teal · Orange)
 
 Implements `docs/HYBRID_UI_PLAN_AR.md` (the audit confirms the plan was not on

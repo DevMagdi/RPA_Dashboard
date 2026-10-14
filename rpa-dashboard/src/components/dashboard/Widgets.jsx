@@ -145,7 +145,7 @@ export function VolumeChart({ data, loading, height }) {
           <AreaGradient id={`${completedId}`} color={CHART_COLORS.success} from={0.36} />
         </defs>
         <CartesianGrid stroke={CHART_COLORS.grid} vertical={false} />
-        <XAxis dataKey="date" {...axisProps()} reversed={reverseTimeAxis} minTickGap={24} />
+        <XAxis dataKey="date" {...axisProps()} tickMargin={12} reversed={reverseTimeAxis} minTickGap={24} />
         <YAxis {...axisProps()} orientation={valueAxisOrientation} width={44} tickFormatter={(value) => compactNumber(value, 0)} />
         <ChartTooltip content={<ChartTooltipCard totalLabel={t('common.results')} />} cursor={{ stroke: CHART_COLORS.grid, strokeWidth: 1 }} />
         <Area

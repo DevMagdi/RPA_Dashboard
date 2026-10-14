@@ -92,7 +92,7 @@ Organization = Table(
     pk("OrganizationID"),
     Column("Name", Unicode(200), nullable=False),
     Column("CompanyName", Unicode(200), nullable=True),
-    Column("BrandPrimaryColor", Unicode(20), nullable=False, server_default="#4F46E5"),
+    Column("BrandPrimaryColor", Unicode(20), nullable=False, server_default="#5B21B6"),
     Column("BrandAccentColor", Unicode(20), nullable=False, server_default="#0D9488"),
     Column("LogoUrl", Unicode(500), nullable=True),
     Column("Locale", Unicode(10), nullable=False, server_default="en"),

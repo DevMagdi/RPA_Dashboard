@@ -56,7 +56,7 @@ function TopNavItem({ route, label }) {
       }
     >
       {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
-      <span className="sr-only xl:not-sr-only">{label}</span>
+      <span className="sr-only 2xl:not-sr-only">{label}</span>
     </NavLink>
   )
 }
@@ -88,7 +88,7 @@ function OverflowMenu({ sections, activeRoute }) {
           )}
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden />
-          <span className="sr-only xl:not-sr-only">{active ? t(activeRoute.labelKey) : t('nav.more')}</span>
+          <span className="sr-only 2xl:not-sr-only">{active ? t(activeRoute.labelKey) : t('nav.more')}</span>
         </button>
       }
     >
