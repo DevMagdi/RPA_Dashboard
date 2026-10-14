@@ -265,6 +265,9 @@
   "processes": {
     "title": "العمليات والعائد",
     "subtitle": "دليل الأتمتة ودراسة الجدوى وإعدادات SLA",
+    "viewMode": "طريقة العرض",
+    "tableView": "جدول",
+    "cardsView": "بطاقات",
     "process": "العملية",
     "department": "الإدارة",
     "criticality": "الأهمية",
@@ -592,6 +595,7 @@
     "openSettings": "فتح الإعدادات",
     "exportExcel": "تصدير العرض الحالي إلى Excel",
     "exportPdf": "تصدير العرض الحالي إلى PDF",
+    "acknowledgeAlert": "الإقرار بالتنبيه: {{alert}}",
     "gotoProcess": "فتح العملية",
     "label": "لوحة الأوامر"
   },

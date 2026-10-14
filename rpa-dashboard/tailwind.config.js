@@ -98,7 +98,7 @@ export default {
         md: '0.6rem',
         lg: '0.75rem',
         xl: '0.9rem',
-        '2xl': '1.15rem',
+        '2xl': '1rem',
         '3xl': '1.5rem',
         '4xl': '1.9rem',
       },

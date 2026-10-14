@@ -16,24 +16,25 @@ not carry information.
 ### 1.1 Colour
 
 All colours are CSS custom properties defined in `rpa-dashboard/src/index.css`
-and consumed through Tailwind theme keys, so branding can be overridden at
-runtime (`BrandingProvider` rewrites `--brand`, `--accent`) without a rebuild.
+and consumed through Tailwind theme keys. `BrandingProvider` can override the
+installation's `--brand` / `--accent`, derived contrast/shade/ring tokens and
+primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#f4f7fc` | `#070b14` | application canvas |
-| `--surface` | `#ffffff` | `#0f1626` | cards, panels, menus |
-| `--surface-2` | `#f7f9fc` | `#141d31` | inputs, table headers, hover |
-| `--surface-3` | `#eef2f8` | `#1b2740` | pressed / selected rows |
-| `--border` | `#e2e8f2` | `#22304b` | 1px separation, low but visible |
-| `--text` | `#0f1728` | `#eef4ff` | primary type |
-| `--muted` | `#5c6b86` | `#93a4bf` | secondary type, labels |
-| `--brand` | `#4f46e5` | `#7c74ff` | primary action, focus, selection |
-| `--accent` | `#0d9488` | `#2dd4bf` | live/telemetry affordances |
-| `--success` | `#0f9d58` | `#34d399` | healthy runs |
-| `--warning` | `#b45309` | `#fbbf24` | SLA risk, queue growth |
-| `--danger` | `#dc2626` | `#f87171` | failures, breaches |
-| `--info` | `#2563eb` | `#60a5fa` | neutral information |
+| `--bg` | `#F3F6FA` | `#070B14` | application canvas |
+| `--surface` | `#FFFFFF` | `#101827` | cards, panels, menus |
+| `--surface-2` | `#F7F9FC` | `#141F30` | inputs, table headers, hover |
+| `--surface-3` | `#E9EEF5` | `#1C2A3D` | pressed / selected rows |
+| `--border` | `#E1E7F0` | `#253249` | 1px separation, low but visible |
+| `--text` | `#111827` | `#EFF5FF` | primary type |
+| `--text-muted` | `#657286` | `#98A8BF` | secondary type, labels (AA on light canvas) |
+| `--brand` / hover | `#6254E8` / `#5145C5` | `#7F72FF` / `#7969FF` | primary action, focus, selection (dark foreground tuned for AA) |
+| `--accent` | `#0F9F91` | `#2DD4BF` | live/telemetry affordances |
+| `--success` | `#047857` | `#34D399` | healthy runs |
+| `--warning` | `#B45309` | `#FBBF24` | SLA risk, queue growth |
+| `--danger` | `#BE123C` | `#FB7185` | failures, breaches |
+| `--info` | `#0369A1` | `#38BDF8` | neutral information |
 
 Rules:
 
@@ -64,25 +65,27 @@ applies `letter-spacing` to Arabic (it breaks the joins); Italic is never faked.
 
 ### 1.3 Space, radius, elevation
 
-* 4px spacing grid; component padding steps `p-2 / p-3 / p-4 / p-5`.
-* Radius: `--radius-sm 8px` (chips), `--radius 12px` (inputs), `--radius-lg 16px`
-  (cards), `--radius-xl 20px` (hero, dialogs).
+* Approved 4-pt spacing rhythm: `4 / 8 / 12 / 16 / 24 / 32 / 48px`; component padding steps follow these tokens.
+* Radius: `12px` (`rounded-lg`) for controls and compact surfaces, `16px`
+  (`rounded-2xl`) for cards; larger hero/dialog radii are used sparingly.
 * Elevation: `shadow-xs` (inputs), `shadow-soft` (cards), `shadow-lift`
   (menus/popovers), `shadow-glow` (primary action hover). Dark mode uses
   0.5–0.7 alpha black plus a 1px inner highlight so surfaces stay separable.
 
 ### 1.4 Motion
 
-* Two easings only: `--ease-premium cubic-bezier(.22,.61,.36,1)` for entrances,
-  `--ease-standard` for state changes. Durations 120/180/260/380 ms.
-* Framer Motion is used for layout, list and dialog transitions (spring
-  `{ stiffness: 260, damping: 26 }`); CSS transitions handle hover/press.
-* **Reduced motion is a first-class mode**: `prefers-reduced-motion: reduce` and
-  the in-app *Reduce motion* switch set `html[data-motion='reduced']`, which
-  collapses transforms (no slide, no scale, opacity only) and stops the live
-  pulse. Charts stop animating.
-* Motion never blocks interaction: entrance animations run on transform/opacity
-  only (compositor-friendly).
+* The CSS easing tokens are `--ease-premium cubic-bezier(.22,1,.36,1)` for
+  entrances and `--ease-exit cubic-bezier(.4,0,1,1)` for exits; common state
+  transitions run for 120–300 ms.
+* Framer Motion handles page, list, tour and dialog transitions; the sidebar
+  uses a restrained spring (`stiffness: 420`, `damping: 34`). CSS transitions
+  handle hover/press.
+* **Reduced motion is a first-class mode**: `prefers-reduced-motion: reduce`
+  and the in-app *Reduce motion* preference shorten CSS animations/transitions
+  to a single near-instant frame; selected ambient/hero animation is disabled.
+  Tour and widget-grid motion also follow Framer Motion's user preference.
+* Motion never blocks interaction: entrances animate transform/opacity and
+  reduced-motion preferences are respected rather than delaying state changes.
 
 ---
 

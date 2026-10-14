@@ -9,7 +9,7 @@ const BrandingContext = createContext(null)
 const FALLBACK = {
   name: 'RPA CoE Control Room',
   company_name: '',
-  primary_color: '#6D5DFC',
+  primary_color: '#6254E8',
   accent_color: '#0F9F91',
   locale: 'en',
   logo_url: null,
@@ -17,11 +17,11 @@ const FALLBACK = {
   features: {},
 }
 
-/** Convert '#4b367c' into an 'r, g, b' triple so CSS can build translucent variants. */
+/** Convert '#6254e8' into an 'r, g, b' triple so CSS can build translucent variants. */
 function rgbTriple(hex) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '4b367c', 16)
+  const int = Number.parseInt(full || '6254e8', 16)
   /* eslint-disable no-bitwise */
   return `${(int >> 16) & 255}, ${(int >> 8) & 255}, ${int & 255}`
   /* eslint-enable no-bitwise */
@@ -30,7 +30,7 @@ function rgbTriple(hex) {
 function shade(hex, amount) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '4b367c', 16)
+  const int = Number.parseInt(full || '6254e8', 16)
   /* eslint-disable no-bitwise */
   const clamp = (channel) => Math.max(0, Math.min(255, Math.round(channel * (1 + amount))))
   const r = clamp((int >> 16) & 255)
@@ -62,9 +62,14 @@ export function BrandingProvider({ children }) {
     const accent = branding.accent_color || FALLBACK.accent_color
     root.style.setProperty('--brand', primary)
     root.style.setProperty('--brand-strong', shade(primary, -0.22))
+    root.style.setProperty('--brand-lighter', shade(primary, 0.18))
     root.style.setProperty('--brand-soft', `rgba(${rgbTriple(primary)}, 0.14)`)
+    root.style.setProperty('--brand-ring', `rgba(${rgbTriple(primary)}, 0.38)`)
+    root.style.setProperty('--chart-1', primary)
     root.style.setProperty('--accent', accent)
+    root.style.setProperty('--accent-strong', shade(accent, -0.2))
     root.style.setProperty('--accent-soft', `rgba(${rgbTriple(accent)}, 0.16)`)
+    root.style.setProperty('--chart-2', accent)
     root.style.setProperty(
       '--brand-fg',
       Number.parseInt(String(primary).replace('#', '').slice(0, 2) || '00', 16) > 170 ? '#131826' : '#ffffff',

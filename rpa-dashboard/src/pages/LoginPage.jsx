@@ -97,7 +97,7 @@ export default function LoginPage() {
 
         <div className="relative z-[2] max-w-lg space-y-7">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent-soft px-3 py-1 text-[11px] font-semibold text-accent">
+            <span className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent-soft px-3 py-1 text-[11px] font-semibold text-accent-strong">
               <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
               {t('dashboard.privateInstallation')}
             </span>

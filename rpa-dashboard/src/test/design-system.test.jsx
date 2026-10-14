@@ -1,4 +1,6 @@
 /** Design System v5 contracts: tokens, variants, Arabic integrity, RTL. */
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
@@ -9,16 +11,75 @@ import en from '../i18n/locales/en.json'
 
 describe('design tokens', () => {
   it('is light-first with the requested premium palette', () => {
-    expect(colors.light.bg).toBe('#F8FAFC')
-    expect(colors.light.surface).toBe('#FFFFFF')
-    expect(colors.light.brand).toBe('#4F46E5')
-    expect(colors.light.accent).toBe('#0D9488')
+    expect(colors.light).toMatchObject({
+      bg: '#F3F6FA',
+      surface: '#FFFFFF',
+      surface2: '#F7F9FC',
+      border: '#E1E7F0',
+      text: '#111827',
+      textMuted: '#657286',
+      brand: '#6254E8',
+      brandStrong: '#5145C5',
+      accent: '#0F9F91',
+      success: '#047857',
+      warning: '#B45309',
+      danger: '#BE123C',
+      info: '#0369A1',
+    })
+    expect(colors.dark).toMatchObject({
+      bg: '#070B14',
+      surface: '#101827',
+      surface2: '#141F30',
+      border: '#253249',
+      text: '#EFF5FF',
+      textMuted: '#98A8BF',
+      brand: '#7F72FF',
+      accent: '#2DD4BF',
+    })
     for (const key of ['success', 'warning', 'danger', 'info']) expect(colors.light[key]).toMatch(/^#/)
     expect(colors.dark.bg).not.toBe(colors.light.bg)
     expect(tokens).toBeTruthy()
   })
+  it('keeps primary, muted and semantic text at WCAG AA contrast on key surfaces', () => {
+    const luminance = (hex) => {
+      const channels = [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255)
+      const linear = channels.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    }
+    const contrast = (foreground, background) => {
+      const [lighter, darker] = [luminance(foreground), luminance(background)].toSorted((a, b) => b - a)
+      return (lighter + 0.05) / (darker + 0.05)
+    }
+    const lightForegrounds = ['text', 'textMuted', 'brand', 'accentStrong', 'success', 'warning', 'danger', 'info']
+    const darkForegrounds = ['text', 'textSoft', 'textMuted', 'brand', 'accent', 'success', 'warning', 'danger', 'info']
+
+    for (const background of [colors.light.bg, colors.light.surface2, colors.light.surface]) {
+      for (const foreground of lightForegrounds) {
+        expect(contrast(colors.light[foreground], background), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+    for (const background of [colors.dark.surface, colors.dark.surface2]) {
+      for (const foreground of darkForegrounds) {
+        expect(contrast(colors.dark[foreground], background), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('keeps runtime CSS variables synchronized with the light and dark token objects', () => {
+    const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
+    const lightBlock = css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] || ''
+    const darkBlock = css.match(/\.dark\s*\{([\s\S]*?)\n\}/)?.[1] || ''
+    const variables = ['bg', 'bgSoft', 'surface', 'surface2', 'surface3', 'border', 'borderStrong', 'text', 'textSoft', 'textMuted', 'brand', 'brandStrong', 'brandLighter', 'accent', 'accentStrong', 'success', 'warning', 'danger', 'info']
+    const cssName = (name) => name.replace(/([a-z])([0-9])/g, '$1-$2').replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)
+
+    for (const name of variables) {
+      expect(lightBlock.toLowerCase()).toContain(`--${cssName(name)}: ${colors.light[name].toLowerCase()};`)
+      expect(darkBlock.toLowerCase()).toContain(`--${cssName(name)}: ${colors.dark[name].toLowerCase()};`)
+    }
+  })
+
   it('uses a consistent 4pt spacing scale and soft radius', () => {
-    expect(spacing).toEqual([0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64])
+    expect(spacing).toEqual([0, 4, 8, 12, 16, 24, 32, 48])
     expect(radius.md).toBe('0.75rem')
     expect(radius.lg).toBe('1rem')
   })

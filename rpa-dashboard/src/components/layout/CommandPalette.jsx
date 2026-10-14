@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   ArrowRight,
+  Bell,
   CornerDownLeft,
   FileSpreadsheet,
   FileText,
@@ -40,6 +41,7 @@ import { useAuth } from '../../context/AuthProvider'
 import { useBranding } from '../../context/BrandingProvider'
 import { useTheme } from '../../context/ThemeProvider'
 import { useToast } from '../../context/ToastProvider'
+import { useAlerts, useSetAlertStatus } from '../../hooks/api'
 import { applyLanguage, otherLanguage, LANGUAGES } from '../../i18n'
 import { highlightSegments, fuzzyMatch } from '../../lib/utils'
 import storage from '../../lib/storage'
@@ -89,6 +91,8 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
   const { has } = useAuth()
   const { companyName } = useBranding()
   const { recents, remember } = useRecents()
+  const { data: openAlerts = [] } = useAlerts({ status: 'Open', limit: 20 }, { enabled: open })
+  const { mutateAsync: acknowledgeAlert } = useSetAlertStatus()
 
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -119,6 +123,22 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
     }))
 
     const theme = isDark ? t('settings.themeLight') : t('settings.themeDark')
+    const alertActions = (openAlerts || []).slice(0, 5).map((alert) => ({
+      id: `action-ack-alert-${alert.AlertID}`,
+      group: 'actions',
+      label: t('palette.acknowledgeAlert', { alert: alert.Title || `#${alert.AlertID}` }),
+      hint: alert.Severity || t('alerts.title'),
+      icon: Bell,
+      keywords: `acknowledge alert ${alert.Title || ''} ${alert.Severity || ''} إقرار تنبيه`,
+      run: async () => {
+        try {
+          await acknowledgeAlert({ id: alert.AlertID, status: 'Acknowledged' })
+          toast.success(t('alerts.acknowledge'), alert.Title)
+        } catch (error) {
+          toast.error(t('errors.title'), error.message)
+        }
+      },
+    }))
     const actions = [
       {
         id: 'action-theme',
@@ -189,6 +209,7 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
           }
         },
       },
+      ...alertActions,
     ].filter((item) => !item.permission || has(item.permission) || has('*'))
 
     const processItems = (processes || []).slice(0, 60).map((name) => ({
@@ -224,7 +245,7 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
     }
     scored.sort((a, b) => b.score - a.score)
     return scored.slice(0, 40)
-  }, [t, has, processes, deferredQuery, recents, isDark, toggleTheme, client, toast, companyName, navigate])
+  }, [t, has, processes, deferredQuery, recents, isDark, toggleTheme, client, toast, companyName, navigate, openAlerts, acknowledgeAlert])
 
   useEffect(() => {
     setCursor(0)
@@ -233,7 +254,7 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
   useEffect(() => {
     if (!listRef.current) return
     const node = listRef.current.querySelector(`[data-index="${cursor}"]`)
-    node?.scrollIntoView({ block: 'nearest' })
+    node?.scrollIntoView?.({ block: 'nearest' })
   }, [cursor, items])
 
   const run = useCallback(
