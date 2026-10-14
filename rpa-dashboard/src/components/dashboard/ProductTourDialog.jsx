@@ -7,7 +7,7 @@
  * drive it with ← → and Esc.
  */
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Activity, ArrowLeft, ArrowRight, BadgeCheck, Check, Gauge, Server, ShieldCheck, Sparkles, Workflow } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowRight, BadgeCheck, Check, Gauge, ListChecks, Server, ShieldCheck, Sparkles, Workflow } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -17,6 +17,8 @@ import { useDirection } from '../../lib/direction'
 import { Badge, Button, Modal } from '../ui'
 
 const TOUR_STEPS = [
+  /* The decision tier comes first: it is the screen an operator lives in. */
+  { key: 'dashboard', path: '/dashboard', permission: 'dashboard:read', icon: ListChecks },
   { key: 'infrastructure', path: '/infrastructure', permission: 'infrastructure:read', icon: Server },
   { key: 'processes', path: '/processes', permission: 'processes:read', icon: Workflow },
   { key: 'runs', path: '/runs', permission: 'runs:read', icon: Activity },

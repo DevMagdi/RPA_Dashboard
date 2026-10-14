@@ -64,8 +64,12 @@ import {
   Skeleton,
 } from '../ui'
 
-/* KpiGrid lives in its own module (no chart runtime on the critical path). */
-export { default as KpiGrid } from './KpiGrid'
+/*
+ * The KPI rail was replaced by `HealthBoard` (four metrics judged against a
+ * target) plus the compact context strip; the six-card rail repeated the hero
+ * strip and gave a static configuration count the same weight as a live
+ * failure count. `lib/opsSignals.js` owns the derivation now.
+ */
 
 /* ----------------------------------------------------------------- Charts */
 

@@ -20,9 +20,26 @@ New utility classes (Premium plan): `.glass-premium` (frosted key panels),
 (token `--glow-brand`, plus `--glow-accent` for the live accent),
 `.text-display` 680 / `.text-page-title` 650 / `.text-section-title` 600
 (display → page → section weight ladder, RTL-safe), `.stat-flash` (soft value tick).
-Command-centre hero: live status bar (Connected · server clock), five-KPI strip
-(+ Runs today), 14-day sparkline and a live-activity ticker of the five most
-recent real runs.
+Command-centre hero: live status bar (Connected · server clock), an operational
+**verdict** as the headline, a demoted greeting line, a four-KPI strip, a 14-day
+sparkline and a live-activity ticker of the five most recent real runs.
+
+## Decision tier (v5)
+The dashboard is ordered by decision speed, not by widget attractiveness. Three
+tiers are **pinned** (never draggable): the hero verdict, `TriageQueue` and
+`HealthBoard`. Only the analytics widgets below them use `WidgetGrid`.
+
+| Class | Use |
+|---|---|
+| `.command-hero__verdict` + `.is-critical/.is-degraded/.is-healthy` | hero headline; tone drives border, mark and background |
+| `.triage-row` + `[data-severity]` | one decision per row; the inline-start severity stripe is the only colour it carries |
+| `.health-card--breach/--risk` | warm border so a wallboard reads state from across the room |
+| `.context-strip` | informational figures, deliberately secondary to the four judged metrics |
+
+All four reuse existing tokens (`--danger`, `--warning`, `--success`, `--strip-*`)
+— no new colour was introduced. Severity/verdict copy comes from
+`lib/opsSignals.js`, which is the single source for the hero, the queue and the
+board, so they can never disagree.
 
 ## Type
 - Latin: **Inter Variable**, Arabic: **Cairo Variable** — both self-hosted in `public/fonts` (air-gapped banks). Arabic must never render as `????`: the Arabic `@font-face` ships with the product; tests assert no `?`-runs in `ar.json`.

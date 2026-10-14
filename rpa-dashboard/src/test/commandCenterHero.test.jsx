@@ -1,9 +1,10 @@
 /**
  * Command-centre hero + KPI rail — premium wireframe contracts.
  *
- * Locks the Premium/Wow plan's P0 dashboard pieces:
+ * Locks the decision-first hero:
+ *  • the operational verdict leading the hero, computed from real payload data,
  *  • personalized time-of-day greeting (en + ar, deep i18n parity),
- *  • the five-KPI command strip (Success / Active / Savings / SLA / Runs today),
+ *  • the four-KPI command strip (Success / Active / Savings / SLA),
  *  • the live status bar with the server-anchored clock,
  *  • the live-activity ticker with the five most recent real runs,
  *  • the full-width 14-day sparkline strip with real series deltas,
@@ -15,10 +16,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import CommandCenterHero from '../components/dashboard/CommandCenterHero'
-import KpiGrid from '../components/dashboard/KpiGrid'
+import HealthBoard from '../components/dashboard/HealthBoard'
+import { buildHealthMetrics, buildOpsSignals } from '../lib/opsSignals'
 import en from '../i18n/locales/en.json'
 import ar from '../i18n/locales/ar.json'
-import { currency } from '../lib/format'
 
 vi.mock('../context/AuthProvider', () => ({
   useAuth: () => ({ user: { username: 'magdi', full_name: 'Magdi Hassan' }, has: () => true }),
@@ -169,33 +170,58 @@ describe('command centre hero', () => {
   })
 })
 
-describe('KPI rail', () => {
-  it('shows six large always-hoverable cards with compact money and series deltas', async () => {
+describe('health board (replaces the six-card KPI rail)', () => {
+  const signals = buildOpsSignals({
+    dashboard: { kpis, sidebarStats: { successRate: 98.4, successRuns: 980, bookedRuns: 996 } },
+    slaWorkload: [],
+    capacity: { summary: { online_runners: 4, total_queue_depth: 12 } },
+    alerts: [],
+  })
+  const metrics = buildHealthMetrics({ dashboard: { kpis, sidebarStats: { successRate: 98.4, successRuns: 980, bookedRuns: 996 } }, signals })
+
+  it('judges every metric against an explicit target and verdict', () => {
     render(
       <MemoryRouter>
-        <KpiGrid kpis={kpis} spark={spark} savings={savings} />
+        <HealthBoard metrics={metrics} context={[]} spark={spark} />
       </MemoryRouter>,
     )
 
     for (const label of [
-      en.dashboard.totalProcedures,
-      en.dashboard.totalTransactions,
+      en.dashboard.hero.successRate,
+      en.dashboard.stopsToday,
+      en.dashboard.slaBreaches,
       en.dashboard.runsToday,
-      en.dashboard.timeSaved,
-      en.dashboard.costSaved,
-      en.dashboard.activeRun,
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
+    // the target is stated next to the number, not implied
+    expect(screen.getByText('Target 95%')).toBeInTheDocument()
+    expect(screen.getByText('Target 400 runs today')).toBeInTheDocument()
+    expect(screen.getAllByText(en.dashboard.health.verdicts.ok).length).toBeGreaterThan(0)
 
-    // hover elevation is always armed (plan: KPI cards lift on hover)
-    expect(document.querySelector('.card-hover')).toBeTruthy()
-    expect(document.querySelector('.card-elevated, .shadow-glow')).toBeTruthy()
+    // every verdict card keeps the token-driven coloured strip (no hardcoded hex)
+    const strips = [...document.querySelectorAll('.kpi-strip')].map((node) => node.style.getPropertyValue('--strip'))
+    expect(strips.length).toBe(4)
+    for (const value of strips) expect(value.startsWith('var(--')).toBe(true)
+  })
 
-    // exact currency stays available on the compact figure (query normalizes NBSP)
-    const exactTitle = currency(48200).replace(/ /g, ' ')
-    await waitFor(() => expect(screen.getByTitle(exactTitle)).toBeInTheDocument(), { timeout: 2500 })
-    // both series deltas render as chips
-    expect(screen.getAllByText('53.8%').length).toBeGreaterThanOrEqual(2)
+  it('escalates the verdict when the success rate falls below the operating threshold', () => {
+    const degraded = buildOpsSignals({
+      dashboard: { kpis: { ...kpis, successRate: 84.6 }, sidebarStats: { successRate: 84.6 } },
+      slaWorkload: [],
+      capacity: {},
+      alerts: [],
+    })
+    const degradedMetrics = buildHealthMetrics({ dashboard: { kpis, sidebarStats: { successRate: 84.6 } }, signals: degraded })
+    expect(degraded.verdict).toBe('critical')
+    expect(degradedMetrics[0].verdict).toBe('breach')
+
+    render(
+      <MemoryRouter>
+        <HealthBoard metrics={degradedMetrics} context={[]} />
+      </MemoryRouter>,
+    )
+    expect(screen.getAllByText(en.dashboard.health.verdicts.breach).length).toBeGreaterThan(0)
+    expect(document.querySelector('.health-card--breach')).toBeTruthy()
   })
 })

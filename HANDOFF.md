@@ -7,6 +7,13 @@ UiPath, Automation Anywhere, Blue Prism and in-house RPA.
 
 ## Headline changes
 
+0. **Decision-first dashboard (v5)** — the screen is now ordered by how fast an
+   operator can act: hero **verdict** → **triage queue** → **health board** →
+   analytics. `lib/opsSignals.js` (pure, testable) derives one verdict + ranked
+   action list from the real payload, so the three tiers cannot disagree.
+   Failed runs, SLA breaches, open alerts and runner-less queues — all of which
+   were already in the payload but never ranked or actionable — now appear at the
+   top with the action that resolves them. No colour or token changed.
 1. **Single-organization model** — the multi-organization tenancy layer was
    removed end to end: one seeded `Organization`, no discriminator columns,
    JWTs carry user/department only, and organization administration is guarded

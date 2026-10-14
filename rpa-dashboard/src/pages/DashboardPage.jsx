@@ -1,9 +1,25 @@
 /**
  * Dashboard — the Control Room's command centre.
  *
+ * Information architecture (v5, "decision-first")
+ * -----------------------------------------------
+ * The screen is ordered by *how fast an operator can act*, not by how
+ * attractive a widget is:
+ *
+ *   1. Hero + verdict      — "is anything wrong right now?" (3 seconds)
+ *   2. Filters             — the scope those answers apply to (shareable URL)
+ *   3. Triage queue        — the ranked list of decisions, each with its action
+ *   4. Health board        — the four metrics that carry a decision, vs target
+ *   5. Active run          — what the fleet is doing this second
+ *   6. Analytics widgets   — trends and evidence, below the fold
+ *
+ * Tiers 1–5 are pinned: they never move, so muscle memory works and a
+ * wallboard cannot be rearranged into something unreadable. Only the
+ * analytics widgets are draggable.
+ *
  * Performance architecture (this is the screen everyone opens first):
- *  1. the shell + hero + KPI rail render from the *critical* chunk only — no
- *     charting library is parsed before first paint;
+ *  1. the shell + hero + triage + health board render from the *critical*
+ *     chunk only — no charting library is parsed before first paint;
  *  2. recharts-backed widgets arrive through `React.lazy` + `<Suspense>` with
  *     layout-stable skeletons, and the drag-and-drop grid is split again;
  *  3. filters are applied inside `startTransition`, so typing in a filter never
@@ -18,11 +34,13 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthProvider'
 import { useToast } from '../context/ToastProvider'
 import {
+  useAlerts,
   useCapacityInsights,
   useDashboard,
   useDepartments,
   useGenerateRecommendations,
   useProcessOptions,
+  useSetAlertStatus,
   useSlaWorkload,
   useUpdateRecommendationStatus,
 } from '../hooks/api'
@@ -30,13 +48,15 @@ import { useUrlFilters } from '../hooks/ui'
 import api from '../lib/api'
 import { DATE_RANGES, DEFAULT_WIDGET_LAYOUT } from '../lib/constants'
 import { useOnboardingProgress } from '../lib/onboarding'
+import { buildContextMetrics, buildHealthMetrics, buildOpsSignals } from '../lib/opsSignals'
 import storage from '../lib/storage'
 import CommandCenterHero from '../components/dashboard/CommandCenterHero'
-import KpiGrid from '../components/dashboard/KpiGrid'
+import HealthBoard from '../components/dashboard/HealthBoard'
 import OnboardingChecklist from '../components/dashboard/OnboardingChecklist'
+import TriageQueue from '../components/dashboard/TriageQueue'
 import ExportMenu from '../components/features/ExportMenu'
 import RouteFallback from '../components/common/RouteFallback'
-import { Button, Card, EmptyState, SegmentedControl, Select, Skeleton, cn } from '../components/ui'
+import { Button, Card, EmptyState, SegmentedControl, SectionTitle, Select, Skeleton, cn } from '../components/ui'
 
 /* Heavy, below-the-fold modules: separate chunks, requested after first paint. */
 const ProductTourDialog = lazy(() => import('../components/dashboard/ProductTourDialog'))
@@ -53,7 +73,6 @@ const VolumeChart = lazy(() => import('../components/dashboard/Widgets').then((m
 const DEFAULTS = { department: 'ALL', process: 'ALL', days: 90 }
 
 const WIDGET_TITLES = {
-  kpis: 'dashboard.title',
   capacity: 'capacity.insights',
   volume: 'dashboard.runVolume',
   health: 'dashboard.healthDonut',
@@ -76,30 +95,49 @@ export default function DashboardPage() {
   const client = useQueryClient()
   const toast = useToast()
   const { has, user } = useAuth()
-  const tourStorageKey = `onboarding.control-room.v4.${user?.user_id ?? 'current'}`
+  const tourStorageKey = `onboarding.control-room.v5.${user?.user_id ?? 'current'}`
 
   const { filters, update, reset } = useUrlFilters(DEFAULTS)
   const [refreshing, setRefreshing] = useState(false)
-  const [busyRecommendation, setBusyRecommendation] = useState(null)
+  const [busy, setBusy] = useState(null)
   const [hiddenIds, setHiddenIds] = useState(() => storage.get('widgets.hidden', []))
   const [tourOpen, setTourOpen] = useState(false)
 
   const dashboard = useDashboard(filters)
   const capacity = useCapacityInsights({ department: filters.department === 'ALL' ? undefined : filters.department })
   const sla = useSlaWorkload(filters.process === 'ALL' ? undefined : filters.process)
+  const alerts = useAlerts({ status: 'Open', limit: 50 })
   const departments = useDepartments()
   const processes = useProcessOptions(filters.department === 'ALL' ? undefined : filters.department)
 
   const generate = useGenerateRecommendations()
   const decide = useUpdateRecommendationStatus()
-  const progress = useOnboardingProgress({
-    stepProcesses: Boolean(dashboard.data?.kpis?.totalProcedures),
-  })
+  const setAlertStatus = useSetAlertStatus()
 
   const data = dashboard.data
   const spark = data?.charts?.volume || []
   const savings = data?.charts?.savings || []
-  const slaRisk = (sla.data || []).filter((row) => String(row.SLAStatus || 'Healthy') !== 'Healthy').length
+
+  /**
+   * One derivation feeds the hero verdict, the triage queue and the health
+   * board, so the three can never disagree with each other.
+   */
+  const signals = useMemo(
+    () =>
+      buildOpsSignals({
+        dashboard: data,
+        slaWorkload: sla.data,
+        capacity: capacity.data,
+        alerts: alerts.data,
+      }),
+    [data, sla.data, capacity.data, alerts.data],
+  )
+  const healthMetrics = useMemo(() => buildHealthMetrics({ dashboard: data, signals }), [data, signals])
+  const contextMetrics = useMemo(() => buildContextMetrics({ dashboard: data, capacity: capacity.data }), [data, capacity.data])
+
+  const progress = useOnboardingProgress({
+    stepProcesses: Boolean(data?.kpis?.totalProcedures),
+  })
 
   useEffect(() => {
     if (!dashboard.isLoading && data && !storage.get(tourStorageKey, false)) {
@@ -120,6 +158,7 @@ export default function DashboardPage() {
         client.invalidateQueries({ queryKey: ['dashboard'] }),
         client.invalidateQueries({ queryKey: ['capacity'] }),
         client.invalidateQueries({ queryKey: ['sla-workload'] }),
+        client.invalidateQueries({ queryKey: ['alerts'] }),
       ])
       toast.success(t('actions.refresh'), t('app.lastUpdated', { time: t('common.justNow') }))
     } catch (error) {
@@ -129,19 +168,38 @@ export default function DashboardPage() {
     }
   }
 
-  const requestCapacity = useCallback(
-    async (recommendation) => {
-      setBusyRecommendation(recommendation.id)
+  /** Acknowledging from the dashboard must never require a trip to /alerts. */
+  const acknowledgeAlert = useCallback(
+    async (alertId) => {
+      setBusy(`alert:${alertId}`)
       try {
-        await decide.mutateAsync({ id: recommendation.id, status: 'Requested', comment: t('actions.requestCapacity') })
-        toast.success(t('actions.requestCapacity'), recommendation.process_name)
+        await setAlertStatus.mutateAsync({ id: alertId, status: 'Acknowledged' })
+        await client.invalidateQueries({ queryKey: ['alerts'] })
+        toast.success(t('alerts.acknowledged'), t('dashboard.triage.acknowledgedHint'))
       } catch (error) {
         toast.error(t('errors.title'), error.message)
       } finally {
-        setBusyRecommendation(null)
+        setBusy(null)
       }
     },
-    [decide, t, toast],
+    [client, setAlertStatus, t, toast],
+  )
+
+  const requestCapacity = useCallback(
+    async (item) => {
+      const id = item?.recommendationId ?? item?.id
+      setBusy(`recommendation:${id}`)
+      try {
+        await decide.mutateAsync({ id, status: 'Requested', comment: t('actions.requestCapacity') })
+        await client.invalidateQueries({ queryKey: ['capacity'] })
+        toast.success(t('actions.requestCapacity'), item?.process || t('capacity.insights'))
+      } catch (error) {
+        toast.error(t('errors.title'), error.message)
+      } finally {
+        setBusy(null)
+      }
+    },
+    [client, decide, t, toast],
   )
 
   const applyFilter = useCallback(
@@ -153,13 +211,6 @@ export default function DashboardPage() {
 
   const allWidgets = useMemo(() => {
     const definitions = {
-      kpis: {
-        render: () => (
-          <div className="p-3">
-            <KpiGrid kpis={data?.kpis} loading={dashboard.isLoading} spark={spark} savings={savings} />
-          </div>
-        ),
-      },
       capacity: {
         render: () => (
           <div className="h-full p-3">
@@ -167,8 +218,8 @@ export default function DashboardPage() {
               <CapacityPanel
                 capacity={capacity.data}
                 loading={capacity.isLoading}
-                busyId={busyRecommendation}
-                onRequestCapacity={requestCapacity}
+                busyId={busy}
+                onRequestCapacity={(recommendation) => requestCapacity({ recommendationId: recommendation.id, process: recommendation.process_name })}
               />
             </Suspense>
           </div>
@@ -221,12 +272,12 @@ export default function DashboardPage() {
       },
     }
 
-    return DEFAULT_WIDGET_LAYOUT.map((item) => ({
+    return DEFAULT_WIDGET_LAYOUT.filter((item) => definitions[item.i]).map((item) => ({
       id: item.i,
       title: t(WIDGET_TITLES[item.i]),
       ...definitions[item.i],
     }))
-  }, [data, dashboard.isLoading, capacity.data, capacity.isLoading, sla.data, sla.isLoading, busyRecommendation, requestCapacity, t, spark])
+  }, [data, dashboard.isLoading, capacity.data, capacity.isLoading, sla.data, sla.isLoading, busy, requestCapacity, t])
 
   const visible = useMemo(() => allWidgets.filter((widget) => !hiddenIds.includes(widget.id)), [allWidgets, hiddenIds])
   const hidden = useMemo(() => allWidgets.filter((widget) => hiddenIds.includes(widget.id)), [allWidgets, hiddenIds])
@@ -262,14 +313,15 @@ export default function DashboardPage() {
         actions={<ExportMenu days={filters.days} />}
         spark={spark}
         savings={savings}
-        slaRisk={slaRisk}
+        slaRisk={signals.totals.slaBreach}
         scope={data?.scope?.department}
         activity={data?.table || []}
+        signals={signals}
       />
 
       {/* Filters — persisted in the URL so a view can be shared with a colleague */}
       <Card className="sticky top-[var(--header-height)] z-20 p-3 backdrop-blur-md">
-        <div className="flex flex-wrap items-end gap-4">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
           <span className="flex items-center gap-2 text-xs font-medium text-muted">
             <Filter className="h-4 w-4" aria-hidden />
             {t('common.filters')}
@@ -343,36 +395,66 @@ export default function DashboardPage() {
         </div>
       </Card>
 
+      {/* ── Tier 2: the ranked list of decisions, pinned above the fold ──── */}
+      <section id="triage-queue" className="scroll-mt-[calc(var(--header-height)+1rem)]" aria-label={t('dashboard.triage.title')}>
+        <TriageQueue
+          signals={signals}
+          loading={dashboard.isLoading && !data}
+          busy={busy}
+          onAcknowledge={acknowledgeAlert}
+          onDecide={requestCapacity}
+        />
+      </section>
+
+      {/* ── Tier 3: the four metrics that carry a decision, versus target ── */}
+      <section aria-label={t('dashboard.health.title')}>
+        <SectionTitle
+          eyebrow={t('dashboard.health.eyebrow')}
+          title={t('dashboard.health.title')}
+          subtitle={t('dashboard.health.subtitle')}
+        />
+        <HealthBoard
+          className="mt-3"
+          metrics={healthMetrics}
+          context={contextMetrics}
+          spark={spark}
+          loading={dashboard.isLoading && !data}
+        />
+      </section>
+
       <Suspense fallback={<Skeleton className="h-14" />}>
         <ActiveRunBanner kpis={data?.kpis} />
       </Suspense>
 
-      {dashboard.isLoading && !data ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-20" />
-            ))}
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64 lg:col-span-2" />
-          </div>
+      {/* ── Tier 4: trends and evidence. Only this tier is rearrangeable. ── */}
+      <section aria-label={t('dashboard.analytics.title')}>
+        <SectionTitle
+          eyebrow={t('dashboard.analytics.eyebrow')}
+          title={t('dashboard.analytics.title')}
+          subtitle={t('dashboard.analytics.subtitle')}
+        />
+        <div className="mt-3">
+          {dashboard.isLoading && !data ? (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Skeleton className="h-64" />
+              <Skeleton className="h-64 lg:col-span-2" />
+            </div>
+          ) : (
+            <Suspense fallback={<RouteFallback variant="dashboard" />}>
+              <WidgetGrid
+                widgets={visible}
+                hidden={hidden}
+                onReset={() => setHiddenIds([])}
+                onToggleHidden={(id, hide) => {
+                  const next = hide ? [...new Set([...hiddenIds, id])] : hiddenIds.filter((item) => item !== id)
+                  setHiddenIds(next)
+                  storage.set('widgets.hidden', next)
+                }}
+              />
+            </Suspense>
+          )}
         </div>
-      ) : (
-        <Suspense fallback={<RouteFallback variant="dashboard" />}>
-          <WidgetGrid
-            widgets={visible}
-            hidden={hidden}
-            onReset={() => setHiddenIds([])}
-            onToggleHidden={(id, hide) => {
-              const next = hide ? [...new Set([...hiddenIds, id])] : hiddenIds.filter((item) => item !== id)
-              setHiddenIds(next)
-              storage.set('widgets.hidden', next)
-            }}
-          />
-        </Suspense>
-      )}
+      </section>
 
       <div className={cn('grid gap-4', 'lg:grid-cols-2')}>
         <Suspense fallback={<Skeleton className="h-64 rounded-2xl" />}>
