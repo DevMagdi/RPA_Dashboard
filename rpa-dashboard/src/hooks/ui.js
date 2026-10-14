@@ -1,4 +1,11 @@
-/** Small UI primitives: debounce, media queries, clipboard, hotkeys, count-up. */
+/**
+ * Small UI hooks: debounce, media queries, clipboard, hotkeys, count-up,
+ * viewport visibility, idle scheduling.
+ *
+ * Every hook here is SSR-safe (the dashboard renders under
+ * `react-dom/server` in the performance test-suite) and cleans up after
+ * itself — no leaked listeners across a 12-hour operator shift.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { onRealtimeState } from '../lib/realtime'
@@ -31,6 +38,33 @@ export function useIsMobile() {
   return useMediaQuery('(max-width: 767px)')
 }
 
+export function useIsTablet() {
+  return useMediaQuery('(max-width: 1023px)')
+}
+
+export function useIsTouch() {
+  return useMediaQuery('(hover: none), (pointer: coarse)')
+}
+
+export function usePrefersReducedMotion() {
+  return useMediaQuery('(prefers-reduced-motion: reduce)')
+}
+
+export function useOnlineStatus() {
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false))
+  useEffect(() => {
+    const on = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => {
+      window.removeEventListener('online', on)
+      window.removeEventListener('offline', off)
+    }
+  }, [])
+  return online
+}
+
 export function useCopyToClipboard(resetAfter = 1800) {
   const [copied, setCopied] = useState(null)
   const copy = useCallback(
@@ -58,8 +92,8 @@ export function useCopyToClipboard(resetAfter = 1800) {
   return { copy, copied }
 }
 
-/** Global keyboard shortcut (ignores keystrokes typed into inputs). */
-export function useHotkey(combo, handler, { allowInInput = false } = {}) {
+/** Global keyboard shortcut (ignores keystrokes typed into inputs by default). */
+export function useHotkey(combo, handler, { allowInInput = false, enabled = true } = {}) {
   const ref = useRef(handler)
 
   useEffect(() => {
@@ -67,12 +101,13 @@ export function useHotkey(combo, handler, { allowInInput = false } = {}) {
   }, [handler])
 
   useEffect(() => {
+    if (!enabled) return undefined
     const onKeyDown = (event) => {
       const target = event.target
       const typing = target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
       if (typing && !allowInInput) return
 
-      const parts = combo.toLowerCase().split('+')
+      const parts = String(combo).toLowerCase().split('+')
       const key = parts[parts.length - 1]
       const needCtrl = parts.includes('ctrl') || parts.includes('cmd')
       const needShift = parts.includes('shift')
@@ -88,7 +123,7 @@ export function useHotkey(combo, handler, { allowInInput = false } = {}) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [combo, allowInInput])
+  }, [combo, allowInInput, enabled])
 }
 
 /** Persisted state helper (falls back to memory when storage is blocked). */
@@ -148,12 +183,13 @@ export function useRealtimeStatus() {
 }
 
 /** Ticks a re-render every `intervalMs` — used for "x minutes ago" labels. */
-export function useTicker(intervalMs = 30_000) {
+export function useTicker(intervalMs = 30_000, enabled = true) {
   const [, setTick] = useState(0)
   useEffect(() => {
+    if (!enabled) return undefined
     const timer = setInterval(() => setTick((value) => value + 1), intervalMs)
     return () => clearInterval(timer)
-  }, [intervalMs])
+  }, [intervalMs, enabled])
 }
 
 /** Point-in-time clock, useful for SLA countdowns. */
@@ -164,6 +200,122 @@ export function useNow(intervalMs = 1000) {
     return () => clearInterval(timer)
   }, [intervalMs])
   return now
+}
+
+/** True once the node has entered the viewport (used to defer heavy widgets). */
+export function useInView({ rootMargin = '160px', once = true, enabled = true } = {}) {
+  const ref = useRef(null)
+  const [inView, setInView] = useState(!enabled)
+
+  useEffect(() => {
+    if (!enabled) {
+      setInView(true)
+      return undefined
+    }
+    const node = ref.current
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setInView(true)
+      return undefined
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setInView(true)
+            if (once) observer.disconnect()
+          } else if (!once) {
+            setInView(false)
+          }
+        }
+      },
+      { rootMargin },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [rootMargin, once, enabled])
+
+  return [ref, inView]
+}
+
+/** Element size observer (charts re-measure without a second layout pass). */
+export function useElementSize() {
+  const ref = useRef(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  useEffect(() => {
+    const node = ref.current
+    if (!node || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      setSize((current) => (Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1 ? current : { width, height }))
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, size]
+}
+
+/** Run a callback once the browser is idle — used for route/asset prefetching. */
+export function useIdleCallback(callback, { timeout = 1800, enabled = true } = {}) {
+  const ref = useRef(callback)
+  useEffect(() => {
+    ref.current = callback
+  }, [callback])
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return undefined
+    let idle
+    let timer
+    if ('requestIdleCallback' in window) {
+      idle = window.requestIdleCallback(() => ref.current(), { timeout })
+    } else {
+      timer = setTimeout(() => ref.current(), 600)
+    }
+    return () => {
+      if (idle && 'cancelIdleCallback' in window) window.cancelIdleCallback(idle)
+      if (timer) clearTimeout(timer)
+    }
+  }, [timeout, enabled])
+}
+
+/** Locks body scroll while an overlay owns the viewport (overlay stack-safe). */
+export function useScrollLock(active) {
+  useEffect(() => {
+    if (!active) return undefined
+    const previous = document.body.style.overflow
+    const { paddingRight } = document.body.style
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth
+    document.body.style.overflow = 'hidden'
+    if (scrollbar > 0) document.body.style.paddingRight = `${scrollbar}px`
+    return () => {
+      document.body.style.overflow = previous
+      document.body.style.paddingRight = paddingRight
+    }
+  }, [active])
+}
+
+/**
+ * Calls back when the pointer rests on an element — the cheapest possible
+ * way to make navigation feel instant (the route chunk downloads before the
+ * click lands).
+ */
+export function useHoverIntent(callback, { delay = 90, enabled = true } = {}) {
+  const ref = useRef(callback)
+  useEffect(() => {
+    ref.current = callback
+  }, [callback])
+  const timer = useRef(null)
+  return useMemo(
+    () => ({
+      onPointerEnter: (event) => {
+        if (!enabled || event.pointerType === 'touch') return
+        timer.current = setTimeout(() => ref.current(), delay)
+      },
+      onPointerLeave: () => clearTimeout(timer.current),
+      onFocus: () => enabled && ref.current(),
+    }),
+    [delay, enabled],
+  )
 }
 
 /** Filter state synced to the URL so dashboards can be shared/bookmarked. */

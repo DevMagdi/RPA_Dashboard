@@ -11,7 +11,12 @@
     "oxc/no-map-spread": "off",
     "unicorn/prefer-add-event-listener": "off",
     "unicorn/consistent-function-scoping": "off",
-    "no-unused-vars": "error"
+    "no-unused-vars": "error",
+    "no-underscore-dangle": "off",
+    "unicorn/prefer-dom-node-dataset": "warn"
   },
-  "ignorePatterns": ["dist/**", "node_modules/**"]
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**"
+  ]
 }

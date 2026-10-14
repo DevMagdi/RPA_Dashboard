@@ -17,15 +17,28 @@ export function toDate(value) {
 }
 
 /** Compact number formatting: 1.2k / 3.4M (used in KPI cards). */
+/**
+ * Compact number formatting: 1.2k / 3.4M.
+ *
+ * Uses `Intl` compact notation so Arabic gets its own suffixes (ألف/مليون)
+ * instead of a hard-coded English "k"/"M" leaking into an Arabic screen.
+ */
 export function compactNumber(value, digits = 1) {
   const amount = Number(value || 0)
   if (!Number.isFinite(amount)) return '—'
   const abs = Math.abs(amount)
-  if (abs >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(digits)}B`
-  if (abs >= 1_000_000) return `${(amount / 1_000_000).toFixed(digits)}M`
-  if (abs >= 10_000) return `${(amount / 1_000).toFixed(0)}k`
-  if (abs >= 1_000) return `${(amount / 1_000).toFixed(digits)}k`
-  return amount.toLocaleString(localeTag(), { maximumFractionDigits: 0 })
+  if (abs < 1000) return amount.toLocaleString(localeTag(), { maximumFractionDigits: 0 })
+  try {
+    return new Intl.NumberFormat(localeTag(), {
+      notation: 'compact',
+      maximumFractionDigits: digits,
+      compactDisplay: 'short',
+    }).format(amount)
+  } catch {
+    if (abs >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(digits)}B`
+    if (abs >= 1_000_000) return `${(amount / 1_000_000).toFixed(digits)}M`
+    return `${(amount / 1_000).toFixed(digits)}k`
+  }
 }
 
 export function number(value, digits = 0) {
@@ -182,4 +195,57 @@ export function titleCase(value) {
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .trim()
+}
+
+/* ------------------------------------------------------------ text & RTL */
+
+/** Arabic script detector — drives `dir="auto"` on mixed-language data cells. */
+const ARABIC_SCRIPT = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/
+
+export function isArabicText(value) {
+  return ARABIC_SCRIPT.test(String(value ?? ''))
+}
+
+/**
+ * Direction of a *data* string.
+ *
+ * Bank data is bilingual (Arabic process names, English vendor keys).  A cell
+ * inside an RTL table that contains "UiPath Orchestrator" must be laid out LTR,
+ * otherwise the punctuation and numbers jump to the wrong end of the cell.
+ */
+export function dirFor(value) {
+  return isArabicText(value) ? 'rtl' : 'ltr'
+}
+
+/** Tone for a delta value (used by KPI cards and trend chips). */
+export function deltaTone(delta, { invert = false } = {}) {
+  const value = Number(delta)
+  if (!Number.isFinite(value) || value === 0) return 'neutral'
+  const positive = invert ? value < 0 : value > 0
+  return positive ? 'success' : 'danger'
+}
+
+export function formatDelta(delta, digits = 1, suffix = '%') {
+  const value = Number(delta)
+  if (!Number.isFinite(value)) return '—'
+  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
+  return `${sign}${Math.abs(value).toFixed(digits)}${suffix}`
+}
+
+/**
+ * Wrap a Latin identifier inside an RTL paragraph so the browser keeps it in
+ * one LTR run (numbers, process keys, correlation ids).
+ */
+export function isolate(value) {
+  const text = String(value ?? '')
+  const FIRST_STRONG = /[\u0590-\u08FF\uFB1D-\uFDFD\uFE70-\uFEFC]/
+  return FIRST_STRONG.test(text) ? text : `\u2066${text}\u2069`
+}
+
+/** Percentage change between two numbers, rounded. */
+export function changePercent(current, previous) {
+  const a = Number(current)
+  const b = Number(previous)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return null
+  return ((a - b) / b) * 100
 }

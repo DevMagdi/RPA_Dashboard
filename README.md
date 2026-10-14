@@ -1,4 +1,4 @@
-# RPA CoE Control Room — v4.0.0 "Bank Production Ready"
+# RPA CoE Control Room — v4.1.0 "Private Operations"
 
 Enterprise-grade, single-tenant, On-Premises RPA CoE Control Room. Designed to be deployed inside a bank's or large enterprise's own data center or private cloud. Fully isolated, fully auditable, and fully compliant with local regulatory requirements. Vendor-neutral control plane over UiPath, Automation Anywhere, Blue Prism and in-house RPA platforms.
 
@@ -73,6 +73,6 @@ CI runs ruff + pyflakes, the pytest suite, frontend lint/build, dependency vulne
 | [docs/DEPLOYMENT_ON_PREM_BANK.md](docs/DEPLOYMENT_ON_PREM_BANK.md) | Production On-Premises deployment runbook |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, layering, data flow |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [CHANGELOG.md](CHANGELOG.md) | Release history (4.0.0) |
+| [CHANGELOG.md](CHANGELOG.md) | Release history (4.1.0) |
 
 > Proprietary — bank-internal use. Never commit secrets, agent credentials or database backups to this repository.

@@ -41,9 +41,13 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     ENV: Literal["dev", "test", "prod"] = "dev"
     APP_NAME: str = "RPA CoE Control Room"
-    APP_VERSION: str = "4.0.0"
+    APP_VERSION: str = "4.1.0"
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
+    #: Optional log file.  Always written as UTF-8: on a Windows Service the
+    #: console code page is often cp1256/cp437, which is exactly how Arabic log
+    #: lines used to arrive as ``????``.
+    LOG_FILE: str = ""
 
     # ------------------------------------------------------------------ #
     # Network / hosting

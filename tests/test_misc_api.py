@@ -22,7 +22,10 @@ def test_version_endpoint(client):
     response = client.get("/api/version")
     assert response.status_code == 200
     body = response.json()
-    assert body["version"] == "4.0.0"
+    from app import __version__
+
+    assert body["version"] == __version__
+    assert body["api_version"] == __version__
     assert body["features"]["single_organization"] is True
     assert body["features"]["deployment"] == "on_premises"
     assert body["features"]["multi_vendor"] is True

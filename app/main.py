@@ -34,6 +34,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -45,6 +46,7 @@ from app.api.middleware import (
     IPAllowlistMiddleware,
     MetricsMiddleware,
     SecurityHeadersMiddleware,
+    StaticAssetCacheMiddleware,
 )
 from app.core.config import bootstrap_logging_and_validate, get_settings
 from app.core.tracing import configure_tracing
@@ -201,6 +203,20 @@ def create_app() -> FastAPI:
         app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=",".join(settings.trusted_proxies_list) or "127.0.0.1")
     except Exception:  # pragma: no cover - uvicorn always present with FastAPI stack
         logger.debug("ProxyHeadersMiddleware unavailable", exc_info=True)
+    # Payload compression (JSON dashboard payloads are large) and the static
+    # asset caching policy.  Starlette's GZip already skips SSE, images, fonts
+    # and archives; Office/PDF downloads are added here because they are
+    # already compressed containers.
+    app.add_middleware(
+        GZipMiddleware,
+        minimum_size=1024,
+        exclude_content_types=DEFAULT_EXCLUDED_CONTENT_TYPES
+        + (
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    )
+    app.add_middleware(StaticAssetCacheMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
 
     register_exception_handlers(app)
@@ -212,7 +228,7 @@ def create_app() -> FastAPI:
         return {
             "name": settings.APP_NAME,
             "version": settings.APP_VERSION,
-            "api_version": "4.0.0",
+            "api_version": __version__,
             "environment": settings.ENV,
             "features": {
                 "mfa": settings.MFA_ENABLED,

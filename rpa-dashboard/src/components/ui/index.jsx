@@ -1,219 +1,204 @@
 /**
- * UI kit — the design system's building blocks.
+ * The UI kit — one import surface for the whole dashboard.
  *
- * Everything is theme-agnostic (CSS variables), RTL-safe (logical spacing
- * utilities: `ps-`/`pe-`/`ms-`/`me-`/`start-`/`end-`) and WCAG-minded
- * (focus rings, aria attributes, keyboard interaction, reduced motion).
+ * Layer 1: `./primitives.jsx` — shadcn/ui-style building blocks (Radix + CVA).
+ * Layer 2: this file — the *product* components composed from them (data table,
+ *          stat cards, section headers, notices, modals, pagination…).
+ *
+ * Compatibility: every component name the pages already import keeps its
+ * original signature, so the redesign never turned into a 400-file refactor.
+ * New props (`virtual`, `stickyHeader`, `zebra`, `tone`, …) are additive.
+ *
+ * Everything is theme-agnostic (CSS variables), RTL-correct (logical spacing)
+ * and WCAG-minded (focus rings, aria attributes, keyboard interaction,
+ * reduced-motion).
  */
-import { AnimatePresence, motion } from 'framer-motion'
-import { AlertCircle, Check, ChevronLeft, ChevronRight, Copy, Inbox, Info, Loader2, Search, X } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
-  Component,
-  forwardRef,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+  AlertCircle,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Inbox,
+  Info,
+  Loader2,
+  Minus,
+  Search,
+  X,
+} from 'lucide-react'
+import { Component, memo, useCallback, useId, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import { useCountUp } from '../../hooks/ui'
-import { compactNumber, currency } from '../../lib/format'
+import { useCountUp, useIsMobile } from '../../hooks/ui'
+import { useDirection } from '../../lib/direction'
+import { compactNumber, currency, dirFor } from '../../lib/format'
+import { cn } from '../../lib/utils'
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+  DropdownSeparator,
+  Input,
+  Kbd,
+  Label,
+  Popover,
+  Progress,
+  ScrollArea,
+  SegmentedControl,
+  Select,
+  Separator,
+  Skeleton,
+  SkeletonText,
+  SwitchControl,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+  Textarea,
+  Tooltip,
+  TooltipProvider,
+  TooltipRoot,
+} from './primitives'
 
-export function cx(...values) {
-  return values.filter(Boolean).join(' ')
-}
+export * from './primitives'
+export { cn, cn as cx }
 
-/* ------------------------------------------------------------------ Button */
+/* ------------------------------------------------------------------ toasts */
 
-const BUTTON_VARIANTS = {
-  primary: 'bg-brand text-brand-fg shadow-soft hover:brightness-110 hover:shadow-glow',
-  secondary: 'border border-border bg-surface-2 text-text hover:border-brand/25 hover:bg-surface',
-  ghost: 'text-muted hover:bg-surface-2 hover:text-text',
-  danger: 'bg-danger text-white shadow-soft hover:brightness-110',
-  success: 'bg-success text-white shadow-soft hover:brightness-110',
-  outline: 'border border-brand/45 bg-brand-soft/35 text-brand hover:border-brand hover:bg-brand-soft',
-}
-
-const BUTTON_SIZES = {
-  sm: 'h-8 px-3 text-xs gap-1.5',
-  md: 'h-10 px-4 text-sm gap-2',
-  lg: 'h-11 px-5 text-sm gap-2',
-  icon: 'h-9 w-9 justify-center',
-}
-
-export const Button = forwardRef(function Button(
-  { variant = 'primary', size = 'md', loading = false, icon: Icon, children, className, disabled, ...props },
-  ref,
-) {
+/** Imperative-free toast stack used by ToastProvider (kept for compatibility). */
+export function ToastCard({ tone = 'info', title, description, action, onClose }) {
+  const tones = {
+    info: { icon: Info, className: 'text-info', border: 'border-info/25' },
+    success: { icon: Check, className: 'text-success', border: 'border-success/25' },
+    warning: { icon: AlertTriangle, className: 'text-warning', border: 'border-warning/25' },
+    danger: { icon: AlertCircle, className: 'text-danger', border: 'border-danger/25' },
+  }
+  const config = tones[tone] || tones.info
+  const Icon = config.icon
   return (
-    <button
-      ref={ref}
-      type={props.type || 'button'}
-      disabled={disabled || loading}
-      className={cx(
-        'focus-ring inline-flex items-center rounded-xl font-medium transition-all duration-200 ease-premium active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100',
-        BUTTON_VARIANTS[variant],
-        BUTTON_SIZES[size],
-        className,
-      )}
-      {...props}
-    >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin-slow" aria-hidden /> : Icon ? <Icon className="h-4 w-4" aria-hidden /> : null}
-      {children}
-    </button>
-  )
-})
-
-/* -------------------------------------------------------------------- Card */
-
-export function Card({ as: Tag = 'section', className, glass = false, hover = false, children, ...props }) {
-  return (
-    <Tag
-      className={cx(
-        'rounded-2xl border border-border/90 shadow-card transition-colors duration-200',
-        glass ? 'glass' : 'bg-surface',
-        hover && 'card-hover',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </Tag>
-  )
-}
-
-export function CardHeader({ title, subtitle, actions, icon: Icon, className }) {
-  return (
-    <header className={cx('flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3', className)}>
-      <div className="flex items-start gap-3">
-        {Icon ? (
-          <span className="mt-0.5 grid h-8 w-8 place-items-center rounded-xl bg-brand-soft text-brand">
-            <Icon className="h-4 w-4" aria-hidden />
-          </span>
-        ) : null}
-        <div>
-          <h2 className="text-sm font-semibold text-text">{title}</h2>
-          {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
-        </div>
+    <div className={cn('pointer-events-auto flex w-[min(92vw,23rem)] items-start gap-3 rounded-2xl border bg-surface/95 p-3.5 shadow-pop backdrop-blur-xl', config.border)}>
+      <span className={cn('mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-xl bg-surface-2', config.className)}>
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        {title ? <p className="text-sm font-semibold text-text">{title}</p> : null}
+        {description ? <p className="mt-0.5 text-xs leading-relaxed text-muted">{description}</p> : null}
+        {action ? <div className="mt-2">{action}</div> : null}
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
-    </header>
+      {onClose ? (
+        <button type="button" onClick={onClose} className="focus-ring rounded-lg p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text" aria-label="close">
+          <X className="h-3.5 w-3.5"  aria-hidden/>
+        </button>
+      ) : null}
+    </div>
   )
 }
 
-export function CardBody({ className, children }) {
-  return <div className={cx('p-4', className)}>{children}</div>
-}
-
-/* ------------------------------------------------------------------- Badge */
-
-const BADGE_TONES = {
-  neutral: 'bg-surface-2 text-muted border-border',
-  brand: 'bg-brand-soft text-brand border-transparent',
-  success: 'bg-success-soft text-success border-transparent',
-  warning: 'bg-warning-soft text-warning border-transparent',
-  danger: 'bg-danger-soft text-danger border-transparent',
-  info: 'bg-info-soft text-info border-transparent',
-}
-
-export function Badge({ tone = 'neutral', className, children, dot = false }) {
-  return (
-    <span
-      className={cx(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
-        BADGE_TONES[tone] || BADGE_TONES.neutral,
-        className,
-      )}
-    >
-      {dot ? <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden /> : null}
-      {children}
-    </span>
-  )
-}
+/* ---------------------------------------------------------------- statuses */
 
 /** Severity badge used by the Capacity Advisor (Info / Warning / Critical). */
-export function SeverityBadge({ severity, label }) {
+export function SeverityBadge({ severity, label, className }) {
+  const { t } = useTranslation()
   const tone = severity === 'Critical' ? 'danger' : severity === 'Warning' ? 'warning' : 'info'
+  const key = `capacity.severity.${severity}`
+  const text = label || t(key, { defaultValue: severity })
   return (
-    <Badge tone={tone} dot>
-      {label || severity}
+    <Badge tone={tone} dot className={className}>
+      {text}
     </Badge>
   )
 }
 
-export function StatusDot({ color = 'var(--success)', pulse = false, label }) {
+/** Pulsing live dot — used by machine rows, the realtime pill and run cards. */
+export function StatusDot({ color = 'var(--success)', pulse = false, label, className }) {
   return (
-    <span className="inline-flex items-center gap-2" title={label}>
+    <span className={cn('inline-flex items-center gap-2', className)} title={label}>
       <span className="relative flex h-2.5 w-2.5">
-        {pulse ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" style={{ color }} /> : null}
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+        {pulse ? <span className="live-dot absolute inset-0" style={{ color }} aria-hidden /> : null}
       </span>
       {label ? <span className="text-xs text-muted">{label}</span> : null}
     </span>
   )
 }
 
-/* --------------------------------------------------------------- Skeletons */
+/* ------------------------------------------------------------- empty/error */
 
-export function Skeleton({ className, style }) {
-  return <div className={cx('skeleton', className)} style={style} aria-hidden />
-}
-
-export function SkeletonText({ lines = 3, className }) {
+export function EmptyState({ icon: Icon = Inbox, title, description, action, secondaryAction, className, tone = 'brand', compact = false }) {
+  const tones = {
+    brand: 'from-brand-soft/70 text-brand',
+    muted: 'from-surface-3/70 text-muted',
+    success: 'from-success-soft/70 text-success',
+    danger: 'from-danger-soft/70 text-danger',
+  }
   return (
-    <div className={cx('space-y-2', className)}>
-      {Array.from({ length: lines }).map((_, index) => (
-        <Skeleton key={index} className="h-3" style={{ width: `${100 - index * 12}%` }} />
-      ))}
-    </div>
-  )
-}
-
-export function SkeletonCard({ height = 160 }) {
-  return (
-    <Card className="p-4">
-      <Skeleton className="h-4 w-1/3" />
-      <Skeleton className="mt-3" style={{ height: height - 40 }} />
-    </Card>
-  )
-}
-
-/* ------------------------------------------------------------ Empty states */
-
-export function EmptyState({ icon: Icon = Inbox, title, description, action, className }) {
-  return (
-    <div className={cx('flex flex-col items-center justify-center gap-3 px-6 py-10 text-center', className)}>
-      <span className="grid h-12 w-12 place-items-center rounded-2xl border border-border bg-gradient-to-br from-brand-soft/70 to-surface-2 text-brand shadow-soft">
-        <Icon className="h-5 w-5" aria-hidden />
+    <div className={cn('flex flex-col items-center justify-center gap-3 text-center', compact ? 'px-4 py-6' : 'px-6 py-12', className)}>
+      <span className={cn('grid h-13 w-13 place-items-center rounded-2xl border border-border/80 bg-gradient-to-br to-surface-2 shadow-soft', tones[tone] || tones.brand)}>
+        <Icon className="h-5.5 w-5.5" aria-hidden />
       </span>
-      <div>
+      <div className="max-w-md">
         <p className="text-sm font-semibold text-text">{title}</p>
-        {description ? <p className="mt-1 max-w-md text-xs text-muted">{description}</p> : null}
+        {description ? <p className="mt-1 text-xs leading-relaxed text-muted text-pretty">{description}</p> : null}
       </div>
-      {action}
+      {action || secondaryAction ? (
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+          {action}
+          {secondaryAction}
+        </div>
+      ) : null}
     </div>
   )
 }
 
-export function ErrorState({ error, onRetry, title, retryLabel = 'Retry' }) {
+export function ErrorState({ error, onRetry, title, retryLabel, className, compact = false }) {
+  const { t } = useTranslation()
+  const code = error?.code
+  const message =
+    error?.message ||
+    (code === 'network_error' ? t('errors.network') : t('errors.title'))
   return (
     <EmptyState
+      tone="danger"
       icon={AlertCircle}
-      title={title || 'Something went wrong'}
-      description={error?.message}
+      className={className}
+      compact={compact}
+      title={title || t('errors.title')}
+      description={
+        <>
+          {message}
+          {error?.requestId ? (
+            <span className="mt-1 block font-mono text-[10px] text-muted/80" dir="ltr">
+              {t('errors.requestId')}: {error.requestId}
+            </span>
+          ) : null}
+        </>
+      }
       action={
         onRetry ? (
           <Button variant="secondary" size="sm" onClick={onRetry}>
-            {retryLabel}
+            {retryLabel || t('actions.retry')}
           </Button>
         ) : null
       }
     />
   )
 }
-
-/* ------------------------------------------------------------ ErrorBoundary */
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -239,6 +224,7 @@ export class ErrorBoundary extends Component {
     return (
       <Card className="m-2">
         <EmptyState
+          tone="danger"
           icon={AlertCircle}
           title={title || 'This section failed to render'}
           description={error.message}
@@ -253,406 +239,324 @@ export class ErrorBoundary extends Component {
   }
 }
 
-/* ------------------------------------------------------------------- Modal */
+/* ------------------------------------------------------------------ spacing */
 
-export function Modal({ open, onClose, title, description, children, footer, size = 'md', closeLabel = 'Close' }) {
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-    const onKey = (event) => {
-      if (event.key === 'Escape') onClose?.()
-      if (event.key === 'Tab' && ref.current) {
-        const nodes = ref.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
-        if (!nodes.length) return
-        const first = nodes[0]
-        const last = nodes[nodes.length - 1]
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault()
-          last.focus()
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault()
-          first.focus()
-        }
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    // Focus the first control so keyboard users are not trapped at page top
-    setTimeout(() => ref.current?.querySelector('input, select, textarea, button')?.focus(), 40)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = previous
-    }
-  }, [open, onClose])
-
-  const widths = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-4xl', xl: 'max-w-6xl' }
-
-  return (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) onClose?.()
-          }}
-        >
-          <motion.div
-            ref={ref}
-            role="dialog"
-            aria-modal="true"
-            aria-label={title}
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.98 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className={cx('w-full overflow-hidden rounded-t-3xl border border-border bg-surface shadow-pop sm:rounded-3xl', widths[size])}
-          >
-            <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-              <div>
-                <h2 className="text-base font-semibold text-text">{title}</h2>
-                {description ? <p className="mt-1 text-xs text-muted">{description}</p> : null}
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label={closeLabel}
-                className="focus-ring rounded-lg p-1.5 text-muted transition hover:bg-surface-2 hover:text-text"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </header>
-            <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
-            {footer ? <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">{footer}</footer> : null}
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
-  )
+export function CardBody({ className, children }) {
+  return <CardContent className={className}>{children}</CardContent>
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel, loading, tone = 'danger' }) {
+/** Section heading used at the top of every page. */
+export function SectionTitle({ title, subtitle, actions, className, eyebrow, breadcrumb, icon: Icon }) {
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={title}
-      size="sm"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant={tone} loading={loading} onClick={onConfirm}>
-            {confirmLabel || 'Confirm'}
-          </Button>
-        </>
-      }
-    >
-      <p className="text-sm text-muted">{message}</p>
-    </Modal>
-  )
-}
-
-/* -------------------------------------------------------------- Form inputs */
-
-export function Field({ label, hint, error, required, children, htmlFor }) {
-  return (
-    <div className="space-y-1.5">
-      {label ? (
-        <label htmlFor={htmlFor} className="block text-xs font-medium text-muted">
-          {label}
-          {required ? <span className="ms-1 text-danger">*</span> : null}
-        </label>
-      ) : null}
-      {children}
-      {error ? (
-        <p className="flex items-center gap-1 text-xs text-danger">
-          <AlertCircle className="h-3.5 w-3.5" aria-hidden />
-          {error}
-        </p>
-      ) : hint ? (
-        <p className="text-xs text-muted">{hint}</p>
-      ) : null}
+    <div className={cn('mb-5 flex flex-wrap items-end justify-between gap-3', className)}>
+      <div className="min-w-0">
+        {breadcrumb ? <div className="mb-1.5 flex items-center gap-1.5 text-2xs text-muted">{breadcrumb}</div> : null}
+        {eyebrow ? <p className="mb-1.5 text-2xs font-semibold tracking-[0.16em] text-brand uppercase">{eyebrow}</p> : null}
+        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-[-0.02em] text-text sm:text-2xl">
+          {Icon ? <Icon className="h-5 w-5 text-brand" aria-hidden /> : null}
+          {title}
+        </h1>
+        {subtitle ? <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">{subtitle}</p> : null}
+      </div>
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   )
 }
 
-const CONTROL_CLASS =
-  'focus-ring w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm text-text placeholder:text-muted transition disabled:opacity-60'
-
-export const Input = forwardRef(function Input({ className, invalid, ...props }, ref) {
-  return <input ref={ref} className={cx(CONTROL_CLASS, invalid && 'border-danger', className)} {...props} />
-})
-
-export const Textarea = forwardRef(function Textarea({ className, rows = 3, ...props }, ref) {
-  return <textarea ref={ref} rows={rows} className={cx(CONTROL_CLASS, 'resize-y', className)} {...props} />
-})
-
-export const Select = forwardRef(function Select({ className, children, ...props }, ref) {
+export function Spinner({ className, label }) {
   return (
-    <select ref={ref} className={cx(CONTROL_CLASS, 'cursor-pointer pe-8', className)} {...props}>
-      {children}
-    </select>
-  )
-})
-
-export function Switch({ checked, onChange, label, disabled, id }) {
-  const generated = useId()
-  const inputId = id || generated
-  return (
-    <label htmlFor={inputId} className={cx('inline-flex cursor-pointer items-center gap-2.5', disabled && 'opacity-60')}>
-      <span className="relative inline-flex">
-        <input
-          id={inputId}
-          type="checkbox"
-          className="peer sr-only"
-          checked={Boolean(checked)}
-          disabled={disabled}
-          onChange={(event) => onChange?.(event.target.checked)}
-        />
-        <span className="h-5 w-9 rounded-full bg-border transition peer-checked:bg-brand" />
-        <span className="absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all peer-checked:start-[1.125rem]" />
-      </span>
-      {label ? <span className="text-sm text-text">{label}</span> : null}
-    </label>
+    <span className={cn('inline-flex items-center gap-2 text-muted', className)} role="status">
+      <Loader2 className="h-4 w-4 animate-spin-slow" aria-hidden />
+      {label ? <span className="text-xs">{label}</span> : null}
+    </span>
   )
 }
 
-export function SearchInput({ value, onChange, placeholder, className, onClear }) {
+/** Inline skeleton block for cards (kept for compatibility). */
+export function SkeletonCard({ height = 160 }) {
   return (
-    <div className={cx('relative', className)}>
-      <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
-      <input
-        type="search"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className={cx(CONTROL_CLASS, 'ps-9')}
-        aria-label={placeholder}
-      />
-      {value && onClear ? (
-        <button
-          type="button"
-          onClick={onClear}
-          className="focus-ring absolute end-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted hover:text-text"
-          aria-label="Clear"
-        >
-          <X className="h-3.5 w-3.5" />
+    <Card className="p-4">
+      <Skeleton className="h-4 w-1/3" />
+      <Skeleton className="mt-3" style={{ height: height - 40 }} />
+    </Card>
+  )
+}
+
+export function Notice({ tone = 'info', title, children, icon: CustomIcon, action, className, onDismiss }) {
+  const tones = {
+    info: { wrap: 'border-info/25 bg-info-soft/70', icon: Info, colour: 'text-info' },
+    warning: { wrap: 'border-warning/25 bg-warning-soft/70', icon: AlertTriangle, colour: 'text-warning' },
+    danger: { wrap: 'border-danger/25 bg-danger-soft/70', icon: AlertCircle, colour: 'text-danger' },
+    success: { wrap: 'border-success/25 bg-success-soft/70', icon: Check, colour: 'text-success' },
+  }
+  const config = tones[tone] || tones.info
+  const Icon = CustomIcon || config.icon
+  return (
+    <div className={cn('flex items-start gap-3 rounded-2xl border p-3.5 text-sm shadow-xs', config.wrap, className)} role="status">
+      <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', config.colour)} aria-hidden />
+      <div className="min-w-0 flex-1">
+        {title ? <p className={cn('text-sm font-semibold', config.colour)}>{title}</p> : null}
+        {children ? <div className={cn('text-xs leading-relaxed text-text-soft', title && 'mt-0.5')}>{children}</div> : null}
+      </div>
+      {action}
+      {onDismiss ? (
+        <button type="button" onClick={onDismiss} className="focus-ring rounded-lg p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text" aria-label="dismiss">
+          <X className="h-3.5 w-3.5"  aria-hidden/>
         </button>
       ) : null}
     </div>
   )
 }
 
-/* -------------------------------------------------------------------- Tabs */
+/* -------------------------------------------------------------------- forms */
 
-export function Tabs({ tabs, value, onChange, className }) {
+export function Field({ label, hint, error, required, children, htmlFor, className }) {
   return (
-    <div role="tablist" className={cx('flex flex-wrap items-center gap-1 rounded-xl bg-surface-2 p-1', className)}>
-      {tabs.map((tab) => {
-        const active = tab.value === value
-        return (
-          <button
-            key={tab.value}
-            role="tab"
-            aria-selected={active}
-            type="button"
-            onClick={() => onChange(tab.value)}
-            className={cx(
-              'focus-ring relative rounded-lg px-3 py-1.5 text-xs font-medium transition',
-              active ? 'text-text' : 'text-muted hover:text-text',
-            )}
-          >
-            {active ? (
-              <motion.span
-                layoutId="tab-pill"
-                className="absolute inset-0 rounded-lg bg-surface shadow-soft"
-                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              />
-            ) : null}
-            <span className="relative z-10 flex items-center gap-1.5">
-              {tab.icon ? <tab.icon className="h-3.5 w-3.5" /> : null}
-              {tab.label}
-              {tab.count !== undefined ? (
-                <span className="rounded-full bg-brand-soft px-1.5 text-[10px] text-brand">{tab.count}</span>
-              ) : null}
-            </span>
-          </button>
-        )
-      })}
+    <div className={cn('space-y-1.5', className)}>
+      {label ? (
+        <Label htmlFor={htmlFor} required={required}>
+          {label}
+        </Label>
+      ) : null}
+      {children}
+      {error ? (
+        <p className="flex items-center gap-1.5 text-xs text-danger" role="alert">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="text-2xs leading-relaxed text-muted">{hint}</p>
+      ) : null}
     </div>
   )
 }
 
-/* --------------------------------------------------------------- Tooltip */
-
-export function Tooltip({ content, children, side = 'top' }) {
-  const [open, setOpen] = useState(false)
-  const positions = {
-    top: 'bottom-full start-1/2 -translate-x-1/2 mb-2',
-    bottom: 'top-full start-1/2 -translate-x-1/2 mt-2',
-    start: 'end-full top-1/2 -translate-y-1/2 me-2',
-  }
+export function Switch({ checked, onChange, label, disabled, id, className }) {
+  const generated = useId()
+  const inputId = id || generated
   return (
-    <span
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
-    >
-      {children}
-      <AnimatePresence>
-        {open && content ? (
-          <motion.span
-            role="tooltip"
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            className={cx(
-              'pointer-events-none absolute z-50 max-w-xs whitespace-pre-line rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-text shadow-pop',
-              positions[side],
-            )}
-          >
-            {content}
-          </motion.span>
-        ) : null}
-      </AnimatePresence>
-    </span>
+    <div className={cn('inline-flex items-center gap-2.5', className)}>
+      <SwitchControl id={inputId} checked={Boolean(checked)} onCheckedChange={(value) => onChange?.(value)} disabled={disabled} />
+      {label ? (
+        <label htmlFor={inputId} className={cn('cursor-pointer text-sm text-text', disabled && 'cursor-not-allowed opacity-60')}>
+          {label}
+        </label>
+      ) : null}
+    </div>
   )
 }
 
-export function CopyButton({ value, label, className }) {
+export function SearchInput({ value, onChange, placeholder, className, onClear, icon: Icon = Search, autoFocus = false, inputRef }) {
+  const { t } = useTranslation()
+  return (
+    <div className={cn('relative', className)}>
+      <Icon className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
+      <Input
+        ref={inputRef}
+        type="search"
+        value={value}
+        autoFocus={autoFocus}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="ps-9 pe-9"
+        aria-label={placeholder}
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => (onClear ? onClear() : onChange(''))}
+          className="focus-ring absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          aria-label={t('actions.clear')}
+        >
+          <X className="h-3.5 w-3.5"  aria-hidden/>
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+export function CopyButton({ value, label, className, size = 'icon-sm' }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   return (
-    <button
-      type="button"
-      className={cx('focus-ring inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted transition hover:bg-surface-2 hover:text-text', className)}
+    <Button
+      variant="ghost"
+      size={size}
+      className={className}
+      title={label || t('actions.copy')}
+      aria-label={label || t('actions.copy')}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(String(value ?? ''))
           setCopied(true)
           setTimeout(() => setCopied(false), 1600)
         } catch {
-          setCopied(false)
+          /* clipboard blocked — silently ignore, the value is still visible */
         }
       }}
-      aria-label={label || 'Copy to clipboard'}
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-      {label || (copied ? 'Copied' : 'Copy')}
-    </button>
+      {copied ? <Check className="h-3.5 w-3.5 text-success"  aria-hidden/> : <Copy className="h-3.5 w-3.5"  aria-hidden/>}
+    </Button>
   )
 }
 
-/* ------------------------------------------------------------- Progress bar */
+/* -------------------------------------------------------------------- tabs */
 
-export function ProgressBar({ value = 0, max = 100, tone, className, showLabel = false, label }) {
-  const pct = Math.max(0, Math.min(100, (Number(value) / (max || 100)) * 100))
-  const colour = tone || (pct >= 90 ? 'var(--danger)' : pct >= 75 ? 'var(--warning)' : 'var(--success)')
+/** Legacy prop-driven tabs: `tabs=[{ value, label, icon, badge }]`. */
+export function Tabs({ tabs = [], value, onChange, className, contentClassName, children }) {
   return (
-    <div className={cx('flex items-center gap-2', className)}>
-      <div
-        className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2"
-        role="progressbar"
-        aria-valuenow={Math.round(pct)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label}
-      >
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: colour }}
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        />
-      </div>
-      {showLabel ? <span className="w-12 text-end text-xs text-muted">{pct.toFixed(0)}%</span> : null}
+    <TabsRoot value={value} onValueChange={onChange} className={className}>
+      <TabsList>
+        {tabs.map((tab) => (
+          <TabsTrigger key={tab.value} value={tab.value} disabled={tab.disabled}>
+            {tab.icon ? <tab.icon className="h-3.5 w-3.5" aria-hidden /> : null}
+            {tab.label}
+            {tab.badge ? <Badge tone={tab.badgeTone || 'neutral'} size="sm">{tab.badge}</Badge> : null}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {children ? <TabsContent className={contentClassName}>{children}</TabsContent> : null}
+    </TabsRoot>
+  )
+}
+
+/* ---------------------------------------------------------------- progress */
+
+export function ProgressBar({ value = 0, max = 100, tone, className, showLabel = false, label, size = 'md' }) {
+  return (
+    <div className={cn('flex items-center gap-2', className)}>
+      <Progress value={value} max={max} tone={tone} className={cn(size === 'sm' ? 'h-1' : 'h-1.5')} />
+      {showLabel ? (
+        <span className="w-10 shrink-0 text-end text-2xs tabular text-muted">{Math.round(max ? (value / max) * 100 : 0)}%</span>
+      ) : null}
+      {label ? <span className="shrink-0 text-2xs text-muted">{label}</span> : null}
     </div>
   )
 }
 
-/* -------------------------------------------------------------- KPI / stats */
+/* ------------------------------------------------------------------- stats */
 
-export function CountUpStat({ value, format = 'number', className, duration }) {
+export function CountUpStat({ value, format = 'number', className, duration = 900, suffix }) {
   const animated = useCountUp(value, duration)
-  if (format === 'currency') return <span className={className}>{currency(animated)}</span>
-  if (format === 'percent') return <span className={className}>{Number(animated || 0).toFixed(1)}%</span>
-  return <span className={className}>{compactNumber(animated)}</span>
+  const rendered =
+    format === 'currency'
+      ? currency(animated)
+      : format === 'percent'
+        ? `${Number(animated).toFixed(1)}%`
+        : format === 'compact'
+          ? compactNumber(animated)
+          : Math.round(Number(animated) || 0).toLocaleString()
+  return (
+    <span className={cn('stat-number', className)}>
+      {rendered}
+      {suffix ? <span className="ms-0.5 text-2xs font-medium text-muted">{suffix}</span> : null}
+    </span>
+  )
 }
 
-export function Stat({ label, value, format, hint, tone = 'brand', icon: Icon, delta, className }) {
-  const toneClass = {
-    brand: 'text-brand bg-brand-soft',
-    success: 'text-success bg-success-soft',
-    warning: 'text-warning bg-warning-soft',
-    danger: 'text-danger bg-danger-soft',
-    info: 'text-info bg-info-soft',
-  }[tone]
+const STAT_TONES = {
+  brand: 'bg-brand-soft text-brand ring-brand/12',
+  info: 'bg-info-soft text-info ring-info/12',
+  success: 'bg-success-soft text-success ring-success/12',
+  warning: 'bg-warning-soft text-warning ring-warning/12',
+  danger: 'bg-danger-soft text-danger ring-danger/12',
+  accent: 'bg-accent-soft text-accent ring-accent/12',
+}
 
+export const Stat = memo(function Stat({ label, value, format, hint, tone = 'brand', icon: Icon, delta, className, layout = 'card', onClick }) {
+  const interactive = Boolean(onClick)
   return (
-    <Card className={cx('flex items-start gap-3 p-4', className)}>
-      {Icon ? (
-        <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', toneClass)}>
-          <Icon className="h-5 w-5" aria-hidden />
-        </span>
-      ) : null}
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-muted">{label}</p>
-        <p className="mt-1 truncate text-xl font-semibold text-text">
-          <CountUpStat value={value} format={format} />
-        </p>
-        {delta !== undefined && delta !== null ? (
-          <p className={cx('mt-0.5 text-xs', delta >= 0 ? 'text-success' : 'text-danger')}>
-            {delta >= 0 ? '+' : ''}
-            {Number(delta).toFixed(1)}%
+    <Card
+      hover={interactive}
+      onClick={onClick}
+      className={cn('relative overflow-hidden', layout === 'card' ? 'p-4' : 'p-3', interactive && 'cursor-pointer', className)}
+    >
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/25 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-muted">{label}</p>
+          <p className="mt-1 truncate text-xl font-semibold text-text">
+            {typeof value === 'number' ? <CountUpStat value={value} format={format} /> : value}
           </p>
-        ) : hint ? (
-          <p className="mt-0.5 truncate text-xs text-muted">{hint}</p>
+          {delta !== undefined && delta !== null ? (
+            <p className={cn('mt-0.5 inline-flex items-center gap-0.5 text-xs font-medium', Number(delta) >= 0 ? 'text-success' : 'text-danger')}>
+              {Number(delta) >= 0 ? <ArrowUpRight className="h-3 w-3" aria-hidden /> : <ArrowDownRight className="h-3 w-3" aria-hidden />}
+              {Number(delta).toFixed(1)}%
+            </p>
+          ) : hint ? (
+            <p className="mt-0.5 truncate text-2xs text-muted" dir="auto">
+              {hint}
+            </p>
+          ) : null}
+        </div>
+        {Icon ? (
+          <span className={cn('grid h-9.5 w-9.5 shrink-0 place-items-center rounded-xl ring-1', STAT_TONES[tone] || STAT_TONES.brand)}>
+            <Icon className="h-4.5 w-4.5" aria-hidden />
+          </span>
         ) : null}
       </div>
     </Card>
   )
-}
+})
 
-export function InfoTile({ label, value, tone = 'neutral', icon: Icon }) {
+export function InfoTile({ label, value, tone = 'neutral', icon: Icon, className, mono = false }) {
   const tones = {
     neutral: 'text-text',
     success: 'text-success',
     warning: 'text-warning',
     danger: 'text-danger',
     info: 'text-info',
+    muted: 'text-muted',
   }
   return (
-    <div className="rounded-xl border border-border bg-surface-2/60 px-3 py-2">
-      <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted">
+    <div className={cn('rounded-xl border border-border/80 bg-surface-2/60 px-3 py-2 transition-colors hover:border-border-strong', className)}>
+      <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.1em] text-muted uppercase">
         {Icon ? <Icon className="h-3 w-3" aria-hidden /> : null}
         {label}
       </p>
-      <p className={cx('mt-0.5 text-sm font-semibold', tones[tone])}>{value}</p>
+      <p className={cn('mt-1 text-sm font-semibold tabular', tones[tone] || tones.neutral, mono && 'font-mono text-xs')} dir="auto">
+        {value}
+      </p>
     </div>
   )
 }
 
-/* ---------------------------------------------------------------- DataTable */
+/** Compact trend indicator used in cards and tables. */
+export function TrendPill({ value, invert = false, suffix = '%', className }) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return <span className="text-muted">—</span>
+  const positive = invert ? amount < 0 : amount > 0
+  const neutral = amount === 0
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold',
+        neutral ? 'bg-surface-2 text-muted' : positive ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+        className,
+      )}
+    >
+      {neutral ? <Minus className="h-3 w-3" aria-hidden /> : positive ? <ArrowUpRight className="h-3 w-3" aria-hidden /> : <ArrowDownRight className="h-3 w-3" aria-hidden />}
+      {Math.abs(amount).toFixed(1)}
+      {suffix}
+    </span>
+  )
+}
+
+/* ---------------------------------------------------------------- datatable */
+
+const DEFAULT_ROW_HEIGHT = 45
 
 /**
- * Accessible, responsive table.
+ * Accessible, responsive, optionally **virtualised** table.
  *
- * On small screens the table switches to a stacked card layout; the header row
- * stays for screen readers.  Columns are declared as
- * `{ key, header, render?, align?, width?, hideBelow? }`.
+ * Columns: `{ key, header, render?, align?, width?, sortable?, className?, dir? }`.
+ * Small screens get a stacked card layout; a large result set (400+ rows, e.g.
+ * audit history) only renders the ~15 rows on screen thanks to
+ * `@tanstack/react-virtual`, which is what keeps the page at 60 fps.
  */
 export function DataTable({
-  columns,
-  rows,
+  columns = [],
+  rows = [],
   rowKey,
   loading,
   empty,
@@ -662,9 +566,17 @@ export function DataTable({
   footer,
   sort,
   onSortChange,
+  virtual = true,
+  maxHeight = 560,
+  stickyHeader = true,
+  zebra = false,
+  caption,
 }) {
+  const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [internalSort, setInternalSort] = useState(null)
   const activeSort = sort || internalSort
+  const scrollRef = useRef(null)
 
   const sorted = useMemo(() => {
     if (!activeSort || !activeSort.key || onSortChange) return rows || []
@@ -682,181 +594,294 @@ export function DataTable({
     return list
   }, [rows, activeSort, onSortChange])
 
-  const handleSort = (key) => {
-    if (!key) return
-    const next = { key, dir: activeSort?.key === key && activeSort.dir === 'asc' ? 'desc' : 'asc' }
-    if (onSortChange) onSortChange(next)
-    else setInternalSort(next)
-  }
+  const rowHeight = dense ? 38 : DEFAULT_ROW_HEIGHT
+  const shouldVirtualize = virtual && !isMobile && sorted.length >= 80
+
+  const virtualizer = useVirtualizer({
+    count: shouldVirtualize ? sorted.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 8,
+  })
+
+  const handleSort = useCallback(
+    (key) => {
+      if (!key) return
+      const next = { key, dir: activeSort?.key === key && activeSort.dir === 'asc' ? 'desc' : 'asc' }
+      if (onSortChange) onSortChange(next)
+      else setInternalSort(next)
+    },
+    [activeSort, onSortChange],
+  )
 
   if (loading && !rows?.length) {
     return (
-      <div className="space-y-2 p-4">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-9" />
+      <div className="space-y-2 p-4" aria-busy="true">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <Skeleton key={index} className="h-8" style={{ opacity: 1 - index * 0.12 }} />
         ))}
       </div>
     )
   }
 
   if (!loading && !rows?.length) {
-    return empty || <EmptyState title="Nothing to show" />
+    return empty || <EmptyState title={t('common.nothingToShow')} description={t('common.noDataHint')} />
   }
 
-  return (
-    <div className={cx('w-full overflow-x-auto', className)}>
-      <table className="w-full min-w-[640px] border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                scope="col"
-                style={column.width ? { width: column.width } : undefined}
-                className={cx(
-                  'select-none px-3 text-start font-medium',
-                  dense ? 'py-1.5' : 'py-2.5',
-                  column.sortable && 'cursor-pointer hover:text-text',
-                  column.align === 'end' && 'text-end',
-                  column.align === 'center' && 'text-center',
-                )}
-                aria-sort={activeSort?.key === column.key ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                onClick={(event) => {
-                  if (event.target.closest('button')) return
-                  if (column.sortable) handleSort(column.key)
-                }}
-              >
-                {/* Sorting must be keyboard reachable too */}
-                {column.sortable ? (
-                  <button type="button" className="focus-ring inline-flex items-center gap-1 rounded" onClick={(event) => { event.stopPropagation(); handleSort(column.key) }}>
-                    {column.header}
-                    <span className="text-[10px]">{activeSort?.key === column.key ? (activeSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
-                  </button>
-                ) : (
-                  column.header
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row, index) => (
-            <tr
-              key={rowKey ? rowKey(row, index) : index}
-              className={cx(
-                'border-b border-border/70 transition-colors last:border-0 hover:bg-surface-2/55',
-                onRowClick && 'cursor-pointer focus-within:bg-surface-2/70',
-              )}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              tabIndex={onRowClick ? 0 : undefined}
-              onKeyDown={
-                onRowClick
-                  ? (event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        onRowClick(row)
-                      }
-                    }
-                  : undefined
-              }
-            >
-              {columns.map((column) => (
-                <td
-                  key={column.key}
-                  className={cx(
-                    'px-3 align-middle text-text',
-                    dense ? 'py-1.5' : 'py-2.5',
-                    column.align === 'end' && 'text-end',
-                    column.align === 'center' && 'text-center',
-                    column.className,
-                  )}
-                >
-                  {column.render ? column.render(row, index) : (row?.[column.key] ?? '—')}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {footer ? <div className="border-t border-border px-3 py-2">{footer}</div> : null}
-    </div>
-  )
-}
+  const virtualItems = shouldVirtualize ? virtualizer.getVirtualItems() : null
+  const paddingTop = virtualItems?.length ? virtualItems[0].start : 0
+  const paddingBottom = virtualItems?.length ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0
+  const visibleRows = virtualItems ? virtualItems.map((item) => sorted[item.index]) : sorted
 
-export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange, labels = {} }) {
-  const totalPages = Math.max(1, Math.ceil((total || 0) / (pageSize || 25)))
-  const start = (page - 1) * (pageSize || 25) + 1
-  const end = Math.min(total || 0, page * (pageSize || 25))
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
-      <span>{total ? `${start}–${end} ${labels.of || 'of'} ${total}` : labels.none || '—'}</span>
-      <div className="flex items-center gap-2">
-        <Select
-          className="h-8 w-auto py-0 text-xs"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange?.(Number(event.target.value))}
-          aria-label="Rows per page"
+  const headerRow = (
+    <tr className="border-b border-border bg-surface-2/70 text-[10px] font-semibold tracking-[0.1em] text-muted uppercase">
+      {columns.map((column) => (
+        <th
+          key={column.key}
+          scope="col"
+          style={column.width ? { width: column.width } : undefined}
+          className={cn(
+            'select-none px-3 text-start font-semibold',
+            dense ? 'py-1.5' : 'py-2.5',
+            column.align === 'end' && 'text-end',
+            column.align === 'center' && 'text-center',
+          )}
+          aria-sort={activeSort?.key === column.key ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
         >
-          {[10, 25, 50, 100].map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </Select>
-        <Button variant="ghost" size="icon" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Previous page">
-          <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
+          {column.sortable ? (
+            <button
+              type="button"
+              onClick={() => handleSort(column.key)}
+              className="focus-ring inline-flex items-center gap-1 rounded text-[10px] tracking-[0.1em] uppercase transition-colors hover:text-text"
+            >
+              {column.header}
+              <span className="text-[9px] opacity-70">
+                {activeSort?.key === column.key ? (activeSort.dir === 'asc' ? '▲' : '▼') : '↕'}
+              </span>
+            </button>
+          ) : (
+            column.header
+          )}
+        </th>
+      ))}
+    </tr>
+  )
+
+  return (
+    <div className={cn('w-full', className)}>
+      <div ref={scrollRef} className="relative w-full overflow-auto" style={shouldVirtualize ? { maxHeight } : undefined}>
+        <table className={cn('data-table w-full min-w-[680px] border-collapse text-sm', stickyHeader && 'border-separate border-spacing-0')}>
+          {caption ? <caption className="sr-only">{caption}</caption> : null}
+          <thead className={cn(stickyHeader && 'sticky top-0 z-10 bg-surface-2/95 backdrop-blur-sm')}>{headerRow}</thead>
+          <tbody>
+            {paddingTop > 0 ? <tr aria-hidden style={{ height: paddingTop }} /> : null}
+            {visibleRows.map((row, index) => (
+              <tr
+                key={rowKey ? rowKey(row, index) : index}
+                className={cn(
+                  'border-b border-border/70 transition-colors last:border-0 hover:bg-brand-soft/40',
+                  onRowClick && 'cursor-pointer focus-within:bg-brand-soft/50',
+                  zebra && index % 2 === 1 && 'bg-surface-2/40',
+                )}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                style={shouldVirtualize ? { height: rowHeight } : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onRowClick(row)
+                        }
+                      }
+                    : undefined
+                }
+              >
+                {columns.map((column) => (
+                  <td
+                    key={column.key}
+                    dir={column.dir === 'auto' ? dirFor(row?.[column.key]) : undefined}
+                    className={cn(
+                      'px-3 align-middle text-text',
+                      dense ? 'py-1.5' : 'py-2.5',
+                      column.align === 'end' && 'text-end',
+                      column.align === 'center' && 'text-center',
+                      column.className,
+                    )}
+                  >
+                    {column.render ? column.render(row, index) : (row?.[column.key] ?? '—')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {paddingBottom > 0 ? <tr aria-hidden style={{ height: paddingBottom }} /> : null}
+          </tbody>
+        </table>
+      </div>
+      {footer ? <div className="border-t border-border px-3 py-2.5">{footer}</div> : null}
+    </div>
+  )
+}
+
+export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange, labels = {}, className }) {
+  const { t, i18n } = useTranslation()
+  const direction = useDirection()
+  const totalPages = Math.max(1, Math.ceil((total || 0) / (pageSize || 25)))
+  const start = total ? (page - 1) * (pageSize || 25) + 1 : 0
+  const end = Math.min(total || 0, page * (pageSize || 25))
+  const digits = new Intl.NumberFormat(i18n.language === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB')
+  const PreviousIcon = direction === 'rtl' ? ChevronRight : ChevronLeft
+  const NextIcon = direction === 'rtl' ? ChevronLeft : ChevronRight
+
+  return (
+    <div className={cn('flex flex-wrap items-center justify-between gap-3 text-xs text-muted', className)}>
+      <span className="tabular">
+        {total
+          ? labels.range
+            ? labels.range
+            : t('pagination.range', { start: digits.format(start), end: digits.format(end), total: digits.format(total) })
+          : (labels.none || t('common.na'))}
+      </span>
+      <div className="flex items-center gap-2">
+        {onPageSizeChange ? (
+          <Select
+            className="h-8 w-auto py-0 text-xs"
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            aria-label={t('pagination.rowsPerPage')}
+          >
+            {[10, 25, 50, 100].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label={t('pagination.previous')}>
+          <PreviousIcon className="h-4 w-4" />
         </Button>
-        <span className="tabular-nums">
-          {page} / {totalPages}
+        <span className="tabular">
+          {digits.format(page)} / {digits.format(totalPages)}
         </span>
-        <Button variant="ghost" size="icon" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Next page">
-          <ChevronRight className="h-4 w-4 rtl:rotate-180" />
+        <Button variant="ghost" size="icon-sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label={t('pagination.next')}>
+          <NextIcon className="h-4 w-4" />
         </Button>
       </div>
     </div>
   )
 }
 
-/* ------------------------------------------------------------------ Notice */
+/* ------------------------------------------------------------------ modals */
 
-export function Notice({ tone = 'info', title, children, icon: CustomIcon, action, className }) {
-  const tones = {
-    info: { wrap: 'border-info/30 bg-info-soft', icon: Info, colour: 'text-info' },
-    warning: { wrap: 'border-warning/30 bg-warning-soft', icon: AlertCircle, colour: 'text-warning' },
-    danger: { wrap: 'border-danger/30 bg-danger-soft', icon: AlertCircle, colour: 'text-danger' },
-    success: { wrap: 'border-success/30 bg-success-soft', icon: Check, colour: 'text-success' },
-  }
-  const config = tones[tone] || tones.info
-  const Icon = CustomIcon || config.icon
+export function Modal({ open, onClose, title, description, children, footer, size = 'md', closeLabel, bodyClassName, initialFocus }) {
+  const { t } = useTranslation()
   return (
-    <div className={cx('flex items-start gap-3 rounded-xl border p-3 text-sm', config.wrap, className)} role="status">
-      <Icon className={cx('mt-0.5 h-4 w-4 shrink-0', config.colour)} aria-hidden />
-      <div className="min-w-0 flex-1">
-        {title ? <p className={cx('font-semibold', config.colour)}>{title}</p> : null}
-        {children ? <div className="mt-0.5 text-xs text-text/90">{children}</div> : null}
-      </div>
-      {action}
+    <Dialog open={open} onOpenChange={(next) => (!next ? onClose?.() : undefined)}>
+      {open ? (
+        <DialogContent
+          title={title}
+          description={description}
+          footer={footer}
+          size={size}
+          closeLabel={closeLabel || t('actions.close')}
+          className={bodyClassName}
+          initialFocus={initialFocus}
+        >
+          {children}
+        </DialogContent>
+      ) : null}
+    </Dialog>
+  )
+}
+
+export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel, cancelLabel, loading, tone = 'danger', children }) {
+  const { t } = useTranslation()
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title || t('actions.confirm')}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>
+            {cancelLabel || t('actions.cancel')}
+          </Button>
+          <Button variant={tone} loading={loading} onClick={onConfirm}>
+            {confirmLabel || t('actions.confirm')}
+          </Button>
+        </>
+      }
+    >
+      {message ? <p className="text-sm leading-relaxed text-muted">{message}</p> : null}
+      {children}
+    </Modal>
+  )
+}
+
+/* ------------------------------------------------------------------ misc ui */
+
+/** Small metric used inside dense layouts (table footers, side panels). */
+export function MiniStat({ label, value, tone = 'neutral', className }) {
+  const tones = { neutral: 'text-text', success: 'text-success', warning: 'text-warning', danger: 'text-danger', brand: 'text-brand', info: 'text-info' }
+  return (
+    <div className={cn('min-w-0', className)}>
+      <p className="truncate text-[10px] font-semibold tracking-[0.1em] text-muted uppercase">{label}</p>
+      <p className={cn('mt-0.5 truncate text-sm font-semibold tabular', tones[tone])} dir="auto">
+        {value}
+      </p>
     </div>
   )
 }
 
-export function SectionTitle({ title, subtitle, actions, className }) {
+/** Animated page wrapper: fade + 8px rise, mirrored in RTL. */
+export function PageTransition({ children, className, delay = 0 }) {
   return (
-    <div className={cx('mb-5 flex flex-wrap items-end justify-between gap-3', className)}>
-      <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight text-text sm:text-2xl">{title}</h1>
-        {subtitle ? <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted sm:text-sm">{subtitle}</p> : null}
-      </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1], delay }}
+      className={className}
+    >
+      {children}
+    </motion.div>
   )
 }
 
-export function Spinner({ className, label }) {
-  return (
-    <span className={cx('inline-flex items-center gap-2 text-muted', className)} role="status">
-      <Loader2 className="h-4 w-4 animate-spin-slow" aria-hidden />
-      {label ? <span className="text-xs">{label}</span> : null}
-    </span>
-  )
+export {
+  AlertCircle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Dialog,
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+  DropdownSeparator,
+  Input,
+  Kbd,
+  Label,
+  Popover,
+  Progress,
+  ScrollArea,
+  SegmentedControl,
+  Select,
+  Separator,
+  Skeleton,
+  SkeletonText,
+  SwitchControl,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+  Textarea,
+  Tooltip,
+  TooltipProvider,
+  TooltipRoot,
 }

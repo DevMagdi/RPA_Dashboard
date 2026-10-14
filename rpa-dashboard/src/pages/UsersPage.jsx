@@ -21,8 +21,7 @@ import {
   Notice,
   SectionTitle,
   Select,
-  Switch,
-} from '../components/ui'
+  Switch, ErrorState} from '../components/ui'
 
 const ROLE_TONE = {
   SuperAdmin: 'danger',
@@ -67,6 +66,14 @@ export default function UsersPage() {
     }
   }
 
+  if (users.isError) {
+    return (
+      <Card>
+        <ErrorState error={users.error} onRetry={() => users.refetch()} />
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <SectionTitle
@@ -84,7 +91,7 @@ export default function UsersPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <InfoTile label={t('users.title')} value={rows.length} />
         <InfoTile label={t('processes.active')} value={rows.filter((row) => row.IsActive).length} tone="success" />
-        <InfoTile label="MFA" value={rows.filter((row) => row.MfaEnabled).length} tone={rows.every((row) => row.MfaEnabled) ? 'success' : 'warning'} />
+        <InfoTile label={t('fields.mfa')} value={rows.filter((row) => row.MfaEnabled).length} tone={rows.every((row) => row.MfaEnabled) ? 'success' : 'warning'} />
         <InfoTile label={t('users.sessions')} value={rows.filter((row) => row.LockedUntil).length ? t('auth.locked') : t('common.na')} tone={rows.some((row) => row.LockedUntil) ? 'danger' : 'neutral'} />
       </div>
 
@@ -178,7 +185,7 @@ export default function UsersPage() {
                     </Button>
                     <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(row)} aria-label={t('actions.delete')}>
                       <span className="text-xs">
-                        <ShieldCheck className="h-3.5 w-3.5 text-danger" />
+                        <ShieldCheck className="h-3.5 w-3.5 text-danger"  aria-hidden/>
                       </span>
                     </Button>
                   </div>

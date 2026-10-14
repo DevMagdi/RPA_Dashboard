@@ -105,7 +105,7 @@ export function ToastProvider({ children }) {
                   className="focus-ring rounded-lg p-1 text-muted transition hover:bg-surface-2 hover:text-text"
                   aria-label="Dismiss"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4"  aria-hidden/>
                 </button>
               </motion.div>
             )

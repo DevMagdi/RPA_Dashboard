@@ -1,6 +1,6 @@
-# RPA CoE Control Room 4.0.0 — "Bank Production Ready"
+# RPA CoE Control Room 4.1.0 — "Private Operations"
 
-Review guide for the 4.0.0 transformation. Positioning: **single-tenant,
+Review guide for the 4.1.0 UX / Arabic / performance pass. Positioning: **single-tenant,
 On-Premises only** — one installation serves one bank/large enterprise inside
 its own data center or private cloud, as a vendor-neutral control plane over
 UiPath, Automation Anywhere, Blue Prism and in-house RPA.
@@ -32,7 +32,7 @@ UiPath, Automation Anywhere, Blue Prism and in-house RPA.
 
 ## How to review
 
-- `README.md` (positioning, run, deploy) · `CHANGELOG.md` (4.0.0 entry)
+- `README.md` (positioning, run, deploy) · `CHANGELOG.md` (4.1.0 entry)
 - `docs/DEPLOYMENT_ON_PREM_BANK.md` (bank runbook) · `docs/adr/ADR-002-*`
 - Diff by phase: data model → security → ingestion/commands/alerts →
   frontend → ops/CI.

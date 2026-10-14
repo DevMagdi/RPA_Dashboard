@@ -6,6 +6,8 @@ pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 coverage==7.16.2
 playwright>=1.48.0          # browser E2E (frontend smoke)
+fonttools>=4.55.0           # font-coverage assertions (Arabic glyph subsets)
+pypdf>=6.1.0                # extract text from generated PDFs (Arabic export proof)
 
 # --- quality gates ---------------------------------------------------------
 ruff>=0.7.0                 # lint + format

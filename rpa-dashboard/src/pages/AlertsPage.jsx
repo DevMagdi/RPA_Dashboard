@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useToast } from '../context/ToastProvider'
 import { useAlerts, useEvaluateAlerts, useSetAlertStatus } from '../hooks/api'
 import { dateTime } from '../lib/format'
-import { Badge, Button, Card, CardBody, DataTable, EmptyState, SectionTitle, Skeleton } from '../components/ui'
+import { Badge, Button, Card, CardBody, DataTable, EmptyState, SectionTitle, Skeleton, ErrorState} from '../components/ui'
 
 const SEVERITY_TONE = { Critical: 'danger', High: 'danger', Warning: 'warning', Info: 'info' }
 
@@ -35,6 +35,10 @@ export default function AlertsPage() {
 
   const rows = alerts.data || []
 
+  if (alerts.isError) {
+    return <ErrorState error={alerts.error} onRetry={() => alerts.refetch()} />
+  }
+
   return (
     <div className="space-y-4">
       <SectionTitle
@@ -42,7 +46,7 @@ export default function AlertsPage() {
         subtitle={t('alerts.subtitle')}
         actions={
           <Button onClick={onEvaluate} disabled={evaluate.isPending}>
-            <RefreshCw className="h-4 w-4" /> {t('alerts.evaluate')}
+            <RefreshCw className="h-4 w-4"  aria-hidden/> {t('alerts.evaluate')}
           </Button>
         }
       />
@@ -69,12 +73,12 @@ export default function AlertsPage() {
                     <span className="flex gap-1">
                       {row.Status === 'Open' ? (
                         <Button size="sm" variant="secondary" onClick={() => act(row.AlertID, 'Acknowledged')}>
-                          <Eye className="h-3.5 w-3.5" /> {t('alerts.acknowledge')}
+                          <Eye className="h-3.5 w-3.5"  aria-hidden/> {t('alerts.acknowledge')}
                         </Button>
                       ) : null}
                       {row.Status !== 'Resolved' ? (
                         <Button size="sm" variant="secondary" onClick={() => act(row.AlertID, 'Resolved')}>
-                          <Check className="h-3.5 w-3.5" /> {t('alerts.resolve')}
+                          <Check className="h-3.5 w-3.5"  aria-hidden/> {t('alerts.resolve')}
                         </Button>
                       ) : null}
                     </span>

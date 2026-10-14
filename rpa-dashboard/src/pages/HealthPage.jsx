@@ -95,7 +95,7 @@ export default function HealthPage() {
         </StatCard>
 
         <StatCard title={t('health.database')} icon={Database} ok={data?.database?.ok}>
-          <InfoTile label="Dialect" value={data?.database?.dialect || '—'} />
+          <InfoTile label={t('fields.dialect')} value={data?.database?.dialect || '—'} />
           <InfoTile label={t('health.latency')} value={`${data?.database?.latency_ms ?? '—'} ms`} tone={(data?.database?.latency_ms || 0) > 200 ? 'warning' : 'success'} />
           <InfoTile label={t('health.schema')} value={`${schema.existing ?? 0} / ${schema.expected ?? 0}`} tone={(schema.missing || []).length ? 'danger' : 'success'} />
         </StatCard>
@@ -132,12 +132,12 @@ export default function HealthPage() {
 
         <StatCard title={t('health.security')} icon={ShieldCheck} ok={problems.length === 0}>
           <div className="grid grid-cols-2 gap-2">
-            <InfoTile label="MFA" value={security.mfa_enabled ? t('common.yes') : t('common.no')} tone={security.mfa_enabled ? 'success' : 'warning'} />
-            <InfoTile label="CSRF" value={security.csrf_enabled ? t('common.yes') : t('common.no')} tone={security.csrf_enabled ? 'success' : 'warning'} />
-            <InfoTile label="Secure cookie" value={security.cookie_secure ? t('common.yes') : t('common.no')} tone={security.cookie_secure ? 'success' : 'warning'} />
-            <InfoTile label="IP allowlist" value={security.ip_allowlist ? t('common.yes') : t('common.no')} />
-            <InfoTile label="Access token" value={`${security.access_token_minutes ?? '—'} min`} />
-            <InfoTile label="Refresh token" value={`${security.refresh_token_days ?? '—'} d`} />
+            <InfoTile label={t('fields.mfa')} value={security.mfa_enabled ? t('common.yes') : t('common.no')} tone={security.mfa_enabled ? 'success' : 'warning'} />
+            <InfoTile label={t('fields.csrf')} value={security.csrf_enabled ? t('common.yes') : t('common.no')} tone={security.csrf_enabled ? 'success' : 'warning'} />
+            <InfoTile label={t('fields.secureCookie')} value={security.cookie_secure ? t('common.yes') : t('common.no')} tone={security.cookie_secure ? 'success' : 'warning'} />
+            <InfoTile label={t('fields.ipAllowlist')} value={security.ip_allowlist ? t('common.yes') : t('common.no')} />
+            <InfoTile label={t('fields.accessToken')} value={`${security.access_token_minutes ?? '—'} min`} />
+            <InfoTile label={t('fields.refreshToken')} value={`${security.refresh_token_days ?? '—'} d`} />
           </div>
         </StatCard>
       </div>
@@ -174,7 +174,7 @@ export default function HealthPage() {
                   <p className="truncate text-sm font-medium text-text">{provider.display_name || provider.provider}</p>
                   <span className="flex items-center gap-2">
                     <span className="text-[11px] text-muted">{provider.latency_ms} ms</span>
-                    {provider.ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-danger" />}
+                    {provider.ok ? <CheckCircle2 className="h-4 w-4 text-success"  aria-hidden/> : <XCircle className="h-4 w-4 text-danger"  aria-hidden/>}
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted">{provider.message}</p>

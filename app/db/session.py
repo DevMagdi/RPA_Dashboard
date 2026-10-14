@@ -56,12 +56,23 @@ def _build_engine() -> Engine:
             pool_pre_ping=True,
         )
         if settings.DB_DIALECT == "mssql":
+            # pyodbc speaks UTF-16 through the ODBC wide API, which is what
+            # finally persists Arabic correctly *after* the columns themselves
+            # are NVARCHAR (see app/db/unicode_upgrade.py).  PyDialect's
+            # `LongASMax` keeps long text on NVARCHAR(MAX) instead of the
+            # deprecated TEXT type.
             kwargs["connect_args"] = {"timeout": settings.DB_CONNECT_TIMEOUT}
             kwargs["fast_executemany"] = True
         elif settings.DB_DIALECT == "postgresql":
+            # UTC + UTF-8 client encoding: the schema is Unicode there, but a
+            # server with a LATIN1 default would still mangle Arabic on write.
             kwargs["connect_args"] = {
                 "connect_timeout": settings.DB_CONNECT_TIMEOUT,
-                "options": f"-c statement_timeout={settings.DB_STATEMENT_TIMEOUT_MS}",
+                "options": (
+                    f"-c statement_timeout={settings.DB_STATEMENT_TIMEOUT_MS} "
+                    "-c client_encoding=UTF8 "
+                    "-c timezone=UTC"
+                ),
             }
             kwargs["pool_pre_ping"] = True
 

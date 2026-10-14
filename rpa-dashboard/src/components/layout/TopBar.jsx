@@ -1,0 +1,392 @@
+/**
+ * Top bar — the operator's cockpit strip.
+ *
+ * Contains the global search trigger (with the platform-aware ⌘/Ctrl hint), the
+ * live-stream pill, the notification popover, the language switcher, the theme
+ * toggle and the account menu.  Everything is a real button with an accessible
+ * name, and every overlay is a Radix primitive so focus management, escape and
+ * outside-click follow the platform conventions.
+ */
+import { motion } from 'framer-motion'
+import {
+  Bell,
+  BellOff,
+  Check,
+  ChevronsUpDown,
+  Command as CommandIcon,
+  HelpCircle,
+  Keyboard,
+  Languages,
+  LogOut,
+  Menu,
+  Moon,
+  ScrollText,
+  Search,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+} from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useLocation, useNavigate } from 'react-router-dom'
+
+import { useAuth } from '../../context/AuthProvider'
+import { useBranding } from '../../context/BrandingProvider'
+import { useTheme } from '../../context/ThemeProvider'
+import { useAlertCount, useAlerts } from '../../hooks/api'
+import { useIsMobile, useRealtimeStatus, useTicker } from '../../hooks/ui'
+import { applyLanguage, currentLanguage, LANGUAGES } from '../../i18n'
+import { relative, severityColor } from '../../lib/format'
+import { matchRoute } from '../../lib/routeMeta'
+import { cn } from '../../lib/utils'
+import { Badge, Button, DropdownItem, DropdownLabel, DropdownMenu, DropdownSeparator, Kbd, Popover, Tooltip } from '../ui'
+
+export function LivePill() {
+  const { t } = useTranslation()
+  const { status, lastEventAt, retries } = useRealtimeStatus()
+  const tone = status === 'open' ? 'var(--success)' : status === 'connecting' ? 'var(--warning)' : 'var(--danger)'
+  const label = status === 'open' ? t('app.live') : retries > 0 ? t('app.reconnecting') : t('app.offline')
+  return (
+    <Tooltip
+      content={
+        <span className="block text-start">
+          <span className="block font-semibold">{label}</span>
+          {lastEventAt ? <span className="block text-[10px] text-muted">{relative(lastEventAt)}</span> : null}
+        </span>
+      }
+    >
+      <span className="hidden items-center gap-2 rounded-full border border-border/80 bg-surface-2/70 px-3 py-1.5 text-xs text-muted sm:inline-flex">
+        <span className="relative flex h-2 w-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: tone }} />
+          {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: tone }} aria-hidden /> : null}
+        </span>
+        {label}
+      </span>
+    </Tooltip>
+  )
+}
+
+function NotificationMenu() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { data: countData } = useAlertCount()
+  const { data } = useAlerts({ status: 'open', limit: 6 })
+  const [open, setOpen] = useState(false)
+  const count = countData?.open || 0
+  const rows = Array.isArray(data) ? data : (data?.items || [])
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      contentClassName="w-[min(92vw,23rem)]"
+      trigger={
+        <button
+          type="button"
+          aria-label={t('a11y.notifications', { count })}
+          className="focus-ring relative grid h-9 w-9 place-items-center rounded-xl border border-border/70 bg-surface-2/60 text-muted transition-colors hover:border-brand/30 hover:text-text"
+        >
+          <Bell className="h-4 w-4"  aria-hidden/>
+          {count > 0 ? (
+            <motion.span
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="absolute -end-1 -top-1 grid min-h-4.5 min-w-4.5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white shadow-soft"
+            >
+              {count > 99 ? '99+' : count}
+            </motion.span>
+          ) : null}
+        </button>
+      }
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-border/80 px-4 py-3">
+        <p className="text-sm font-semibold text-text">{t('nav.alerts')}</p>
+        {count > 0 ? (
+          <Badge tone="danger" size="sm">
+            {count}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="max-h-72 overflow-y-auto p-2">
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <BellOff className="h-5 w-5 text-muted" aria-hidden />
+            <p className="text-xs text-muted">{t('alerts.empty')}</p>
+          </div>
+        ) : (
+          <ul className="space-y-1">
+            {rows.map((alert, index) => (
+              <li key={alert.id ?? alert.ID ?? index}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    navigate('/alerts')
+                  }}
+                  className="focus-ring flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-start transition-colors hover:bg-surface-2"
+                >
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: severityColor(alert.severity || alert.Severity) }} aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-text" dir="auto">
+                      {alert.message || alert.Message || alert.rule || alert.Rule}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-muted">{relative(alert.created_at || alert.CreatedAt || alert.last_seen)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="border-t border-border/80 p-2">
+        <Button variant="ghost" size="sm" block onClick={() => { setOpen(false); navigate('/alerts') }}>
+          {t('actions.viewAll')}
+        </Button>
+      </div>
+    </Popover>
+  )
+}
+
+function LanguageMenu() {
+  const { t } = useTranslation()
+  const active = currentLanguage()
+  const [open, setOpen] = useState(false)
+  return (
+    <DropdownMenu
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      trigger={
+        <button
+          type="button"
+          aria-label={t('a11y.languageToggle')}
+          className="focus-ring hidden h-9 items-center gap-2 rounded-xl border border-border/70 bg-surface-2/60 px-2.5 text-xs font-medium text-muted transition-colors hover:border-brand/30 hover:text-text sm:inline-flex"
+        >
+          <Languages className="h-4 w-4"  aria-hidden/>
+          {LANGUAGES.find((item) => item.code === active)?.nativeLabel}
+          <ChevronsUpDown className="h-3 w-3 opacity-60"  aria-hidden/>
+        </button>
+      }
+    >
+      <DropdownLabel>{t('settings.language')}</DropdownLabel>
+      {LANGUAGES.map((language) => (
+        <DropdownItem
+          key={language.code}
+          icon={language.code === active ? Check : undefined}
+          onClick={() => {
+            setOpen(false)
+            applyLanguage(language.code)
+          }}
+        >
+          <span className="flex items-center justify-between gap-3">
+            <span dir={language.dir}>{language.nativeLabel}</span>
+            <span className="text-[10px] uppercase text-muted">{language.code}</span>
+          </span>
+        </DropdownItem>
+      ))}
+      <DropdownSeparator />
+      <p className="px-2.5 py-1 text-2xs leading-relaxed text-muted">{t('settings.languageHint')}</p>
+    </DropdownMenu>
+  )
+}
+
+function UserMenu({ onOpenMfa, onOpenShortcuts }) {
+  const { t } = useTranslation()
+  const { user, logout, has } = useAuth()
+  const [open, setOpen] = useState(false)
+  const roleKey = `users.roleDescriptions.${user?.role}`
+  const roleLabel = t(roleKey, { defaultValue: user?.role })
+
+  return (
+    <DropdownMenu
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      contentClassName="w-64"
+      trigger={
+        <button
+          type="button"
+          aria-label={t('a11y.userMenu')}
+          className="focus-ring flex h-9 items-center gap-2 rounded-xl border border-border/70 bg-surface-2/60 px-2 text-sm transition-colors hover:border-brand/30"
+        >
+          <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-soft text-[10px] font-bold text-brand">
+            {String(user?.username || 'U').slice(0, 2).toUpperCase()}
+          </span>
+          <span className="hidden max-w-[9rem] truncate sm:block">{user?.username}</span>
+          <ChevronsUpDown className="h-3 w-3 text-muted" aria-hidden />
+        </button>
+      }
+    >
+      <div className="px-3 py-2">
+        <p className="truncate text-sm font-semibold text-text" dir="auto">
+          {user?.full_name || user?.username}
+        </p>
+        <p className="truncate text-xs text-muted" dir="auto">
+          {roleLabel}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge tone={user?.mfa_enabled ? 'success' : 'warning'} size="sm" dot={!user?.mfa_enabled}>
+            {user?.mfa_enabled ? t('auth.mfaEnabled') : t('auth.setupMfa')}
+          </Badge>
+          {user?.department && user.department !== 'ALL' ? (
+            <Badge tone="neutral" size="sm">
+              {user.department}
+            </Badge>
+          ) : null}
+        </div>
+      </div>
+      <DropdownSeparator />
+      {!user?.mfa_enabled ? (
+        <DropdownItem
+          icon={ShieldCheck}
+          onClick={() => {
+            setOpen(false)
+            onOpenMfa()
+          }}
+        >
+          {t('auth.setupMfa')}
+        </DropdownItem>
+      ) : null}
+      <DropdownItem
+        icon={SettingsIcon}
+        onClick={() => {
+          setOpen(false)
+          navigate('/settings')
+        }}
+      >
+        {t('nav.settings')}
+      </DropdownItem>
+      {has('audit:read') ? (
+        <DropdownItem
+          icon={ScrollText}
+          onClick={() => {
+            setOpen(false)
+            navigate('/audit?who=me')
+          }}
+        >
+          {t('nav.audit')}
+        </DropdownItem>
+      ) : null}
+      <DropdownItem
+        icon={Keyboard}
+        onClick={() => {
+          setOpen(false)
+          onOpenShortcuts()
+        }}
+      >
+        {t('shortcuts.title')}
+      </DropdownItem>
+      <DropdownSeparator />
+      <DropdownItem
+        icon={LogOut}
+        destructive
+        onClick={() => {
+          setOpen(false)
+          logout()
+        }}
+      >
+        {t('actions.signOut')}
+      </DropdownItem>
+    </DropdownMenu>
+  )
+}
+
+export default function TopBar({ onOpenPalette, onOpenMobileNav, onOpenShortcuts, onOpenMfa }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const isMobile = useIsMobile()
+  const { toggleTheme, isDark } = useTheme()
+  const { branding, companyName } = useBranding()
+  const location = useLocation()
+  useTicker(45_000)
+
+  const route = useMemo(() => matchRoute(location.pathname), [location.pathname])
+  const title = route ? t(route.labelKey) : t('app.name')
+  const subtitle = route ? t(route.descriptionKey) : companyName
+  const modifier = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl'
+
+  return (
+    <header className="topbar sticky top-0 z-40 border-b border-border/70">
+      <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5">
+        {isMobile ? (
+          <Button variant="ghost" size="icon" onClick={onOpenMobileNav} aria-label={t('nav.expand')}>
+            <Menu className="h-5 w-5"  aria-hidden/>
+          </Button>
+        ) : null}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="truncate text-sm font-semibold tracking-[-0.01em] text-text">{title}</h1>
+            <Badge tone="neutral" size="sm" className="hidden xl:inline-flex">
+              {t('app.environment')}: {branding.api_version || '4.1.0'}
+            </Badge>
+          </div>
+          <p className="hidden truncate text-[11px] text-muted sm:block">{subtitle}</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpenPalette}
+          aria-label={`${t('palette.title')} (${modifier}+K)`}
+          className="focus-ring group inline-flex h-9 items-center gap-2 rounded-xl border border-border/80 bg-surface-2/60 px-2.5 text-xs text-muted transition-colors hover:border-brand/35 hover:bg-surface hover:text-text sm:min-w-[15rem] sm:justify-between"
+        >
+          <span className="flex items-center gap-2">
+            <Search className="h-4 w-4"  aria-hidden/>
+            <span className="hidden sm:inline">{t('palette.placeholder')}</span>
+          </span>
+          <span className="hidden items-center gap-1 sm:flex">
+            <Kbd>{modifier}</Kbd>
+            <Kbd>K</Kbd>
+          </span>
+        </button>
+
+        <LivePill />
+
+        <div className="flex items-center gap-1">
+          <LanguageMenu />
+          <Tooltip content={isDark ? t('settings.themeLight') : t('settings.themeDark')}>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={t('a11y.themeToggle')}
+              className="focus-ring grid h-9 w-9 place-items-center rounded-xl border border-border/70 bg-surface-2/60 text-muted transition-colors hover:border-brand/30 hover:text-text"
+            >
+              <motion.span key={isDark ? 'dark' : 'light'} initial={{ rotate: -35, opacity: 0, scale: 0.8 }} animate={{ rotate: 0, opacity: 1, scale: 1 }} transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}>
+                {isDark ? <Sun className="h-4 w-4"  aria-hidden/> : <Moon className="h-4 w-4"  aria-hidden/>}
+              </motion.span>
+            </button>
+          </Tooltip>
+          <NotificationMenu />
+          <UserMenu onOpenMfa={onOpenMfa} onOpenShortcuts={onOpenShortcuts} />
+        </div>
+      </div>
+
+      {/* First-run affordance: the welcome banner links straight into the tour. */}
+      <div className="hidden items-center gap-2 border-t border-border/60 px-5 py-1.5 text-[11px] text-muted xl:flex">
+        <Sparkles className="h-3 w-3 text-brand" aria-hidden />
+        <span className="truncate">{t('onboarding.tourHint')}</span>
+        <span className="ms-auto inline-flex items-center gap-3">
+          <span className="inline-flex items-center gap-1">
+            <CommandIcon className="h-3 w-3" aria-hidden />
+            {t('nav.commandHint')}
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate('/settings')}
+            className="focus-ring inline-flex items-center gap-1 rounded text-muted transition-colors hover:text-brand"
+          >
+            <HelpCircle className="h-3 w-3" aria-hidden />
+            {t('common.help')}
+          </button>
+        </span>
+      </div>
+    </header>
+  )
+}
+
+export { NotificationMenu as NotificationsBell }
+
+export function BrandFooterLine({ children }) {
+  return <span className={cn('text-[11px] text-muted')}>{children}</span>
+}

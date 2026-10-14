@@ -7,6 +7,10 @@ Order matters — the stack is registered bottom-up in :mod:`app.main`:
 3. :class:`IPAllowlistMiddleware` — optional corporate network restriction
 4. :class:`CSRFMiddleware` — double-submit cookie validation
 5. :class:`MetricsMiddleware` — Prometheus counters + latency histogram
+6. :class:`StaticAssetCacheMiddleware` — immutable caching for hashed assets
+   and ``no-cache`` for the SPA shell (a deploy must be picked up instantly)
+7. Starlette's ``GZipMiddleware`` — JSON/CSS/JS payloads are compressed on the
+   wire (fonts, images, SSE and Office documents are excluded by Starlette)
 """
 
 from __future__ import annotations
@@ -189,6 +193,43 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 content={"detail": "فشل تحقق CSRF — أعد تحميل الصفحة وحاول مرة أخرى"},
             )
         return await call_next(request)
+
+
+class StaticAssetCacheMiddleware(BaseHTTPMiddleware):
+    """Cache-Control policy for the served frontend.
+
+    The Vite build emits **content-hashed** file names (``index-a1b2c3.js``), so
+    an asset URL can never change meaning — it is safe (and, for a dashboard
+    that must feel instant on every reload, essential) to cache it for a year
+    as ``immutable``.  The HTML shell, by contrast, must never be cached: it is
+    what points at the new hashes after a deploy.
+    """
+
+    #: ``(prefix, max-age, immutable)`` — evaluated in order.
+    ASSET_RULES = (
+        ("/assets/", 31_536_000, True),
+        ("/fonts/", 31_536_000, True),
+    )
+    SHELL_PATHS = ("/", "/index.html")
+
+    async def dispatch(self, request: Request, call_next: Callable):
+        response = await call_next(request)
+        if request.method not in ("GET", "HEAD"):
+            return response
+        path = request.url.path
+        if "cache-control" in response.headers:
+            return response
+        for prefix, max_age, immutable in self.ASSET_RULES:
+            if path.startswith(prefix):
+                suffix = ", immutable" if immutable else ""
+                response.headers["Cache-Control"] = f"public, max-age={max_age}{suffix}"
+                return response
+        if path.endswith((".woff2", ".woff", ".ttf", ".svg", ".png", ".ico")):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+            return response
+        if path in self.SHELL_PATHS or path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):

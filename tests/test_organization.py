@@ -39,7 +39,9 @@ def test_update_branding(client, admin_headers):
 def test_branding_is_public_for_login_screen(client):
     response = client.get("/api/branding")
     assert response.status_code == 200
-    assert response.json()["api_version"] == "4.0.0"
+    from app import __version__
+
+    assert response.json()["api_version"] == __version__
 
 
 def test_configure_platform_and_read_back(client, admin_headers):

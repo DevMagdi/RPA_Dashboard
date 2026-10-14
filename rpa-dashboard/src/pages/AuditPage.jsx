@@ -11,7 +11,7 @@ import { useDebouncedValue } from '../hooks/ui'
 import { CHART_COLORS, DATE_RANGES } from '../lib/constants'
 import { dateTime, relative } from '../lib/format'
 import ExportMenu from '../components/features/ExportMenu'
-import { Badge, Button, Card, CardBody, CardHeader, DataTable, EmptyState, InfoTile, Input, SearchInput, SectionTitle, Select, Skeleton, Switch } from '../components/ui'
+import { Badge, Button, Card, CardBody, CardHeader, DataTable, EmptyState, InfoTile, Input, SearchInput, SectionTitle, Select, Skeleton, Switch, ErrorState} from '../components/ui'
 
 const COMMON_ACTIONS = [
   'Login_Success',
@@ -112,6 +112,14 @@ export default function AuditPage() {
     return onlyFailures ? rows.filter((row) => !row.IsSuccess) : rows
   }, [logs.data, onlyFailures])
 
+  if (logs.isError) {
+    return (
+      <Card>
+        <ErrorState error={logs.error} onRetry={() => logs.refetch()} />
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <SectionTitle
@@ -192,7 +200,11 @@ export default function AuditPage() {
           </label>
           <label className="space-y-1">
             <span className="block text-[11px] text-muted">{t('processes.department')}</span>
-            <Select className="h-10 w-44 py-0 text-xs" value={department} onChange={(event) => setDepartment(event.target.value)}>
+            <Select
+      aria-label={t('filters.department')}
+      className="h-10 w-44 py-0 text-xs"
+      value={department}
+      onChange={(event) => setDepartment(event.target.value)}>
               <option value="ALL">{t('dashboard.filters.all')}</option>
               {(departments.data || []).map((row) => {
                 const name = typeof row === 'string' ? row : row.Department || row.department || row.name
@@ -206,7 +218,11 @@ export default function AuditPage() {
           </label>
           <label className="space-y-1">
             <span className="block text-[11px] text-muted">{t('dashboard.filters.range')}</span>
-            <Select className="h-10 w-36 py-0 text-xs" value={days} onChange={(event) => setDays(Number(event.target.value))}>
+            <Select
+      aria-label={t('filters.window')}
+      className="h-10 w-36 py-0 text-xs"
+      value={days}
+      onChange={(event) => setDays(Number(event.target.value))}>
               {DATE_RANGES.map((range) => (
                 <option key={range.value} value={range.value}>
                   {t('dashboard.filters.days', { count: range.count })}
@@ -248,7 +264,7 @@ export default function AuditPage() {
               render: (row) => (
                 <span className="inline-flex items-center gap-1">
                   <Badge tone={row.IsSuccess ? 'brand' : 'danger'}>{row.ActionType}</Badge>
-                  {(row.OldValues || row.NewValues) && expanded !== row.LogID ? <ChevronDown className="h-3 w-3 text-muted" /> : null}
+                  {(row.OldValues || row.NewValues) && expanded !== row.LogID ? <ChevronDown className="h-3 w-3 text-muted"  aria-hidden/> : null}
                 </span>
               ),
             },
@@ -315,8 +331,8 @@ export default function AuditPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <InfoTile label={t('audit.success')} value={notificationStats.data?.success_rate !== undefined ? `${notificationStats.data.success_rate}%` : '—'} tone="success" />
             <InfoTile label={t('audit.failed')} value={notificationStats.data?.failed ?? 0} tone={notificationStats.data?.failed ? 'danger' : 'neutral'} />
-            <InfoTile label="Skipped" value={notificationStats.data?.skipped ?? 0} />
-            <InfoTile label="Channels" value={(notificationStats.data?.configured_channels || []).join(', ') || '—'} />
+            <InfoTile label={t('fields.skipped')} value={notificationStats.data?.skipped ?? 0} />
+            <InfoTile label={t('fields.channels')} value={(notificationStats.data?.configured_channels || []).join(', ') || '—'} />
           </div>
           <DataTable
             loading={notifications.isLoading}

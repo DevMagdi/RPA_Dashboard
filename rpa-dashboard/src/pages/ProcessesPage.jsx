@@ -1,6 +1,7 @@
 import { Pencil, Power, Search, Trash2, Workflow } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useEffect } from 'react'
 
 import { useAuth } from '../context/AuthProvider'
 import { useToast } from '../context/ToastProvider'
@@ -14,6 +15,7 @@ import {
   useUpdateSla,
 } from '../hooks/api'
 import { useDebouncedValue } from '../hooks/ui'
+import { markOnboardingStep } from '../lib/onboarding'
 import { compactNumber, currency, percent } from '../lib/format'
 import ExportMenu from '../components/features/ExportMenu'
 import {
@@ -29,8 +31,7 @@ import {
   Pagination,
   SectionTitle,
   Select,
-  Switch,
-} from '../components/ui'
+  Switch, ErrorState} from '../components/ui'
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -142,6 +143,17 @@ export default function ProcessesPage() {
       toast.error(t('errors.title'), error.message)
     }
   }
+
+  if (processes.isError) {
+    return (
+      <Card>
+        <ErrorState error={processes.error} onRetry={() => processes.refetch()} />
+      </Card>
+    )
+  }
+
+  // The operator reached this module — that is what completes the getting-started step.
+  useEffect(() => markOnboardingStep('stepProcesses'), [])
 
   return (
     <div className="space-y-4">
@@ -297,7 +309,7 @@ export default function ProcessesPage() {
                 canWrite ? (
                   <div className="flex items-center justify-end gap-1">
                     <Button size="icon" variant="ghost" onClick={() => setRoiTarget(row)} aria-label={t('processes.editRoi')} title={t('processes.editRoi')}>
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5"  aria-hidden/>
                     </Button>
                     <Button size="icon" variant="ghost" onClick={() => setSlaTarget(row)} aria-label={t('processes.editSla')} title={t('processes.editSla')}>
                       <span className="text-[10px] font-semibold">SLA</span>
@@ -309,10 +321,10 @@ export default function ProcessesPage() {
                       aria-label={row.IsActive ? t('processes.deactivate') : t('processes.activate')}
                       title={row.IsActive ? t('processes.deactivate') : t('processes.activate')}
                     >
-                      <Power className={row.IsActive ? 'h-3.5 w-3.5 text-success' : 'h-3.5 w-3.5 text-muted'} />
+                      <Power className={row.IsActive ? 'h-3.5 w-3.5 text-success' : 'h-3.5 w-3.5 text-muted'}  aria-hidden/>
                     </Button>
                     <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(row)} aria-label={t('processes.delete')} title={t('processes.delete')}>
-                      <Trash2 className="h-3.5 w-3.5 text-danger" />
+                      <Trash2 className="h-3.5 w-3.5 text-danger"  aria-hidden/>
                     </Button>
                   </div>
                 ) : null,
@@ -342,13 +354,13 @@ export default function ProcessesPage() {
               <Input name="ExpectedRunsPerDay" type="number" min="0" step="1" defaultValue={roiTarget.ExpectedRunsPerDay ?? 0} required />
             </Field>
             <div className="grid grid-cols-3 gap-3">
-              <Field label="Minutes / request" required>
+              <Field label={t('fields.minutesPerRequest')} required>
                 <Input name="EmpMinutesPerRequest" type="number" min="0" step="0.1" defaultValue={roiTarget.EmpMinutesPerRequest ?? 0} required />
               </Field>
-              <Field label="Manual cost" required>
+              <Field label={t('fields.manualCost')} required>
                 <Input name="EmpCostPerRequest" type="number" min="0" step="0.01" defaultValue={roiTarget.EmpCostPerRequest ?? 0} required />
               </Field>
-              <Field label="Bot cost" required>
+              <Field label={t('fields.botCost')} required>
                 <Input name="BotCostPerRequest" type="number" min="0" step="0.01" defaultValue={roiTarget.BotCostPerRequest ?? 0} required />
               </Field>
             </div>
@@ -372,11 +384,11 @@ export default function ProcessesPage() {
               <Field label={t('processes.slaTarget')} required>
                 <Input name="SLATargetMinutes" type="number" min="1" step="1" defaultValue={slaTarget.SLATargetMinutes ?? 60} required />
               </Field>
-              <Field label={t('capacity.predictedWait')} hint="Avg item processing seconds" required>
+              <Field label={t('capacity.predictedWait')} hint={t('fields.avgItemSeconds')} required>
                 <Input name="AvgItemProcessingSeconds" type="number" min="1" step="1" defaultValue={30} required />
               </Field>
             </div>
-            <Field label="Warning ratio" hint="0.8 = warn at 80% of the SLA">
+            <Field label={t('fields.warningRatio')} hint={t('fields.warningRatioHint')}>
               <Input name="SLAWarningRatio" type="number" min="0.1" max="1" step="0.05" defaultValue={slaTarget.SLAWarningRatio ?? 0.8} />
             </Field>
             <div className="flex justify-end gap-2 pt-1">

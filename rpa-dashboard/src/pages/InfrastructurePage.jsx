@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Activity, Cpu, HardDrive, Plug, RefreshCw, Server, ServerCog, ShieldOff, Terminal, Wifi } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useEffect } from 'react'
 
 import { useAuth } from '../context/AuthProvider'
 import { useToast } from '../context/ToastProvider'
@@ -20,6 +21,7 @@ import {
   useSyncHistory,
 } from '../hooks/api'
 import { COMMANDS, RUNNER_TYPES } from '../lib/constants'
+import { markOnboardingStep } from '../lib/onboarding'
 import { compactNumber, dateTime, heartbeatState, machineStatusColor, percent, relative } from '../lib/format'
 import {
   Badge,
@@ -41,8 +43,7 @@ import {
   Skeleton,
   Switch,
   Textarea,
-  Tooltip,
-} from '../components/ui'
+  Tooltip, ErrorState} from '../components/ui'
 
 const EMPTY_STATS = {}
 
@@ -153,6 +154,17 @@ export default function InfrastructurePage() {
       toast.error(t('errors.title'), error.message)
     }
   }
+
+  if (machines.isError) {
+    return (
+      <Card>
+        <ErrorState error={machines.error} onRetry={() => machines.refetch()} />
+      </Card>
+    )
+  }
+
+  // The operator reached this module — that is what completes the getting-started step.
+  useEffect(() => markOnboardingStep('stepConnect'), [])
 
   return (
     <div className="space-y-4">
@@ -277,19 +289,19 @@ export default function InfrastructurePage() {
               key: 'CPU_Usage',
               header: t('infra.cpu'),
               width: 150,
-              render: (row) => <MachineUsage value={row.CPU_Usage} icon={Cpu} label="CPU" />,
+              render: (row) => <MachineUsage value={row.CPU_Usage} icon={Cpu} label={t('fields.cpu')} />,
             },
             {
               key: 'RAM_Usage',
               header: t('infra.ram'),
               width: 150,
-              render: (row) => <MachineUsage value={row.RAM_Usage} icon={ServerCog} label="RAM" />,
+              render: (row) => <MachineUsage value={row.RAM_Usage} icon={ServerCog} label={t('fields.ram')} />,
             },
             {
               key: 'HDD_Usage',
               header: t('infra.hdd'),
               width: 150,
-              render: (row) => <MachineUsage value={row.HDD_Usage} icon={HardDrive} label="HDD" />,
+              render: (row) => <MachineUsage value={row.HDD_Usage} icon={HardDrive} label={t('fields.hdd')} />,
             },
             {
               key: 'LastPing',
@@ -310,7 +322,7 @@ export default function InfrastructurePage() {
                 canWrite ? (
                   <div className="flex items-center justify-end gap-1">
                     <Button size="icon" variant="ghost" onClick={() => setCommandTarget(row)} aria-label={t('infra.sendCommand')} title={t('infra.sendCommand')}>
-                      <Terminal className="h-3.5 w-3.5" />
+                      <Terminal className="h-3.5 w-3.5"  aria-hidden/>
                     </Button>
                     <Button
                       size="icon"
@@ -327,7 +339,7 @@ export default function InfrastructurePage() {
                       aria-label={t('infra.regenerate')}
                       title={t('infra.regenerate')}
                     >
-                      <Wifi className="h-3.5 w-3.5" />
+                      <Wifi className="h-3.5 w-3.5"  aria-hidden/>
                     </Button>
                     <Button
                       size="icon"
@@ -343,10 +355,10 @@ export default function InfrastructurePage() {
                       aria-label={t('infra.revoke')}
                       title={t('infra.revoke')}
                     >
-                      <ShieldOff className="h-3.5 w-3.5 text-warning" />
+                      <ShieldOff className="h-3.5 w-3.5 text-warning"  aria-hidden/>
                     </Button>
                     <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(row)} aria-label={t('actions.delete')} title={t('actions.delete')}>
-                      <ShieldOff className="h-3.5 w-3.5 text-danger" />
+                      <ShieldOff className="h-3.5 w-3.5 text-danger"  aria-hidden/>
                     </Button>
                   </div>
                 ) : null,
@@ -363,9 +375,9 @@ export default function InfrastructurePage() {
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
                   <InfoTile label={t('infra.capacity')} value={row.RobotCapacity ?? '—'} />
                   <InfoTile label={t('infra.platform')} value={row.Platform || '—'} />
-                  <InfoTile label="RAM" value={row.TotalRAM_GB ? `${row.TotalRAM_GB} GB` : '—'} />
-                  <InfoTile label="HDD" value={row.TotalHDD_GB ? `${row.TotalHDD_GB} GB` : '—'} />
-                  <InfoTile label="Agent" value={row.AgentVersion || '—'} />
+                  <InfoTile label={t('fields.ram')} value={row.TotalRAM_GB ? `${row.TotalRAM_GB} GB` : '—'} />
+                  <InfoTile label={t('fields.hdd')} value={row.TotalHDD_GB ? `${row.TotalHDD_GB} GB` : '—'} />
+                  <InfoTile label={t('fields.agent')} value={row.AgentVersion || '—'} />
                   <InfoTile label={t('infra.lastPing')} value={dateTime(row.LastPing)} />
                 </div>
               )
@@ -416,10 +428,10 @@ export default function InfrastructurePage() {
           <Field label={t('infra.capacity')}>
             <Input name="RobotCapacity" type="number" min="1" max="10" defaultValue={1} />
           </Field>
-          <Field label="RAM (GB)" required>
+          <Field label={t('fields.ramGb')} required>
             <Input name="TotalRAM_GB" type="number" min="1" step="1" defaultValue={16} required />
           </Field>
-          <Field label="HDD (GB)" required>
+          <Field label={t('fields.hddGb')} required>
             <Input name="TotalHDD_GB" type="number" min="1" step="1" defaultValue={256} required />
           </Field>
           <div className="sm:col-span-2 flex justify-end gap-2">
@@ -480,7 +492,7 @@ export default function InfrastructurePage() {
             <Field label={t('processes.process')} hint={t('infra.commandValues.RUN_BOT')}>
               <Input name="ProcessName" />
             </Field>
-            <Field label="Timeout (seconds)">
+            <Field label={t('fields.timeoutSeconds')}>
               <Input name="TimeoutSeconds" type="number" min="5" max="600" defaultValue={60} />
             </Field>
             <Field label={t('lifecycle.riskNotes')}>
