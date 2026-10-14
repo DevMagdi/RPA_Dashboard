@@ -41,7 +41,6 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
     "skipToContent": "Skip to content",
-    "commandHint": "for commands",
     "more": "More",
     "moreModules": "More modules ({{count}})"
   },
@@ -128,6 +127,16 @@
     "subtitle": "Real-time view of the automation estate",
     "commandCenter": "Automation command center",
     "commandCenterSubtitle": "One clear operational picture for every automation platform — secured inside your organisation’s perimeter.",
+    "overview": {
+      "eyebrow": "Headline figures",
+      "title": "Operations overview",
+      "subtitle": "The six numbers every shift starts with, measured over the selected window."
+    },
+    "status": {
+      "eyebrow": "Read in three seconds",
+      "title": "Operating status",
+      "subtitle": "The operational verdict, the success gauge, the 14-day volume trend and the runs executing right now."
+    },
     "privateInstallation": "ON-PREMISES · VENDOR-NEUTRAL",
     "startTour": "Take a quick tour",
     "hero": {
@@ -135,18 +144,13 @@
       "processes": "Managed processes",
       "successRate": "Success rate",
       "lastUpdated": "Updated {{time}}",
-      "snapshot": "Operational snapshot",
-      "controlPlane": "Private control plane",
-      "liveRail": "Live operations",
       "attention": "Needs attention",
       "allClear": "No open incidents",
-      "nextAction": "Suggested next action",
       "viewCapacity": "Review capacity advisor",
       "operator": "Operator",
       "greetingMorning": "Good morning, {{name}}",
       "greetingAfternoon": "Good afternoon, {{name}}",
       "greetingEvening": "Good evening, {{name}}",
-      "kicker": "Private Operations",
       "standby": "Runners on standby",
       "runsToday": "Runs today",
       "serverTime": "Server time",
@@ -704,7 +708,6 @@
     "stepReviewHint": "Lifecycle versions, approvals and audit are ready for your auditor.",
     "go": "Go",
     "done": "Done",
-    "tourHint": "Tip: press Ctrl+K any time to jump anywhere.",
     "title": "Getting started"
   },
   "a11y": {

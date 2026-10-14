@@ -128,10 +128,10 @@ export default function OrganizationPage() {
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t('organization.primaryColor')}>
-                  <Input name="PrimaryColor" type="color" defaultValue={org.BrandPrimaryColor || '#4b367c'} />
+                  <Input name="PrimaryColor" type="color" defaultValue={org.BrandPrimaryColor || '#4F46E5'} />
                 </Field>
                 <Field label={t('organization.accentColor')}>
-                  <Input name="AccentColor" type="color" defaultValue={org.BrandAccentColor || '#f37920'} />
+                  <Input name="AccentColor" type="color" defaultValue={org.BrandAccentColor || '#0D9488'} />
                 </Field>
               </div>
               <Field label={t('fields.logoUrl')}>

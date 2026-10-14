@@ -1,61 +1,52 @@
 /**
- * Command-centre hero — the first three seconds of the product.
+ * Status console — the light "command panel" at the top of the dashboard.
  *
- * Decision-first layout (v5):
- *   [live status bar: Connected · server clock]   [Refresh] [Export]
- *   ██ VERDICT: Operational / Degraded / Critical + the factual reasons ██
- *   Good morning, Magdi  (context line, no longer the headline)
- *   ─────────────────────────────────────────────────────
- *   Success · Active · Savings · SLA risk                (four-KPI strip)
- *   ── 14-day run-volume sparkline strip ──
- *   ── live activity ticker (five most recent real runs) ──
+ * Classic BI reading order, three columns on a wide screen:
  *
- * The verdict is computed by `lib/opsSignals.js` from the same payload as
- * everything else, so the hero can never disagree with the triage queue below.
+ *   ┌── verdict band (navy) ───────────────────────────────────────────┐
+ *   │ Operational / Degraded / Critical + the factual reasons + CTA     │
+ *   └───────────────────────────────────────────────────────────────────┘
+ *   ┌── success gauge ──┬── 14-day run volume ──┬── live activity ──────┐
  *
- * The aurora/grid background is pure CSS (no canvas, no image request), so it
- * costs nothing on the critical path and animates on the compositor thread.
- * Every number is real payload data — no synthetic decoration.
+ * Why a light panel instead of the old full-bleed navy hero:
+ *  • the identity row it used to carry (product name, live chip, server clock,
+ *    on-premises chip, refresh, export) belongs to the page toolbar, and the
+ *    dashboard now has one — so the panel no longer needs a headline row;
+ *  • a Navy/Indigo/Teal palette reads calmer when the dark navy is reserved
+ *    for the *verdict* — the single sentence an operator must not miss —
+ *    instead of covering the whole fold.
+ *
+ * The verdict is computed by `lib/opsSignals.js` from the same payload as the
+ * triage queue below, so the panel can never disagree with the queue.
+ * Every colour is a design token: no hex is hardcoded in this file.
  */
-import { ArrowRight, CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowRight, Activity, Gauge, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { DeltaChip, Sparkline } from '../charts/primitives'
-import { useAuth } from '../../context/AuthProvider'
 import { useRealtimeStatus } from '../../hooks/ui'
-import { compactNumber, durationFromMinutes, percent, relative, runStatusColor } from '../../lib/format'
-import { rateDelta, seriesDelta } from '../../lib/stats'
-import { Badge, Button, CountUpStat, Skeleton, cn } from '../ui'
-
-/* Icon tones tuned for the violet gradient: light enough to read on dark glass. */
-const TONE_VARS = {
-  brand: '#c4b5fd',
-  info: '#7dd3fc',
-  success: '#6ee7b7',
-  warning: '#fcd34d',
-  danger: '#fca5a5',
-  highlight: '#f0abfc',
-}
+import { durationFromMinutes, percent, relative, runStatusColor } from '../../lib/format'
+import { seriesDelta } from '../../lib/stats'
+import { Button, Card, Skeleton, cn } from '../ui'
 
 /**
  * Radial success gauge — the ring fills with the success rate (0–100).
  * Pure SVG: no chart runtime on the critical path, and the arc animates via a
  * CSS transition that `prefers-reduced-motion` switches off.
  */
-function SuccessGauge({ value, label, caption }) {
+export function SuccessGauge({ value, label, caption }) {
   const pct = Math.max(0, Math.min(100, Number(value) || 0))
   const size = 92
   const radius = 38
   const circumference = 2 * Math.PI * radius
   const offset = circumference * (1 - pct / 100)
   return (
-    <div className="command-hero__gauge flex shrink-0 items-center gap-3" role="img" aria-label={`${label}: ${percent(pct, 1)}`}>
-      <span className="relative grid h-[92px] w-[92px] place-items-center" aria-hidden>
+    <div className="status-panel__gauge" role="img" aria-label={`${label}: ${percent(pct, 1)}`}>
+      <span className="relative grid h-[92px] w-[92px] shrink-0 place-items-center" aria-hidden>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 overflow-visible">
           <g style={{ transform: 'rotate(-90deg)', transformOrigin: '46px 46px' }}>
-            <circle cx="46" cy="46" r={radius} fill="none" strokeWidth="8" className="command-hero__gauge-track" />
+            <circle cx="46" cy="46" r={radius} fill="none" strokeWidth="8" className="status-panel__gauge-track" />
             <circle
               cx="46"
               cy="46"
@@ -63,15 +54,15 @@ function SuccessGauge({ value, label, caption }) {
               fill="none"
               strokeWidth="8"
               strokeLinecap="round"
-              className="command-hero__gauge-value"
+              className="status-panel__gauge-value"
               strokeDasharray={circumference}
               strokeDashoffset={offset}
             />
           </g>
         </svg>
-        <span className="text-lg font-bold tabular text-white">{percent(pct, 1)}</span>
+        <span className="text-lg font-bold tabular text-text">{percent(pct, 1)}</span>
       </span>
-      <span className="command-hero__gauge-caption">{caption}</span>
+      <span className="status-panel__gauge-caption">{caption}</span>
     </div>
   )
 }
@@ -79,10 +70,9 @@ function SuccessGauge({ value, label, caption }) {
 /**
  * Operational verdict — the three-second answer.
  *
- * The hero used to open with a time-of-day greeting, which reads well but tells
- * an on-call operator nothing. The verdict is now the first thing on the
- * screen: one word (Operational / Degraded / Critical) plus the factual reasons
- * behind it, computed from the same payload by `lib/opsSignals.js`.
+ * A time-of-day greeting reads well but tells an on-call operator nothing, so
+ * the verdict leads the panel: one sentence (Operational / Degraded / Critical)
+ * plus the factual reasons behind it, and a shortcut into the decision queue.
  */
 const VERDICT_TONE = {
   critical: { className: 'is-critical', icon: ShieldAlert },
@@ -90,7 +80,7 @@ const VERDICT_TONE = {
   healthy: { className: 'is-healthy', icon: ShieldCheck },
 }
 
-function VerdictBanner({ signals, loading }) {
+export function VerdictBanner({ signals, loading, className }) {
   const { t } = useTranslation()
   const verdict = signals?.verdict || 'healthy'
   const tone = VERDICT_TONE[verdict] || VERDICT_TONE.healthy
@@ -102,31 +92,31 @@ function VerdictBanner({ signals, loading }) {
   }
 
   return (
-    <div className={cn('command-hero__verdict', tone.className)}>
-      <span className="command-hero__verdict-mark" aria-hidden>
+    <div className={cn('status-panel__verdict', tone.className, className)}>
+      <span className="status-panel__verdict-mark" aria-hidden>
         <tone.icon className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
         {/* A <div>, not a <p>: the loading placeholder (Skeleton) renders a div,
             and a block element may never be nested inside a paragraph. */}
-        <div className="command-hero__verdict-label">
+        <div className="status-panel__verdict-label">
           {loading ? <Skeleton className="h-7 w-40" /> : t(`dashboard.verdict.${verdict}`)}
         </div>
         {reasons.length > 0 ? (
-          <p className="command-hero__verdict-reasons">
+          <p className="status-panel__verdict-reasons">
             {reasons.map((reason, index) => (
-              <span key={reason.key} className="command-hero__verdict-reason">
+              <span key={reason.key} className="status-panel__verdict-reason">
                 {index > 0 ? <span aria-hidden> · </span> : null}
                 <strong className="tabular">{reason.count}</strong> {t(reason.key)}
               </span>
             ))}
           </p>
         ) : (
-          <p className="command-hero__verdict-reasons">{t('dashboard.verdict.allClear')}</p>
+          <p className="status-panel__verdict-reasons">{t('dashboard.verdict.allClear')}</p>
         )}
       </div>
       {total > 0 ? (
-        <Button variant="secondary" size="sm" className="command-hero__verdict-cta" onClick={jumpToQueue}>
+        <Button variant="secondary" size="sm" className="status-panel__verdict-cta" onClick={jumpToQueue}>
           <span className="tabular">{total}</span>
           <span className="hidden sm:inline">{t('dashboard.triage.cta')}</span>
           <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden />
@@ -136,44 +126,10 @@ function VerdictBanner({ signals, loading }) {
   )
 }
 
-/**
- * Wall clock anchored to the server payload time (not the workstation), so the
- * "ops room" always shows the same truth as the backend. Isolated component:
- * only this chip re-renders every second, never the hero.
- */
-function ServerClock({ generatedAt }) {  const { t } = useTranslation()
-  const [offset] = useState(() => {
-    const parsed = generatedAt ? Date.parse(generatedAt) : Number.NaN
-    return Number.isFinite(parsed) ? parsed - Date.now() : 0
-  })
-  const [now, setNow] = useState(() => Date.now() + offset)
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now() + offset), 1000)
-    return () => window.clearInterval(timer)
-  }, [offset])
-
-  const locale = typeof document !== 'undefined' ? document.documentElement.dataset.locale : undefined
-  const formatted = new Intl.DateTimeFormat(locale || undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).format(now)
-
-  return (
-    <span className="chip tabular" title={generatedAt || undefined}>
-      <Clock className="h-3 w-3 text-brand" aria-hidden />
-      <span className="sr-only">{t('dashboard.hero.serverTime')}</span>
-      <time suppressHydrationWarning>{formatted}</time>
-    </span>
-  )
-}
-
 /** Live activity item — one real run, status dot + process + freshness. */
 function ActivityItem({ run }) {
   return (
-    <span className="command-hero__activity-item">
+    <span className="status-panel__activity-item">
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: runStatusColor(run.Status) }} aria-hidden />
       <strong dir="auto">{run.ProcessName}</strong>
       <time title={run.StartTime} dateTime={run.StartTime}>
@@ -185,246 +141,120 @@ function ActivityItem({ run }) {
   )
 }
 
-/** KPI block inside the hero strip. */
-function HeroKpi({ icon: Icon, label, value, tone = 'brand', delta, hint, live, flashKey, glow }) {
+/** Small labelled frame used by the three console cards. */
+function ConsoleCard({ label, icon: Icon, aside, children, className, loading }) {
   return (
-    <div className={cn('command-hero__kpi', glow && 'glow-brand')}>
-      <div className="command-hero__kpi-head">
-        <span key={flashKey} className="command-hero__kpi-icon stat-flash" style={{ '--tone': TONE_VARS[tone] || TONE_VARS.brand }}>
-          <Icon className="h-4 w-4" aria-hidden />
+    <Card className={cn('status-panel__card flex min-w-0 flex-col gap-2 p-3.5', className)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-2xs font-semibold tracking-[0.1em] text-muted uppercase">
+          {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden /> : null}
+          <span className="truncate">{label}</span>
         </span>
-        {live ? (
-          <span className="relative flex h-2 w-2" title="live">
-            <span className="h-2 w-2 rounded-full" style={{ background: 'var(--info)' }} />
-            <span className="live-dot absolute inset-0" style={{ color: 'var(--info)' }} aria-hidden />
-          </span>
-        ) : delta !== null && delta !== undefined ? (
-          <DeltaChip value={delta} />
-        ) : null}
+        {aside}
       </div>
-      <span className="command-hero__kpi-label">{label}</span>
-      <span className="command-hero__kpi-value">{value}</span>
-      {hint ? <span className="command-hero__kpi-hint">{hint}</span> : null}
-    </div>
+      {loading ? <Skeleton className="h-16 w-full rounded-xl" /> : children}
+    </Card>
   )
 }
 
 export default function CommandCenterHero({
-  kpis,
   successRate,
-  generatedAt,
   loading = false,
-  refreshing = false,
-  onRefresh,
-  onOpenTour,
-  actions,
   spark = [],
   savings = [],
-  slaRisk = 0,
-  scope,
   activity = [],
   signals = null,
+  className,
 }) {
   const { t } = useTranslation()
   const { status } = useRealtimeStatus()
-  const { user } = useAuth()
-
-  const running = Number(kpis?.runningNow || 0)
-  const isRunning = running > 0
-  const liveLabel = status === 'open' ? t('app.live') : t('app.offline')
-  const riskCount = Number(slaRisk) + Number(kpis?.stopsToday || 0)
-  const attention = riskCount
-
-  const name = user?.full_name || user?.username || t('dashboard.hero.operator')
-  const hour = new Date().getHours()
-  const greetingKey =
-    hour < 12 ? 'dashboard.hero.greetingMorning' : hour < 18 ? 'dashboard.hero.greetingAfternoon' : 'dashboard.hero.greetingEvening'
-
-  const rate = successRate ?? kpis?.successRate ?? 0
-  const successTrend = rateDelta(spark)
+  const rate = Number(successRate) || 0
+  const volumeTrend = seriesDelta(spark, 'volume')
   const savingsTrend = seriesDelta(savings, 'bar')
 
   return (
-    <section className="command-hero" aria-label={t('dashboard.commandCenter')}>
-      <span aria-hidden className="command-hero__aurora" />
-      <span aria-hidden className="command-hero__grid" />
+    <section className={cn('status-panel', className)} aria-label={t('dashboard.commandCenter')}>
+      <span aria-hidden className="status-panel__aurora" />
+      <span aria-hidden className="status-panel__grid" />
 
-      <div className="command-hero__content">
-        {/* ── identity row: live eyebrow + shift actions ─────────────────── */}
-        <div className="command-hero__head">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="command-hero__eyebrow">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: 'var(--accent)' }} aria-hidden /> : null}
-              </span>
-              {t('app.name')} · {t('dashboard.hero.kicker')}
-            </span>
-            <span className="chip" data-live={status === 'open' ? 'open' : 'closed'}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: status === 'open' ? 'var(--success)' : 'var(--text-muted)' }} aria-hidden />
-              {liveLabel}
-            </span>
-            <ServerClock generatedAt={generatedAt} />
-            <span className="chip">
-              <ShieldCheck className="h-3 w-3 text-success" aria-hidden />
-              {t('dashboard.privateInstallation')}
-            </span>
-            {scope && scope !== 'ALL' ? (
-              <span className="chip">
-                {t('app.scope')}: <strong className="font-semibold text-text">{scope}</strong>
-              </span>
-            ) : null}
-          </div>
+      <div className="status-panel__content">
+        {/* ── the verdict: the only dark surface on the page, on purpose ─── */}
+        <VerdictBanner signals={signals} loading={loading} />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" size="sm" icon={RefreshCw} loading={refreshing} onClick={onRefresh}>
-              {refreshing ? t('app.syncNow') : t('actions.refreshNow')}
-            </Button>
-            <div className="flex items-center gap-2">{actions}</div>
-          </div>
-        </div>
+        {/* ── three evidence cards: gauge · 14-day volume · live activity ── */}
+        <div className="status-panel__console">
+          <ConsoleCard label={t('dashboard.hero.successGauge')} icon={Gauge} loading={loading}>
+            <SuccessGauge value={rate} label={t('dashboard.hero.successGauge')} caption={t('dashboard.hero.gaugeCaption')} />
+          </ConsoleCard>
 
-        {/* ── verdict first: the three-second answer to "do I act now?" ──── */}
-        <VerdictBanner signals={signals} loading={loading && !kpis} />
-
-        {/* ── greeting: demoted to a context line, gauge kept as the visual ─ */}
-        <div className="command-hero__greeting">
-          <div className="command-hero__greeting-text">
-            <h2 className="command-hero__title">
-              {t(greetingKey, { name })}
-            </h2>
-            <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted sm:text-xs text-pretty">
-              {t('dashboard.commandCenterSubtitle')}
-            </p>
-          </div>
-          <div className="command-hero__visual">
-            {loading && !kpis ? (
-              <Skeleton className="h-[92px] w-[92px] rounded-full" />
+          <ConsoleCard
+            label={t('dashboard.runVolume')}
+            icon={Activity}
+            loading={loading}
+            aside={volumeTrend !== null ? <DeltaChip value={volumeTrend} /> : null}
+          >
+            {spark.length > 1 ? (
+              <>
+                <span className="block h-12 w-full">
+                  <Sparkline
+                    data={spark}
+                    dataKey="volume"
+                    color="var(--chart-1)"
+                    height={48}
+                    strokeWidth={2}
+                    ariaLabel={t('dashboard.runVolume')}
+                  />
+                </span>
+                <span className="status-panel__axis">
+                  <span dir="auto">{spark[0]?.date}</span>
+                  <span dir="auto">{spark[spark.length - 1]?.date}</span>
+                </span>
+              </>
             ) : (
-              <SuccessGauge value={rate} label={t('dashboard.hero.successGauge')} caption={t('dashboard.hero.gaugeCaption')} />
+              <p className="text-xs text-muted">{t('dashboard.empty.chart')}</p>
             )}
-          </div>
-        </div>
+          </ConsoleCard>
 
-        <span className="divider" aria-hidden />
-
-        {/* ── four-KPI command strip (one row ≥1280, two rows below) ─────── */}
-        <div className="command-hero__kpis">
-          <HeroKpi
-            icon={TrendingUp}
-            label={t('dashboard.hero.successRate')}
-            tone="success"
-            value={loading && !kpis ? <Skeleton className="h-7 w-16" /> : <CountUpStat value={rate} format="percent" />}
-            delta={successTrend}
-            hint={successTrend !== null ? undefined : t('dashboard.runVolume')}
-            flashKey={rate}
-          />
-          <HeroKpi
-            icon={Bot}
-            label={t('dashboard.hero.running')}
-            tone={isRunning ? 'info' : 'success'}
-            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={running} format="number" />}
-            live={isRunning}
-            glow={isRunning}
-            hint={isRunning ? kpis?.activeProcess || undefined : t('dashboard.hero.standby')}
-            flashKey={running}
-          />
-          <HeroKpi
-            icon={BadgeDollarSign}
-            label={t('dashboard.costSaved')}
-            tone="highlight"
-            value={loading && !kpis ? <Skeleton className="h-7 w-24" /> : <CountUpStat value={Number(kpis?.costSaved) || 0} format="currency" />}
-            delta={savingsTrend}
-            hint={t('dashboard.filters.days', { count: 14 })}
-            flashKey={kpis?.costSaved}
-          />
-          <HeroKpi
-            icon={Number(slaRisk) > 0 ? ShieldAlert : Clock}
-            label={t('dashboard.slaBreaches')}
-            tone={Number(slaRisk) > 0 ? 'danger' : 'success'}
-            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={Number(slaRisk) || 0} format="number" />}
-            hint={Number(slaRisk) > 0 ? t('dashboard.hero.attention') : t('dashboard.hero.allClear')}
-            flashKey={slaRisk}
-          />
-        </div>
-
-        {/* ── full-width 14-day sparkline strip ──────────────────────────── */}
-        {spark.length > 1 ? (
-          <div className="command-hero__strip">
-            <div className="command-hero__strip-head">
-              <span className="flex items-center gap-1.5 text-2xs font-semibold tracking-[0.1em] text-muted uppercase">
-                {t('dashboard.runVolume')}
-              </span>
-              <DeltaChip value={seriesDelta(spark, 'volume')} />
-            </div>
-            <div className="h-11 w-full">
-              <Sparkline data={spark} dataKey="volume" color="#c4b5fd" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
-            </div>
-            <div className="command-hero__strip-axis mt-1">
-              <span dir="auto">{spark[0]?.date}</span>
-              <span dir="auto">{spark[spark.length - 1]?.date}</span>
-            </div>
-          </div>
-        ) : null}
-
-        {/* ── live activity ticker: the five most recent real runs ───────── */}
-        {activity.length > 0 ? (
-          <div className="command-hero__activity" role="log" aria-label={t('dashboard.hero.liveActivity')}>
-            <span className="command-hero__activity-label">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: 'var(--accent)' }} aria-hidden /> : null}
-              </span>
-              {t('dashboard.hero.liveActivity')}
-            </span>
-            {activity.slice(0, 5).map((run, index) => (
-              <ActivityItem key={run.RunID ?? index} run={run} />
-            ))}
-            <Link
-              to="/runs"
-              className="command-hero__link focus-ring ms-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] font-medium underline-offset-2 hover:underline"
-            >
-              {t('dashboard.hero.viewAllRuns')}
-              <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
-            </Link>
-          </div>
-        ) : null}
-
-        {/* ── shift footer: freshness + attention + navigation ───────────── */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-muted">
-          <span>{generatedAt ? t('app.lastUpdated', { time: relative(generatedAt) }) : t('app.loading')}</span>
-          <span className="hidden h-1 w-1 rounded-full bg-border-strong sm:block" aria-hidden />
-          <span className={cn('inline-flex items-center gap-1', attention > 0 ? 'text-warning' : 'text-success')}>
-            <CheckCircle2 className="h-3 w-3" aria-hidden />
-            {attention > 0 ? `${t('dashboard.hero.attention')}: ${compactNumber(attention)}` : t('dashboard.hero.allClear')}
-          </span>
-
-          <span className="ms-auto flex items-center gap-1">
-            <Button variant="ghost" size="sm" icon={Compass} onClick={onOpenTour} className="h-7 text-[11px]">
-              {t('dashboard.startTour')}
-            </Button>
-            <Link
-              to="/capacity"
-              className="focus-ring inline-flex h-7 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
-            >
-              <Gauge className="h-3.5 w-3.5" aria-hidden />
-              {t('dashboard.hero.viewCapacity')}
-            </Link>
-          </span>
+          <ConsoleCard
+            label={t('dashboard.hero.liveActivity')}
+            icon={Activity}
+            loading={loading}
+            className="status-panel__activity-card"
+            aside={
+              savingsTrend !== null ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-2xs text-muted">{t('dashboard.costSaved')}</span>
+                  <DeltaChip value={savingsTrend} />
+                </span>
+              ) : null
+            }
+          >
+            {activity.length > 0 ? (
+              <div className="status-panel__activity" role="log" aria-label={t('dashboard.hero.liveActivity')}>
+                <span className="status-panel__activity-label">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                    {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: 'var(--accent)' }} aria-hidden /> : null}
+                  </span>
+                  {t('app.live')}
+                </span>
+                {activity.slice(0, 5).map((run, index) => (
+                  <ActivityItem key={run.RunID ?? index} run={run} />
+                ))}
+                <Link
+                  to="/runs"
+                  className="status-panel__link focus-ring ms-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] font-medium underline-offset-2 hover:underline"
+                >
+                  {t('dashboard.hero.viewAllRuns')}
+                  <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
+                </Link>
+              </div>
+            ) : (
+              <p className="text-xs text-muted">{t('dashboard.empty.runs')}</p>
+            )}
+          </ConsoleCard>
         </div>
       </div>
-
-      {attention > 0 ? (
-        <div className="relative z-[2] flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-2 text-[11px] text-muted sm:px-6">
-          <Badge tone="warning" size="sm" dot>
-            {t('dashboard.hero.attention')}
-          </Badge>
-          <span className="truncate">{t('dashboard.hero.nextAction')}</span>
-          <Link to="/capacity" className="command-hero__link ms-auto font-medium underline-offset-2 hover:underline">
-            {t('dashboard.hero.viewCapacity')}
-          </Link>
-        </div>
-      ) : null}
     </section>
   )
 }

@@ -246,20 +246,20 @@ export function CardBody({ className, children }) {
 }
 
 /** Section heading used at the top of every page. */
-export function SectionTitle({ title, subtitle, actions, className, eyebrow, breadcrumb, icon: Icon }) {
+export function SectionTitle({ title, subtitle, actions, className, eyebrow, breadcrumb, icon: Icon, as: Tag = 'h1' }) {
   return (
     <div className={cn('mb-5 flex flex-wrap items-end justify-between gap-3', className)}>
       <div className="min-w-0">
         {breadcrumb ? <div className="mb-1.5 flex items-center gap-1.5 text-2xs text-muted">{breadcrumb}</div> : null}
         {eyebrow ? <p className="mb-1.5 text-2xs font-semibold tracking-[0.16em] text-brand uppercase">{eyebrow}</p> : null}
-        <h1 className="text-page-title flex items-center gap-3 text-text">
+        <Tag className={cn('flex items-center gap-3 text-text', Tag === 'h1' ? 'text-page-title' : 'text-section-heading')}>
           {Icon ? (
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-gradient text-brand-fg shadow-glow" aria-hidden>
               <Icon className="h-5 w-5" />
             </span>
           ) : null}
           <span className="min-w-0">{title}</span>
-        </h1>
+        </Tag>
         {subtitle ? <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}

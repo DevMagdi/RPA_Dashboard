@@ -22,15 +22,16 @@ primary chart series at runtime without a rebuild.
 
 | Token | Light (default) | Dark | Usage |
 |---|---|---|---|
-| `--bg` | `#F8F5FF` | `#0B0618` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
-| `--surface` | `#FFFFFF` | `#130B24` | cards, panels, menus |
-| `--surface-2` | `#FAF8FF` | `#1A1030` | inputs, table headers, hover |
-| `--surface-3` | `#F3EEFF` | `#22153C` | pressed / selected rows |
-| `--border` | `rgba(91, 33, 182, 0.08)` | `rgba(196, 181, 253, 0.12)` | 1px separation, low but visible |
-| `--text` | `#1E0B3A` | `#F5F0FF` | primary type (15.9:1 light / 15.2:1 dark on the canvas) |
-| `--text-muted` | `#6B5B8A` | `#B8A9D4` | secondary type, labels (5.3:1+ light / 7.8:1+ dark) |
-| `--brand` | `#5B21B6` | `#A78BFA` | **primary identity**: buttons, active nav, focus, selection, charts |
-| `--brand-strong` / `--brand-lighter` | `#4C1D95` / `#7C3AED` | `#8B5CF6` / `#C4B5FD` | hover and gradient stops (`#7C3AED` is text-safe at 5.0:1) |
+| `--bg` | `#F5F7FB` | `#0F1A2E` | application canvas (soft radial mesh via `--mesh-1`/`--mesh-2`) |
+| `--surface` | `#FFFFFF` | `#152238` | cards, panels, menus |
+| `--surface-2` | `#F8FAFC` | `#1B2A44` | inputs, table headers, hover |
+| `--surface-3` | `#F1F5F9` | `#223556` | pressed / selected rows |
+| `--border` | `rgba(15, 23, 42, 0.06)` | `rgba(255, 255, 255, 0.07)` | 1px separation, low but visible |
+| `--text` | `#14213A` | `#EFF5FF` | primary type (13.9:1 light / 15.4:1 dark on the canvas) |
+| `--text-muted` | `#5B6B82` | `#98A8BF` | secondary type, labels (5.06:1 light / 6.4:1 dark) |
+| `--brand` | `#4F46E5` | `#818CF8` | **primary identity**: buttons, active nav, focus, selection, charts |
+| `--brand-strong` / `--brand-lighter` | `#3730A3` / `#6366F1` | `#6D78F6` / `#A5B4FC` | hover and gradient stops |
+| `--navy` / `--navy-deep` | `#1E3A5F` / `#122339` | `#1E3A5F` / `#122339` | **control-room anchor**: verdict band, live badge, KPI strips |
 | `--accent` | `#0D9488` | `#2DD4BF` | **live states only**: live dots, pulses, "online" badges. Never body text and never a primary action. |
 | `--orange` | `#F58220` | `#F58220` | attention signal (fills, strips, dots) |
 | `--success` | `#047857` | `#34D399` | healthy runs |
@@ -38,14 +39,17 @@ primary chart series at runtime without a rebuild.
 | `--danger` | `#BE123C` | `#FB7185` | failures, breaches |
 | `--info` | `#0369A1` | `#38BDF8` | neutral information |
 
-> **Purple-first identity (2026-10).** Purple is the dominant brand colour; the
-> deep violet `--hero-from` → `--hero-mid` → `--hero-to` gradient (`#1E0B3A` →
-> `#4C1D95` → `#6D28D9` in light) carries the command-centre hero. Teal
-> `#0D9488` (light) / `#2DD4BF` (dark) is reserved for **live or status states**
-> and must not be used as a decorative or primary colour. The palette is defined
-> identically in `src/index.css`, `src/design-system/tokens.js`,
+> **Navy · Indigo · Teal · Orange (2026-10).** Deep Indigo `#4F46E5` is the
+> dominant brand colour; Navy `#122339` → `#1E3A5F` → Teal `#0D9488`
+> (`--hero-from` → `--hero-mid` → `--hero-to`) carries the status console's
+> verdict band and the KPI strips. Teal `#0D9488` (light) / `#2DD4BF` (dark) is
+> reserved for **live or status states** and must not be used as a decorative or
+> primary colour; Orange `#F58220` is the attention signal only. The palette is
+> defined identically in `src/index.css`, `src/design-system/tokens.js`,
 > `tailwind.config.js`, `index.html` (boot screen), the `BrandingProvider`
-> fallbacks and the backend brand defaults (`#5B21B6`).
+> fallbacks and the backend brand defaults (`app/db/bootstrap.py` →
+> `DEFAULT_BRAND_PRIMARY = "#4F46E5"`, which also upgrades an installation still
+> carrying the retired violet default on boot).
 > Dark mode: `BrandingProvider` lifts a tenant's brand colour for dark surfaces
 > instead of applying the light value, so an organisation colour never overrides
 > the dark theme with a low-contrast light value.
@@ -75,7 +79,7 @@ Rules:
 Scale (rem): `2xs .6875` · `xs .75` · `sm .8125` · `base .875` · `lg 1` ·
 `xl 1.25` · `2xl 1.5` · `3xl 1.875`. Body copy is 14px — an operator scans
 tables, so density beats air. Headline weight ladder (Premium plan):
-`.text-display` 680 (command-centre title only) → `.text-page-title` 650 →
+`.text-display` 680 (status console title only) → `.text-page-title` 650 →
 `.text-section-title` 600 → body 400; KPI numbers are tabular figures at 650–680. `text-pretty` is used on descriptions to avoid
 widows in both scripts.
 
@@ -87,7 +91,7 @@ applies `letter-spacing` to Arabic (it breaks the joins); Italic is never faked.
 
 * Approved 4-pt spacing rhythm: `4 / 8 / 12 / 16 / 24 / 32 / 48px`; component padding steps follow these tokens.
 * Radius: `12px` (`rounded-lg`) for controls, `20px` (`--radius-card: 1.25rem`)
-  for main cards; larger hero/dialog radii are used sparingly.
+  for main cards; larger dialog radii are used sparingly.
 * Elevation: `shadow-xs` (inputs), `shadow-soft` (cards), `shadow-lift`
   (menus/popovers), `shadow-glow` (primary action hover). Dark mode uses
   0.5–0.7 alpha black plus a 1px inner highlight so surfaces stay separable.
@@ -102,7 +106,7 @@ applies `letter-spacing` to Arabic (it breaks the joins); Italic is never faked.
   handle hover/press.
 * **Reduced motion is a first-class mode**: `prefers-reduced-motion: reduce`
   and the in-app *Reduce motion* preference shorten CSS animations/transitions
-  to a single near-instant frame; selected ambient/hero animation is disabled.
+  to a single near-instant frame; selected ambient/status-panel animation is disabled.
   Tour and widget-grid motion also follow Framer Motion's user preference.
 * Motion never blocks interaction: entrances animate transform/opacity and
   reduced-motion preferences are respected rather than delaying state changes.
