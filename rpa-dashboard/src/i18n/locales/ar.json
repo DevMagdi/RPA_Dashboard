@@ -145,7 +145,12 @@
       "greetingAfternoon": "نهارك سعيد، {{name}}",
       "greetingEvening": "مساء الخير، {{name}}",
       "kicker": "العمليات الخاصة",
-      "standby": "المشغلون في وضع الاستعداد"
+      "standby": "المشغلون في وضع الاستعداد",
+      "runsToday": "تشغيلات اليوم",
+      "serverTime": "وقت الخادم",
+      "liveActivity": "النشاط المباشر",
+      "viewAllRuns": "عرض كل التشغيلات",
+      "targetRuns": "المستهدف {{total}} / يوم"
     },
     "tour": {
       "title": "غرفة التحكم في لمحة",

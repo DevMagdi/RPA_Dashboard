@@ -1,25 +1,27 @@
 /**
  * Command-centre hero — the first three seconds of the product.
  *
- * Premium command-center wireframe:
- *   [live identity eyebrow]            [Refresh] [Export]
+ * Premium command-center wireframe (Wow plan):
+ *   [live status bar: Connected · server clock]   [Refresh] [Export]
  *   Good morning, Magdi  + shift actions
  *   ─────────────────────────────────────────────────────
- *   Success · Active · Savings · SLA risk   (four-KPI strip)
+ *   Success · Active · Savings · SLA risk · Runs today   (five-KPI strip)
  *   ── 14-day run-volume sparkline strip ──
+ *   ── live activity ticker (five most recent real runs) ──
  *
  * The aurora/grid background is pure CSS (no canvas, no image request), so it
  * costs nothing on the critical path and animates on the compositor thread.
  * Every number is real payload data — no synthetic decoration.
  */
-import { CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
+import { Activity, ArrowRight, CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { DeltaChip, Sparkline } from '../charts/primitives'
 import { useAuth } from '../../context/AuthProvider'
 import { useRealtimeStatus } from '../../hooks/ui'
-import { compactNumber, relative } from '../../lib/format'
+import { compactNumber, durationFromMinutes, relative, runStatusColor } from '../../lib/format'
 import { rateDelta, seriesDelta } from '../../lib/stats'
 import { Badge, Button, CountUpStat, Skeleton, cn } from '../ui'
 
@@ -30,6 +32,56 @@ const TONE_VARS = {
   warning: 'var(--warning)',
   danger: 'var(--danger)',
   accent: 'var(--accent)',
+}
+
+/**
+ * Wall clock anchored to the server payload time (not the workstation), so the
+ * "ops room" always shows the same truth as the backend. Isolated component:
+ * only this chip re-renders every second, never the hero.
+ */
+function ServerClock({ generatedAt }) {
+  const { t } = useTranslation()
+  const [offset] = useState(() => {
+    const parsed = generatedAt ? Date.parse(generatedAt) : Number.NaN
+    return Number.isFinite(parsed) ? parsed - Date.now() : 0
+  })
+  const [now, setNow] = useState(() => Date.now() + offset)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now() + offset), 1000)
+    return () => window.clearInterval(timer)
+  }, [offset])
+
+  const locale = typeof document !== 'undefined' ? document.documentElement.dataset.locale : undefined
+  const formatted = new Intl.DateTimeFormat(locale || undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(now)
+
+  return (
+    <span className="chip tabular" title={generatedAt || undefined}>
+      <Clock className="h-3 w-3 text-brand" aria-hidden />
+      <span className="sr-only">{t('dashboard.hero.serverTime')}</span>
+      <time suppressHydrationWarning>{formatted}</time>
+    </span>
+  )
+}
+
+/** Live activity item — one real run, status dot + process + freshness. */
+function ActivityItem({ run }) {
+  return (
+    <span className="command-hero__activity-item">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: runStatusColor(run.Status) }} aria-hidden />
+      <strong dir="auto">{run.ProcessName}</strong>
+      <time title={run.StartTime} dateTime={run.StartTime}>
+        {relative(run.StartTime)}
+      </time>
+      <span aria-hidden>·</span>
+      <span className="tabular">{durationFromMinutes(run.DurationMinutes)}</span>
+    </span>
+  )
 }
 
 /** KPI block inside the hero strip. */
@@ -69,6 +121,7 @@ export default function CommandCenterHero({
   savings = [],
   slaRisk = 0,
   scope,
+  activity = [],
 }) {
   const { t } = useTranslation()
   const { status } = useRealtimeStatus()
@@ -88,6 +141,7 @@ export default function CommandCenterHero({
   const rate = successRate ?? kpis?.successRate ?? 0
   const successTrend = rateDelta(spark)
   const savingsTrend = seriesDelta(savings, 'bar')
+  const runsTrend = seriesDelta(spark, 'volume')
 
   return (
     <section className="command-hero" aria-label={t('dashboard.commandCenter')}>
@@ -109,6 +163,7 @@ export default function CommandCenterHero({
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: status === 'open' ? 'var(--success)' : 'var(--text-muted)' }} aria-hidden />
               {liveLabel}
             </span>
+            <ServerClock generatedAt={generatedAt} />
             <span className="chip">
               <ShieldCheck className="h-3 w-3 text-success" aria-hidden />
               {t('dashboard.privateInstallation')}
@@ -178,6 +233,15 @@ export default function CommandCenterHero({
             hint={Number(slaRisk) > 0 ? t('dashboard.hero.attention') : t('dashboard.hero.allClear')}
             flashKey={slaRisk}
           />
+          <HeroKpi
+            icon={Activity}
+            label={t('dashboard.hero.runsToday')}
+            tone="brand"
+            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={Number(kpis?.runsToday) || 0} format="number" />}
+            delta={runsTrend}
+            hint={kpis?.targetRuns ? t('dashboard.hero.targetRuns', { total: compactNumber(kpis.targetRuns) }) : undefined}
+            flashKey={kpis?.runsToday}
+          />
         </div>
 
         {/* ── full-width 14-day sparkline strip ──────────────────────────── */}
@@ -196,6 +260,29 @@ export default function CommandCenterHero({
               <span dir="auto">{spark[0]?.date}</span>
               <span dir="auto">{spark[spark.length - 1]?.date}</span>
             </div>
+          </div>
+        ) : null}
+
+        {/* ── live activity ticker: the five most recent real runs ───────── */}
+        {activity.length > 0 ? (
+          <div className="command-hero__activity" role="log" aria-label={t('dashboard.hero.liveActivity')}>
+            <span className="command-hero__activity-label">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: 'var(--accent)' }} aria-hidden /> : null}
+              </span>
+              {t('dashboard.hero.liveActivity')}
+            </span>
+            {activity.slice(0, 5).map((run, index) => (
+              <ActivityItem key={run.RunID ?? index} run={run} />
+            ))}
+            <Link
+              to="/runs"
+              className="focus-ring ms-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] font-medium text-brand underline-offset-2 hover:underline"
+            >
+              {t('dashboard.hero.viewAllRuns')}
+              <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
+            </Link>
           </div>
         ) : null}
 

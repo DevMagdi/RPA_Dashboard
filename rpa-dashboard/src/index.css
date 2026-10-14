@@ -51,7 +51,7 @@
   color-scheme: light;
 
   /* — surfaces & ink (Premium command-center palette) ———— */
-  --bg: #f8fafc;
+  --bg: #f1f5fb;
   --bg-soft: #f1f5f9;
   --bg-deep: #e8edf4;
   --surface: #ffffff;
@@ -59,13 +59,17 @@
   --surface-3: #f1f5f9;
   --surface-sunken: #e9eef5;
 
+  /* fixed background mesh — static radial depth, never animated */
+  --mesh-1: rgba(79, 70, 229, 0.1);
+  --mesh-2: rgba(13, 148, 136, 0.08);
+
   --border: rgba(15, 23, 42, 0.06);
   --border-strong: rgba(15, 23, 42, 0.12);
   --border-soft: rgba(15, 23, 42, 0.035);
 
   --text: #0f172a;
   --text-soft: #334155;
-  --text-muted: #64748b;
+  --text-muted: #5d6c85; /* AA (≥4.5:1) on the #F1F5FB canvas */
 
   /* — brand (Deep Indigo) ———————————————————————————————— */
   --brand: #4f46e5;
@@ -103,7 +107,7 @@
   --chart-5: #0ea5e9;
   --chart-6: #8b5cf6;
   --chart-grid: rgba(15, 23, 42, 0.07);
-  --chart-axis: #64748b;
+  --chart-axis: #5d6c85;
 
   /* — shadcn/ui conventional tokens —————————————————— */
   --background: var(--bg);
@@ -132,9 +136,14 @@
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --shadow-focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--brand-ring);
 
+  /* — glow rings (hover / focus accents, brand & live-accent) ————— */
+  --glow-brand: 0 0 0 1px var(--brand-soft), 0 14px 34px -14px var(--brand);
+  --glow-accent: 0 0 0 1px var(--accent-soft), 0 14px 34px -14px var(--accent);
+
   /* — geometry & motion ————————————————————————————— */
   --radius: 1rem;
   --radius-sm: 0.75rem;
+  --radius-card: 1.125rem;
   --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
@@ -166,6 +175,9 @@
   --border: rgba(255, 255, 255, 0.07);
   --border-strong: rgba(255, 255, 255, 0.14);
   --border-soft: rgba(255, 255, 255, 0.045);
+
+  --mesh-1: rgba(129, 140, 248, 0.13);
+  --mesh-2: rgba(45, 212, 191, 0.09);
 
   --text: #eff5ff;
   --text-soft: #ced8e8;
@@ -214,6 +226,8 @@
   --shadow-modal: 0 8px 16px rgba(0, 0, 0, 0.5), 0 48px 96px -36px rgba(0, 0, 0, 1);
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --shadow-focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--brand-ring);
+  --glow-brand: 0 0 0 1px var(--brand-soft), 0 18px 44px -16px color-mix(in srgb, var(--brand) 78%, transparent);
+  --glow-accent: 0 0 0 1px var(--accent-soft), 0 18px 44px -16px color-mix(in srgb, var(--accent) 72%, transparent);
 }
 
 /* ==========================================================================
@@ -325,8 +339,8 @@ h4 {
     position: relative;
     isolation: isolate;
     background-image:
-      radial-gradient(1100px 620px at 100% -12%, color-mix(in srgb, var(--brand-soft) 78%, transparent), transparent 70%),
-      radial-gradient(880px 520px at -10% 108%, color-mix(in srgb, var(--accent-soft) 62%, transparent), transparent 72%);
+      radial-gradient(1100px 620px at 100% -12%, var(--mesh-1), transparent 70%),
+      radial-gradient(880px 520px at -10% 108%, var(--mesh-2), transparent 72%);
     background-attachment: fixed;
   }
   .app-shell::before {
@@ -369,7 +383,9 @@ h4 {
   }
 
   .card {
-    @apply rounded-2xl border border-border bg-surface shadow-card;
+    /* main cards: 18px (premium softness) — controls stay at 12px */
+    @apply border border-border bg-surface shadow-card;
+    border-radius: var(--radius-card);
   }
 
   /* Important cards sit one level higher (hero KPIs, feature panels). */
@@ -455,13 +471,35 @@ h4 {
   /* Display headline face — Latin gets tight tracking, Arabic never does. */
   .text-display {
     font-family: var(--font-display);
-    font-weight: 670;
+    font-weight: 680;
     letter-spacing: -0.03em;
   }
   html[dir='rtl'] .text-display {
     font-family: var(--font-arabic);
     letter-spacing: normal;
     line-height: 1.35;
+  }
+
+  /* Type scale (premium plan): display 680 → page 650 → section 600 → body 400. */
+  .text-page-title {
+    font-family: var(--font-display);
+    font-size: clamp(1.375rem, 2.2vw, 1.5rem);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+  html[dir='rtl'] .text-page-title {
+    font-family: var(--font-arabic);
+    letter-spacing: normal;
+    line-height: 1.5;
+  }
+  .text-section-title {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.4;
+  }
+  html[dir='rtl'] .text-section-title {
+    letter-spacing: normal;
   }
 
   .gradient-text {
@@ -579,7 +617,7 @@ h4 {
 
   .command-hero__title {
     font-size: clamp(1.55rem, 3.2vw, 2.3rem);
-    font-weight: 670;
+    font-weight: 680;
     letter-spacing: -0.04em;
     line-height: 1.1;
   }
@@ -589,11 +627,16 @@ h4 {
     font-size: clamp(1.4rem, 3vw, 2rem);
   }
 
-  /* four-KPI command strip inside the hero */
+  /* five-KPI command strip inside the hero (2-col on small screens) */
   .command-hero__kpis {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.75rem;
+  }
+  @media (max-width: 900px) {
+    .command-hero__kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .command-hero__kpi {
@@ -687,6 +730,66 @@ h4 {
     justify-content: space-between;
     font-size: 0.65rem;
     color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* live activity ticker — the last few real runs, one calm row */
+  .command-hero__activity {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+    border-radius: 0.9rem;
+    padding: 0.45rem 0.7rem;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .command-hero__activity::-webkit-scrollbar {
+    display: none;
+  }
+  .command-hero__activity-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+    padding-inline-end: 0.55rem;
+    border-inline-end: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  }
+  html[dir='rtl'] .command-hero__activity-label {
+    letter-spacing: normal;
+    text-transform: none;
+  }
+  .command-hero__activity-item {
+    display: inline-flex;
+    min-width: 0;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    color: var(--text-soft);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    white-space: nowrap;
+  }
+  .command-hero__activity-item strong {
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 550;
+    color: var(--text);
+  }
+  .command-hero__activity-item time {
+    color: var(--text-muted);
+    font-size: 0.64rem;
     font-variant-numeric: tabular-nums;
   }
 

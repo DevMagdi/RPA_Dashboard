@@ -5,19 +5,19 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { Badge, Button, Card, Drawer, EmptyState, Skeleton } from '../components/ui'
-import tokens, { colors, radius, spacing } from '../design-system/tokens'
+import tokens, { colors, effects, radius, spacing, typeScale } from '../design-system/tokens'
 import ar from '../i18n/locales/ar.json'
 import en from '../i18n/locales/en.json'
 
 describe('design tokens', () => {
   it('is light-first with the requested premium palette', () => {
     expect(colors.light).toMatchObject({
-      bg: '#F8FAFC',
+      bg: '#F1F5FB',
       surface: '#FFFFFF',
       surface2: '#F8FAFC',
       border: 'rgba(15, 23, 42, 0.06)',
       text: '#0F172A',
-      textMuted: '#64748B',
+      textMuted: '#5D6C85',
       brand: '#4F46E5',
       brandStrong: '#3730A3',
       accent: '#0D9488',
@@ -82,6 +82,44 @@ describe('design tokens', () => {
     expect(spacing).toEqual([0, 4, 8, 12, 16, 24, 32, 48])
     expect(radius.md).toBe('0.75rem')
     expect(radius.lg).toBe('1rem')
+  })
+
+  it('ships the premium mesh, glow and 18px card-radius tokens in both themes', () => {
+    const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
+    const lightBlock = css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] || ''
+    const darkBlock = css.match(/\.dark\s*\{([\s\S]*?)\n\}/)?.[1] || ''
+    const shell = css.slice(css.indexOf('.app-shell'))
+
+    // static background mesh tokens exist per theme and drive the app canvas
+    expect(effects.light.mesh1).toBe('rgba(79, 70, 229, 0.1)')
+    expect(effects.dark.mesh1).toBe('rgba(129, 140, 248, 0.13)')
+    expect(lightBlock).toContain('--mesh-1: rgba(79, 70, 229, 0.1);')
+    expect(lightBlock).toContain('--mesh-2: rgba(13, 148, 136, 0.08);')
+    expect(darkBlock).toContain('--mesh-1: rgba(129, 140, 248, 0.13);')
+    expect(darkBlock).toContain('--mesh-2: rgba(45, 212, 191, 0.09);')
+    expect(shell).toContain('radial-gradient(1100px 620px at 100% -12%, var(--mesh-1)')
+    expect(shell).toContain('radial-gradient(880px 520px at -10% 108%, var(--mesh-2)')
+
+    // glow rings are tokens (not inline literals) and feed the Tailwind glow shadows
+    expect(lightBlock).toContain('--glow-brand:')
+    expect(lightBlock).toContain('--glow-accent:')
+    expect(darkBlock).toContain('--glow-brand:')
+    expect(darkBlock).toContain('--glow-accent:')
+    const tailwindConfig = readFileSync(path.resolve(process.cwd(), 'tailwind.config.js'), 'utf8')
+    expect(tailwindConfig).toContain("glow: 'var(--glow-brand)'")
+    expect(tailwindConfig).toContain("'glow-accent': 'var(--glow-accent)'")
+
+    // main cards are 18px; controls stay at 12px
+    expect(lightBlock).toContain('--radius-card: 1.125rem;')
+    expect(css).toMatch(/\.card\s*\{[^}]*border-radius: var\(--radius-card\)/s)
+
+    // type scale weights: display 680, page title 650, section 600
+    expect(css).toMatch(/\.text-display\s*\{[^}]*font-weight: 680/s)
+    expect(css).toMatch(/\.text-page-title\s*\{[^}]*font-weight: 650/s)
+    expect(css).toMatch(/\.text-section-title\s*\{[^}]*font-weight: 600/s)
+    expect(typeScale.display.weight).toBe(680)
+    expect(typeScale.pageTitle.weight).toBe(650)
+    expect(radius.card).toBe('1.125rem')
   })
 })
 

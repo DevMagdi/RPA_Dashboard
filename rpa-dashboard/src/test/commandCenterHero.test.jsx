@@ -3,11 +3,13 @@
  *
  * Locks the Premium/Wow plan's P0 dashboard pieces:
  *  • personalized time-of-day greeting (en + ar, deep i18n parity),
- *  • the four-KPI command strip (Success / Active / Savings / SLA risk),
+ *  • the five-KPI command strip (Success / Active / Savings / SLA / Runs today),
+ *  • the live status bar with the server-anchored clock,
+ *  • the live-activity ticker with the five most recent real runs,
  *  • the full-width 14-day sparkline strip with real series deltas,
  *  • always-on hover elevation and compact money on the six-card rail.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -76,7 +78,7 @@ function renderHero(props = {}) {
 }
 
 describe('command centre hero', () => {
-  it('renders the personalized greeting, four-KPI strip and 14-day sparkline', async () => {
+  it('renders the personalized greeting, five-KPI strip and 14-day sparkline', async () => {
     renderHero()
 
     expect(screen.getByRole('heading', { name: greetingFor(en.dashboard.hero) })).toBeInTheDocument()
@@ -130,6 +132,40 @@ describe('command centre hero', () => {
     expect(screen.getByText(ar.dashboard.privateInstallation)).toBeInTheDocument()
 
     await applyLanguage('en')
+  })
+
+  it('shows the live status bar with a server-anchored ticking clock', () => {
+    renderHero({ generatedAt: '2026-02-01T09:30:00Z' })
+
+    // server clock chip: accessible name + a HH(:mm):ss readout, tabular digits
+    expect(screen.getByText(en.dashboard.hero.serverTime)).toBeInTheDocument()
+    const clock = document.querySelector('.chip.tabular time')
+    expect(clock).toBeTruthy()
+    expect(clock.textContent).toMatch(/\d{1,2}:\d{2}(:\d{2})?/)
+  })
+
+  it('runs a live-activity ticker with the five most recent runs and a drill-through', () => {
+    const activity = Array.from({ length: 7 }, (_, index) => ({
+      RunID: 100 + index,
+      Status: index % 2 === 0 ? 'Success' : 'Running',
+      ProcessName: `Process ${index + 1}`,
+      StartTime: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+      DurationMinutes: 4 + index,
+    }))
+    renderHero({ activity })
+
+    const ticker = screen.getByRole('log', { name: en.dashboard.hero.liveActivity })
+    expect(ticker).toBeInTheDocument()
+    // only the first five real runs make it into the ticker
+    for (const name of ['Process 1', 'Process 5']) expect(within(ticker).getByText(name)).toBeInTheDocument()
+    expect(within(ticker).queryByText('Process 6')).not.toBeInTheDocument()
+    expect(within(ticker).getAllByText(en.dashboard.hero.viewAllRuns).length).toBe(1)
+    expect(ticker.querySelector('a[href="/runs"]')).toBeTruthy()
+  })
+
+  it('hides the live-activity ticker when no runs exist', () => {
+    renderHero({ activity: [] })
+    expect(screen.queryByRole('log', { name: en.dashboard.hero.liveActivity })).not.toBeInTheDocument()
   })
 })
 
