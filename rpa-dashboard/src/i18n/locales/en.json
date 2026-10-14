@@ -158,7 +158,9 @@
       "viewAllRuns": "View all runs",
       "targetRuns": "Target {{total}} / day",
       "successGauge": "Success rate gauge",
-      "gaugeCaption": "of runs succeeded"
+      "gaugeCaption": "of runs succeeded",
+      "kicker": "Private Operations",
+      "nextAction": "Suggested next action"
     },
     "tour": {
       "title": "Your control room, at a glance",

@@ -1,11 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 
 /**
- * Design system — Tailwind bridge.
+ * Design system — Tailwind bridge (Hybrid Premium Control Room).
  *
  * Every value resolves to a CSS variable declared in `src/index.css`, so a
  * single source of truth drives:
- *   • the light-first premium theme (and its dark counterpart),
+ *   • the light-first hybrid theme (navy presence · orange accents · teal live)
+ *     and its dark counterpart,
  *   • runtime white-labelling (organization branding rewrites --brand/--accent),
  *   • shadcn/ui-style primitives (background/foreground/card/primary/ring/…).
  *
@@ -117,10 +118,12 @@ export default {
       },
       backdropBlur: { xs: '2px', '2xl': '30px' },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 55%, var(--accent) 130%)',
+        'hero-gradient': 'linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%)',
+        'navy-gradient': 'linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%)',
+        'brand-gradient': 'linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 55%, var(--brand-lighter) 130%)',
         'brand-sheen': 'linear-gradient(120deg, transparent 20%, color-mix(in srgb, var(--brand-fg) 26%, transparent) 50%, transparent 80%)',
         grid: 'linear-gradient(var(--border-soft) 1px, transparent 1px), linear-gradient(90deg, var(--border-soft) 1px, transparent 1px)',
-        'surface-sheen': 'linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, var(--brand)) 0%, var(--surface) 45%, color-mix(in srgb, var(--surface) 97%, var(--accent)) 100%)',
+        'surface-sheen': 'linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, var(--navy)) 0%, var(--surface) 45%, color-mix(in srgb, var(--surface) 97%, var(--brand-lighter)) 100%)',
       },
       backgroundSize: { grid: '34px 34px', 'sheen-200': '200% 100%' },
       keyframes: {

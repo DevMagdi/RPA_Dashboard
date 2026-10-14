@@ -175,7 +175,7 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
     assert ".dark {" in css
     assert "--bg: #0f1a2e;" in css
     assert "prefers-reduced-motion: reduce" in css
-    assert ".status-panel" in css
+    assert ".command-hero" in css
     assert "storage.get('theme', 'light')" in theme_provider
     assert "return savedTheme === 'system' ? 'light' : savedTheme" in theme_provider
     assert '<html lang="en" dir="ltr">' in html
@@ -184,8 +184,9 @@ def test_product_shell_has_light_dark_tokens_and_reduced_motion_support():
 
 
 def test_control_room_palette_is_navy_indigo_teal_orange_everywhere():
-    """Identity contract: one palette in the CSS tokens, the JS tokens, the boot
-    screen and the seeded backend brand — Navy · Indigo · Teal · Orange.
+    """Identity contract: one locked palette in the CSS tokens, the JS tokens,
+    the boot screen and the seeded backend brand — Navy presence · refined
+    Indigo actions · Teal live-only · Orange accents.
 
     The violet identity (``#5B21B6`` on a ``#F8F5FF`` canvas) was replaced
     wholesale; a single leftover hex is enough to make the sidebar, the top bar
@@ -217,13 +218,14 @@ def test_control_room_palette_is_navy_indigo_teal_orange_everywhere():
         "--hero-to: #0d9488;",
         "--strip-navy: #1e3a5f;",
         "--strip-indigo: #4f46e5;",
-        "--strip-teal: #0d9488;",
-        "--chart-1: #4f46e5;",
+        "--strip-teal: #14b8a6;",
+        "--chart-1: #1e3a5f;",
+        "--border: rgba(15, 23, 42, 0.07);",
         "--radius-card: 1.25rem;",
         "--radius-ctrl: 0.75rem;",
     ):
         assert declaration in root_block, declaration
-    for declaration in ("--bg: #0f1a2e;", "--surface: #152238;", "--brand: #818cf8;", "--hero-to: #0f766e;"):
+    for declaration in ("--bg: #0f1a2e;", "--surface: #152238;", "--brand: #818cf8;", "--hero-to: #0d9488;"):
         assert declaration in dark_block, declaration
 
     # The JS mirror (charts, canvas, tests) carries the same palette.
@@ -232,10 +234,11 @@ def test_control_room_palette_is_navy_indigo_teal_orange_everywhere():
 
     # First paint agrees with the app: boot canvas, spinner and theme-color.
     assert 'content="#F5F7FB"' in html and "background: #f5f7fb;" in html
-    assert "border-top-color: #4f46e5;" in html
+    assert "border-top-color: #1e3a5f;" in html  # navy presence on the boot spinner
 
-    # Gradients blend the brand into the teal accent, never back into violet.
-    assert "var(--brand-strong) 55%, var(--accent) 130%" in tailwind
+    # The locked hero gradient is assembled from its stop tokens (45% mid, teal end).
+    assert "background: linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 45%, var(--hero-to) 100%);" in css
+    assert "'hero-gradient'" in tailwind and "'navy-gradient'" in tailwind
 
     # The backend seeds the same brand the SPA falls back to.
     assert "DEFAULT_PRIMARY = '#4F46E5'" in branding
@@ -263,6 +266,25 @@ def test_top_nav_and_collapsed_rail_stay_wired_to_the_shell():
     assert "usePersistentState('shell.collapsed', true)" in shell
 
 
+def test_command_hero_layers_and_min_height_follow_the_redesign_plan():
+    """Hero: aurora 0 → scrim/grid 1 → content 2, isolated and clipped, min-height 220–240px."""
+    css = (SRC / "index.css").read_text(encoding="utf-8")
+    hero = css[css.index(".command-hero {") :]
+    assert "isolation: isolate;" in hero[:800]
+    assert "overflow: hidden;" in hero[:800]
+    assert "min-height: 232px;" in hero[:800]
+    for layer, z in (
+        (".command-hero__aurora", "z-index: 0"),
+        (".command-hero__scrim", "z-index: 1"),
+        (".command-hero__grid", "z-index: 1"),
+        (".command-hero__content", "z-index: 2"),
+    ):
+        block = hero[hero.index(layer + " {") :]
+        assert z in block[: block.index("}")], layer
+    # Desktop two-column hero: the gauge gains its breathing room from 1280px up.
+    assert "@media (min-width: 1280px)" in css[css.index(".command-hero__visual") - 400 : css.index(".command-hero__visual") + 400]
+
+
 def test_global_header_is_a_single_row():
     """The header's second "first-run affordance" row is gone for good.
 
@@ -288,45 +310,41 @@ def test_global_header_is_a_single_row():
     assert "--header-height" in topbar and "ResizeObserver" in topbar
 
 
-def test_status_panel_is_a_light_surface_with_a_navy_verdict_band():
-    """Status console: aurora 0 → grid 1 → content 2, on a light card.
 
-    The panel replaced the full-bleed navy hero. It must stay a *light* surface
-    (it inherits the theme tokens instead of re-declaring white text), keep the
-    explicit stacking contract, and reserve the dark navy gradient for the
-    verdict band alone — the one sentence an operator must not miss.
-    """
+def test_locked_hybrid_palette_and_kpi_identity_map():
+    """The hybrid palette is locked: navy presence, orange accents, teal live-only,
+    and one identity strip colour per KPI metric in both locales of the system."""
     css = (SRC / "index.css").read_text(encoding="utf-8")
-    panel = css[css.index(".status-panel {") :]
-    head = panel[: panel.index("}")]
-    assert "isolation: isolate;" in head
-    assert "overflow: hidden;" in head
-    assert "background: var(--surface);" in head
-    assert "--text: #ffffff;" not in head  # no local white-on-dark override
+    tokens = (SRC / "design-system" / "tokens.js").read_text(encoding="utf-8")
+    hero_component = (SRC / "components" / "dashboard" / "CommandCenterHero.jsx").read_text(encoding="utf-8")
 
-    for layer, z in (
-        (".status-panel__aurora", "z-index: 0"),
-        (".status-panel__grid", "z-index: 1"),
-        (".status-panel__content", "z-index: 2"),
+    dark_block = css[css.index(".dark {") :]
+    for declaration in (
+        "--bg: #0f1a2e;",
+        "--surface: #152238;",
+        "--surface-2: #1b2a44;",
+        "--orange: #ff9640;",  # night-shift strips run slightly brighter
     ):
-        block = panel[panel.index(layer + " {") :]
-        assert z in block[: block.index("}")], layer
+        assert declaration in dark_block, declaration
 
-    # the verdict band is the navy anchor, and its tone stays token-driven
-    verdict = panel[panel.index(".status-panel__verdict {") :]
-    assert "linear-gradient(135deg, var(--hero-from) 0%, var(--hero-mid) 55%, var(--navy) 100%)" in verdict
-    for tone in ("is-critical", "is-degraded", "is-healthy"):
-        assert f".status-panel__verdict.{tone} {{ --verdict:" in verdict, tone
+    # KPI identity mapping from the plan (metric → strip family), shared by the
+    # hero strip and the health board so a metric never changes colour.
+    for pair in (
+        "totalProcedures: 'navy'",
+        "runsToday: 'green'",
+        "costSaved: 'teal'",
+        "runningNow: 'orange'",
+    ):
+        assert pair in tokens, pair
+    assert "kpiStripVar" in tokens and "kpiStripVar(" in hero_component
 
-    # three evidence cards on a wide screen, one column below it
-    console = panel[panel.index(".status-panel__console {") :]
-    assert "grid-template-columns: minmax(0, 1fr);" in console
-    assert "@media (min-width: 1024px)" in console[:600]
-    assert "repeat(3, minmax(0, 1fr))" in console[:900]
+    # hero KPI tiles carry the 4px strip and the icon matches it — token-driven
+    assert 'className="kpi-strip"' in hero_component
+    assert "kpiStripVar(metric)" in hero_component and "'--strip': tone" in hero_component
 
-    # the gauge follows the brand token and respects reduced motion
-    assert "stroke: var(--brand);" in panel
-    assert ".status-panel__gauge-value { transition: none; }" in css
+    # Arabic typography contract: line-height 1.75, no letter-spacing in RTL
+    assert "line-height: 1.75" in css
+    assert "html[dir='rtl'] *" in css and "letter-spacing: normal" in css
 
 
 def test_dashboard_leads_with_a_pinned_decision_tier():
@@ -349,8 +367,8 @@ def test_dashboard_leads_with_a_pinned_decision_tier():
     assert page.index("signals={signals}") < page.index("<TriageQueue") < page.index("<HealthBoard")
     assert page.index("<HealthBoard") < page.index("<WidgetGrid")
 
-    # Classic banded layout: toolbar → KPI row → status console → decisions.
-    assert page.index("<DashboardToolbar") < page.index("<KpiGrid") < page.index("<CommandCenterHero")
+    # Classic banded layout: toolbar → hero → KPI row → decisions.
+    assert page.index("<DashboardToolbar") < page.index("<CommandCenterHero") < page.index("<KpiGrid")
     assert page.index("<CommandCenterHero") < page.index("<TriageQueue")
     kpi_grid = (SRC / "components" / "dashboard" / "KpiGrid.jsx").read_text(encoding="utf-8")
     assert "kpi-strip" in kpi_grid and "var(--strip-" in kpi_grid

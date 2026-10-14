@@ -2,12 +2,12 @@
  * Dashboard page — the classic control-room layout contract.
  *
  * The redesign reordered the page into tidy, titled bands and deleted the two
- * decorative chrome rows (the header's first-run strip and the hero's identity
- * row). What an operator relies on is the *order* and the fact that the pinned
+ * decorative chrome rows (the header's first-run strip and extra identity
+ * rows). What an operator relies on is the *order* and the fact that the pinned
  * bands never become draggable, so that is what this file locks:
  *
- *   toolbar (sticky) → KPI row → status console → decision queue
- *   → health board → analytics grid → departments + onboarding
+ *   toolbar (sticky) → command hero → KPI row → decision queue
+ *   → health board → active run → analytics grid → departments + onboarding
  *
  * It renders the real page with the real derived signals; only the data hooks,
  * the auth/toast contexts and the chart-heavy widget modules are stubbed.
@@ -98,8 +98,8 @@ function renderPage() {
  */
 const BANDS = [
   ['toolbar', (container) => container.querySelector('.dashboard-toolbar')],
+  ['commandHero', (container) => container.querySelector('.command-hero')],
   ['kpiRow', (container) => container.querySelector('.kpi-grid')],
-  ['statusPanel', (container) => container.querySelector('.status-panel')],
   ['triageQueue', (container) => container.querySelector('#triage-queue')],
   ['healthBoard', (container) => container.querySelector('.health-card')],
   ['activeRun', (container) => container.querySelector('.active-run-band')],
@@ -132,7 +132,7 @@ function expectOrdered(nodes) {
 }
 
 describe('dashboard layout (classic control room)', () => {
-  it('orders the page: toolbar → KPI row → status → decisions → health → analytics', async () => {
+  it('orders the page: toolbar → hero → KPI row → decisions → health → analytics', async () => {
     const { container } = renderPage()
     // the analytics grid, the active-run banner and the department bars arrive
     // as lazy chunks: wait for every band before asserting their order
@@ -145,16 +145,18 @@ describe('dashboard layout (classic control room)', () => {
 
   it('titles every band and keeps exactly one h1 (the toolbar owns it)', async () => {
     const { container } = renderPage()
-    await waitFor(() => expect(container.querySelector('.status-panel')).toBeTruthy())
+    await waitFor(() => expect(container.querySelector('.command-hero')).toBeTruthy())
 
     const headings = [...container.querySelectorAll('h1')]
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent(en.dashboard.title)
 
+    // the hero titles itself with the operator's greeting (spec: time-aware greeting)
+    expect(container.querySelector('.command-hero h2.command-hero__title')).toBeTruthy()
+
     const h2 = [...container.querySelectorAll('h2')].map((node) => node.textContent)
     for (const title of [
       en.dashboard.overview.title,
-      en.dashboard.status.title,
       en.dashboard.health.title,
       en.dashboard.analytics.title,
     ]) {
@@ -190,7 +192,7 @@ describe('dashboard layout (classic control room)', () => {
     const analytics = sectionTitled(container, en.dashboard.analytics.title)
     expect(within(analytics).queryByText(en.dashboard.totalProcedures)).not.toBeInTheDocument()
     // the pinned bands are outside the draggable grid, so a wallboard cannot reorder them
-    expect(analytics.contains(container.querySelector('.status-panel'))).toBe(false)
+    expect(analytics.contains(container.querySelector('.command-hero'))).toBe(false)
     expect(analytics.contains(container.querySelector('#triage-queue'))).toBe(false)
     expect(analytics.contains(container.querySelector('.kpi-grid'))).toBe(false)
   })

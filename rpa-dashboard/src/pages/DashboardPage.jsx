@@ -1,16 +1,17 @@
 /**
  * Dashboard — the Control Room's command centre.
  *
- * Information architecture (v6, "classic control room")
- * -----------------------------------------------------
+ * Information architecture (v7, "Hybrid Premium Control Room")
+ * -----------------------------------------------------------
  * One tidy page, ordered by *how fast an operator can act*, with a clear
  * heading for every band and no decorative chrome rows:
  *
  *   1. Toolbar (sticky)  — page identity + freshness, Live/server clock,
  *                          Refresh · Export · Tour, and the filters that scope
  *                          every number below (shareable through the URL)
- *   2. KPI row           — the six headline figures, pinned (never draggable)
- *   3. Status console    — verdict → success gauge → 14-day volume → live runs
+ *   2. Command hero      — navy hero: greeting + success gauge + decision KPIs
+ *                          + volume sparkline (the fold, the current state)
+ *   3. KPI row           — the six headline figures, pinned (never draggable)
  *   4. Decision queue    — the ranked list of decisions, each with its action
  *   5. Health board      — the four metrics that carry a decision, vs target
  *   6. Active run        — what the fleet is doing this second
@@ -289,12 +290,19 @@ export default function DashboardPage() {
   const hidden = useMemo(() => allWidgets.filter((widget) => hiddenIds.includes(widget.id)), [allWidgets, hiddenIds])
   const filtersDirty = filters.department !== DEFAULTS.department || filters.process !== DEFAULTS.process || filters.days !== DEFAULTS.days
 
-  /* The toolbar carries the operator's name; the page no longer spends a whole
-     navy hero on a greeting. */
-  const operatorName = user?.full_name || user?.username || t('dashboard.hero.operator')
-  const hour = new Date().getHours()
-  const greetingKey =
-    hour < 12 ? 'dashboard.hero.greetingMorning' : hour < 18 ? 'dashboard.hero.greetingAfternoon' : 'dashboard.hero.greetingEvening'
+  /* The command hero owns the operator's greeting and live chip; the toolbar
+     keeps identity, freshness and scope. Hero KPIs are a trimmed decision view. */
+  const heroKpis = [
+    { key: 'totalProcedures', label: t('dashboard.totalProcedures'), value: data?.kpis?.totalProcedures },
+    { key: 'runningNow', label: t('dashboard.activeRun'), value: data?.kpis?.runningNow },
+    {
+      key: 'costSaved',
+      label: t('dashboard.costSaved'),
+      value: `$${Math.round((data?.kpis?.costSaved || 0) / 1000)}k`,
+    },
+    { key: 'runsToday', label: t('dashboard.runsToday'), value: data?.kpis?.runsToday },
+    { key: 'timeSaved', label: t('dashboard.timeSaved'), value: `${Math.round(data?.kpis?.timeSaved || 0)}h` },
+  ]
 
   if (dashboard.isError && !data) {
     return (
@@ -318,7 +326,6 @@ export default function DashboardPage() {
       {/* ── Band 1: identity, freshness and scope — sticky, one surface ─── */}
       <DashboardToolbar
         title={t('dashboard.title')}
-        greeting={t(greetingKey, { name: operatorName })}
         generatedAt={data?.meta?.generated_at}
         scope={data?.scope?.department}
         refreshing={refreshing}
@@ -336,7 +343,27 @@ export default function DashboardPage() {
         canGenerate={has('capacity:act') || has('*')}
       />
 
-      {/* ── Band 2: the six headline figures, pinned above everything ───── */}
+      {/* ── Band 2: the navy command hero — the fold, the current state ─── */}
+      <section aria-label={t('dashboard.status.title')}>
+        <CommandCenterHero
+          kpis={heroKpis}
+          successRate={data?.sidebarStats?.successRate ?? data?.kpis?.successRate}
+          generatedAt={data?.meta?.generated_at}
+          loading={booting}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          onOpenTour={() => setTourOpen(true)}
+          actions={<ExportMenu days={filters.days} />}
+          spark={spark}
+          savings={savings}
+          slaRisk={signals.slaRisk}
+          scope={data?.scope?.department}
+          activity={data?.table || []}
+          signals={signals}
+        />
+      </section>
+
+      {/* ── Band 3: the six headline figures, pinned ────────────────────── */}
       <section aria-label={t('dashboard.overview.title')}>
         <SectionTitle
           as="h2"
@@ -346,25 +373,6 @@ export default function DashboardPage() {
           subtitle={t('dashboard.overview.subtitle')}
         />
         <KpiGrid kpis={data?.kpis} loading={booting} spark={spark} savings={savings} />
-      </section>
-
-      {/* ── Band 3: verdict, success gauge, volume trend and live runs ──── */}
-      <section aria-label={t('dashboard.status.title')}>
-        <SectionTitle
-          as="h2"
-          className="mb-3"
-          eyebrow={t('dashboard.status.eyebrow')}
-          title={t('dashboard.status.title')}
-          subtitle={t('dashboard.status.subtitle')}
-        />
-        <CommandCenterHero
-          successRate={data?.sidebarStats?.successRate ?? data?.kpis?.successRate}
-          loading={booting}
-          spark={spark}
-          savings={savings}
-          activity={data?.table || []}
-          signals={signals}
-        />
       </section>
 
       {/* ── Band 4: the ranked list of decisions ────────────────────────── */}

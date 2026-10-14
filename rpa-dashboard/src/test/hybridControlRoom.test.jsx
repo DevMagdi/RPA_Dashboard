@@ -9,6 +9,8 @@
  *  • the panel leads with the operational verdict and its tone is token-driven.
  */
 import { render, screen, within } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -123,7 +125,7 @@ describe('hybrid status panel, verdict and KPI strip', () => {
       </MemoryRouter>,
     )
     const gauge = screen.getByRole('img', { name: `${en.dashboard.hero.successGauge}: 98.4%` })
-    expect(gauge.querySelector('circle.status-panel__gauge-value')).toBeTruthy()
+    expect(gauge.querySelector('circle.command-hero__gauge-value')).toBeTruthy()
   })
 
   it('leads the hero with an operational verdict whose tone is token-driven', () => {
@@ -141,7 +143,7 @@ describe('hybrid status panel, verdict and KPI strip', () => {
       </MemoryRouter>,
     )
 
-    const verdict = container.querySelector('.status-panel__verdict')
+    const verdict = container.querySelector('.command-hero__verdict')
     expect(verdict).toBeTruthy()
     expect(verdict.className).toContain('is-critical')
     expect(screen.getByText(en.dashboard.verdict.critical)).toBeInTheDocument()
@@ -150,7 +152,7 @@ describe('hybrid status panel, verdict and KPI strip', () => {
     expect(screen.getByText(en.dashboard.verdict.reasons.failures)).toBeInTheDocument()
 
     // Tone classes resolve to CSS custom properties — no hex is hardcoded in JSX.
-    expect(document.querySelector('.status-panel__verdict-mark')).toBeTruthy()
+    expect(document.querySelector('.command-hero__verdict-mark')).toBeTruthy()
   })
 
   it('reports an operational verdict when nothing needs a decision', () => {
@@ -168,7 +170,7 @@ describe('hybrid status panel, verdict and KPI strip', () => {
         <CommandCenterHero successRate={99.2} spark={spark} savings={savings} signals={clean} />
       </MemoryRouter>,
     )
-    expect(container.querySelector('.status-panel__verdict.is-healthy')).toBeTruthy()
+    expect(container.querySelector('.command-hero__verdict.is-healthy')).toBeTruthy()
     expect(screen.getByText(en.dashboard.verdict.allClear)).toBeInTheDocument()
   })
 
@@ -185,5 +187,48 @@ describe('hybrid status panel, verdict and KPI strip', () => {
       expect(en.dashboard.hero[key]).toBeTruthy()
       expect(ar.dashboard.hero[key]).toBeTruthy()
     }
+  })
+})
+
+describe('locked hybrid palette inside the command centre', () => {
+  it('renders every hero KPI with the identity strip from the shared map (no hardcoded hex)', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <CommandCenterHero kpis={kpis} successRate={98.4} spark={spark} savings={savings} slaRisk={0} onRefresh={vi.fn()} onOpenTour={vi.fn()} />
+      </MemoryRouter>,
+    )
+    const strips = [...container.querySelectorAll('.command-hero__kpi .kpi-strip')]
+    expect(strips).toHaveLength(5)
+    // successRate navy · runningNow orange · costSaved teal · runsToday green · sla indigo
+    expect(strips.map((node) => node.style.getPropertyValue('--strip'))).toEqual([
+      'var(--strip-navy)',
+      'var(--strip-orange)',
+      'var(--strip-teal)',
+      'var(--strip-green)',
+      'var(--strip-indigo)',
+    ])
+    // icon tone matches the strip on the same tile
+    for (const tile of container.querySelectorAll('.command-hero__kpi')) {
+      const strip = tile.querySelector('.kpi-strip')?.style.getPropertyValue('--strip')
+      expect(tile.querySelector('.command-hero__kpi-icon')?.style.getPropertyValue('--tone')).toBe(strip)
+    }
+    // the navy scrim layer sits between the aurora and the content
+    expect(container.querySelector('.command-hero__scrim')).toBeTruthy()
+    expect(container.querySelector('.command-hero__gauge-value')).toBeTruthy()
+  })
+
+  it('keeps the hero, the live badge and the active pill on the navy identity', () => {
+    render(
+      <MemoryRouter initialEntries={['/runs']}>
+        <TopNav />
+      </MemoryRouter>,
+    )
+    const runs = screen.getByRole('link', { name: en.nav.runs })
+    expect(runs.className).toContain('nav-pill-active')
+
+    const css = readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8')
+    // active pill: navy gradient + soft shadow; live badge: navy background
+    expect(css).toMatch(/\.nav-pill-active \{[^}]*linear-gradient\(135deg, var\(--navy\) 0%, var\(--navy-deep\) 100%\)/s)
+    expect(css).toMatch(/\.live-badge \{[^}]*linear-gradient\(135deg, var\(--navy-deep\) 0%, var\(--navy\) 100%\)/s)
   })
 })

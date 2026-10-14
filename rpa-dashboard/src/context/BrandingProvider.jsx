@@ -7,7 +7,9 @@ import { useOptionalTheme } from './ThemeProvider'
 
 const BrandingContext = createContext(null)
 
-/* Built-in control-room identity (Deep Indigo). Matches --brand in src/index.css. */
+/* Built-in hybrid identity: refined Indigo (Indigo-600) for brand *actions*
+   (buttons, focus); Navy `#1E3A5F` carries the static presence and is never
+   re-coloured here. Matches --brand in src/index.css. */
 const DEFAULT_PRIMARY = '#4F46E5'
 
 const FALLBACK = {
@@ -21,7 +23,7 @@ const FALLBACK = {
   features: {},
 }
 
-/** Convert '#4f46e5' into an 'r, g, b' triple so CSS can build translucent variants. */
+/** Convert '#3f51b5' into an 'r, g, b' triple so CSS can build translucent variants. */
 function rgbTriple(hex) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
@@ -92,7 +94,7 @@ export function BrandingProvider({ children }) {
       root.style.setProperty('--brand-lighter', lift(primary, 0.65))
       root.style.setProperty('--brand-soft', `rgba(${rgbTriple(lifted)}, 0.18)`)
       root.style.setProperty('--brand-ring', `rgba(${rgbTriple(lifted)}, 0.5)`)
-      root.style.setProperty('--brand-fg', '#0b1220')
+      root.style.setProperty('--brand-fg', '#0f1a2e')
       root.style.setProperty('--chart-1', lifted)
     } else {
       root.style.setProperty('--brand', primary)

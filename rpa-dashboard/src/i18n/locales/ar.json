@@ -158,7 +158,9 @@
       "viewAllRuns": "عرض كل التشغيلات",
       "targetRuns": "المستهدف {{total}} / يوم",
       "successGauge": "مؤشر معدل النجاح",
-      "gaugeCaption": "من التشغيلات نجحت"
+      "gaugeCaption": "من التشغيلات نجحت",
+      "kicker": "العمليات الخاصة",
+      "nextAction": "الإجراء المقترح التالي"
     },
     "tour": {
       "title": "غرفة التحكم في لمحة",

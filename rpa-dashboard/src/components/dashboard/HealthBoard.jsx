@@ -29,14 +29,21 @@ import { useTranslation } from 'react-i18next'
 
 import { Sparkline } from '../charts/primitives'
 import { CHART_COLORS } from '../../lib/constants'
+import { kpiStripVar } from '../../design-system/tokens'
 import { compactNumber, currency, hoursSaved } from '../../lib/format'
 import { Card, CountUpStat, ProgressBar, Skeleton, cn } from '../ui'
 
+/*
+ * Strip + icon colours follow the KPI identity map (`kpiTones`): successRate
+ * navy · throughput/runsToday green · failedToday red · SLA indigo, etc. The
+ * *state* of a metric (ok / risk / breach) is carried by the verdict badge
+ * (icon + label) and the card border — never by colour alone.
+ */
 const VERDICT_META = {
-  ok: { tone: 'success', icon: CheckCircle2, strip: 'var(--success)' },
-  risk: { tone: 'warning', icon: ShieldAlert, strip: 'var(--warning)' },
-  breach: { tone: 'danger', icon: XCircle, strip: 'var(--danger)' },
-  unknown: { tone: 'muted', icon: HelpCircle, strip: 'var(--text-muted)' },
+  ok: { tone: 'success', icon: CheckCircle2 },
+  risk: { tone: 'warning', icon: ShieldAlert },
+  breach: { tone: 'danger', icon: XCircle },
+  unknown: { tone: 'muted', icon: HelpCircle },
 }
 
 const METRIC_ICON = {
@@ -67,6 +74,7 @@ function HealthCard({ metric, index, spark }) {
   const meta = VERDICT_META[metric.verdict] || VERDICT_META.unknown
   const Icon = METRIC_ICON[metric.key] || Activity
   const showSparkline = metric.key === 'throughput' && spark?.length > 1
+  const strip = kpiStripVar(metric.key)
 
   return (
     <motion.div
@@ -75,12 +83,12 @@ function HealthCard({ metric, index, spark }) {
       transition={{ duration: 0.34, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
     >
       <Card hover className={cn('health-card group relative h-full overflow-hidden p-4', `health-card--${metric.verdict}`)}>
-        <span aria-hidden className="kpi-strip" style={{ '--strip': meta.strip }} />
+        <span aria-hidden className="kpi-strip" style={{ '--strip': strip }} />
         <div className="flex items-start justify-between gap-2">
           <span className="flex min-w-0 items-center gap-2">
             <span
               className="grid h-8 w-8 shrink-0 place-items-center rounded-xl"
-              style={{ background: `color-mix(in srgb, ${meta.strip} 13%, transparent)`, color: meta.strip }}
+              style={{ background: `color-mix(in srgb, ${strip} 13%, transparent)`, color: strip }}
             >
               <Icon className="h-4 w-4" aria-hidden />
             </span>
@@ -114,7 +122,7 @@ function HealthCard({ metric, index, spark }) {
               <Sparkline
                 data={spark.slice(-14)}
                 dataKey="volume"
-                color={meta.strip}
+                color={strip}
                 height={32}
                 strokeWidth={1.75}
                 ariaLabel={t('dashboard.runVolume')}
