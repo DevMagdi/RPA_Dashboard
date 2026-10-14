@@ -330,8 +330,10 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
 
           <ul id="command-palette-results" ref={listRef} role="listbox" className="max-h-[min(58vh,26rem)] overflow-y-auto overscroll-contain p-2">
             {items.length === 0 ? (
-              <li className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
-                <Search className="h-5 w-5 text-muted/70" aria-hidden />
+              <li className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-soft text-brand">
+                  <Search className="h-5 w-5" aria-hidden />
+                </span>
                 <p className="text-sm font-medium text-text">{t('palette.empty')}</p>
                 <p className="max-w-xs text-xs leading-relaxed text-muted">{t('palette.emptyHint')}</p>
               </li>
@@ -354,19 +356,27 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
                       onMouseMove={() => setCursor(entry.index)}
                       onClick={() => run(entry.item)}
                       className={cn(
-                        'group flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start text-sm transition-colors duration-150',
-                        entry.index === cursor ? 'bg-brand-soft text-brand' : 'text-text-soft hover:bg-surface-2',
+                        'group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-start text-sm transition-colors duration-150',
+                        entry.index === cursor ? 'text-brand' : 'text-text-soft hover:bg-surface-2',
                       )}
                     >
+                      {entry.index === cursor ? (
+                        <motion.span
+                          layoutId="palette-highlight"
+                          transition={{ type: 'spring', stiffness: 520, damping: 42 }}
+                          className="absolute inset-0 rounded-xl bg-brand-soft ring-1 ring-brand/15"
+                          aria-hidden
+                        />
+                      ) : null}
                       <span
                         className={cn(
-                          'grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-border/70 bg-surface-2',
+                          'relative grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-border/70 bg-surface-2',
                           entry.index === cursor && 'border-brand/30 bg-surface text-brand',
                         )}
                       >
                         {entry.item.icon ? <entry.item.icon className="h-3.5 w-3.5" aria-hidden /> : null}
                       </span>
-                      <span className="min-w-0 flex-1">
+                      <span className="relative min-w-0 flex-1">
                         <span className="block truncate" dir="auto">
                           <Highlight text={entry.item.label} indices={entry.item.indices} />
                         </span>
@@ -377,7 +387,11 @@ export default function CommandPalette({ open, onClose, processes = [] }) {
                         ) : null}
                       </span>
                       {entry.index === cursor ? (
-                        <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="shrink-0 text-brand/70">
+                        <motion.span
+                          initial={{ opacity: 0, x: -4 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="relative shrink-0 text-brand/70"
+                        >
                           <CornerDownLeft className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden />
                         </motion.span>
                       ) : (

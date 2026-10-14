@@ -12,28 +12,28 @@ import en from '../i18n/locales/en.json'
 describe('design tokens', () => {
   it('is light-first with the requested premium palette', () => {
     expect(colors.light).toMatchObject({
-      bg: '#F3F6FA',
+      bg: '#F8FAFC',
       surface: '#FFFFFF',
-      surface2: '#F7F9FC',
-      border: '#E1E7F0',
-      text: '#111827',
-      textMuted: '#657286',
-      brand: '#6254E8',
-      brandStrong: '#5145C5',
-      accent: '#0F9F91',
+      surface2: '#F8FAFC',
+      border: 'rgba(15, 23, 42, 0.06)',
+      text: '#0F172A',
+      textMuted: '#64748B',
+      brand: '#4F46E5',
+      brandStrong: '#3730A3',
+      accent: '#0D9488',
       success: '#047857',
       warning: '#B45309',
       danger: '#BE123C',
       info: '#0369A1',
     })
     expect(colors.dark).toMatchObject({
-      bg: '#070B14',
-      surface: '#101827',
-      surface2: '#141F30',
-      border: '#253249',
+      bg: '#020617',
+      surface: '#0F172A',
+      surface2: '#131C31',
+      border: 'rgba(255, 255, 255, 0.07)',
       text: '#EFF5FF',
       textMuted: '#98A8BF',
-      brand: '#7F72FF',
+      brand: '#818CF8',
       accent: '#2DD4BF',
     })
     for (const key of ['success', 'warning', 'danger', 'info']) expect(colors.light[key]).toMatch(/^#/)

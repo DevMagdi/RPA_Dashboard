@@ -62,6 +62,22 @@ export function currency(value, code = 'EGP', digits = 0) {
   }
 }
 
+/** 48200 → "EGP 48.2K" — for KPI cards where the exact figure would truncate. */
+export function currencyCompact(value, code = 'EGP', digits = 1) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return '—'
+  try {
+    return new Intl.NumberFormat(localeTag(), {
+      style: 'currency',
+      currency: code,
+      notation: 'compact',
+      maximumFractionDigits: digits,
+    }).format(parsed)
+  } catch {
+    return `${compactNumber(parsed)} ${code}`
+  }
+}
+
 export function percent(value, digits = 1) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return '—'

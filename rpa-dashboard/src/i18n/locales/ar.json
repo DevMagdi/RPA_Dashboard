@@ -140,7 +140,12 @@
       "allClear": "لا توجد حوادث مفتوحة",
       "nextAction": "الإجراء المقترح التالي",
       "viewCapacity": "مراجعة مستشار السعة",
-      "operator": "المشغّل"
+      "operator": "المشغّل",
+      "greetingMorning": "صباح الخير، {{name}}",
+      "greetingAfternoon": "نهارك سعيد، {{name}}",
+      "greetingEvening": "مساء الخير، {{name}}",
+      "kicker": "العمليات الخاصة",
+      "standby": "المشغلون في وضع الاستعداد"
     },
     "tour": {
       "title": "غرفة التحكم في لمحة",

@@ -71,11 +71,14 @@ function NavEntry({ route, collapsed, onNavigate, badge }) {
       {({ isActive }) => (
         <>
           {isActive ? (
-            <motion.span
-              layoutId="nav-active-pill"
-              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-              className="absolute inset-0 -z-10 rounded-xl bg-brand-soft"
-            />
+            <>
+              <motion.span
+                layoutId="nav-active-pill"
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                className="nav-active-pill absolute inset-0 -z-10 rounded-xl bg-brand-soft"
+              />
+              <span aria-hidden className="absolute inset-y-1.5 start-1 w-0.5 rounded-full bg-brand" />
+            </>
           ) : null}
           <Icon className={cn('h-4 w-4 shrink-0 transition-transform duration-200', 'group-hover:scale-105')} aria-hidden />
           {!collapsed ? (

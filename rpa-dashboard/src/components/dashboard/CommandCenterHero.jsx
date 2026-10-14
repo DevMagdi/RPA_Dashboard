@@ -1,42 +1,57 @@
 /**
  * Command-centre hero — the first three seconds of the product.
  *
- * A live operations banner: what is running right now, how the portfolio is
- * performing, when the snapshot was taken and the one-click actions an operator
- * needs at shift handover.  The aurora/grid background is pure CSS (no canvas,
- * no image request), so it costs nothing on the critical path and animates on
- * the compositor thread only.
+ * Premium command-center wireframe:
+ *   [live identity eyebrow]            [Refresh] [Export]
+ *   Good morning, Magdi  + shift actions
+ *   ─────────────────────────────────────────────────────
+ *   Success · Active · Savings · SLA risk   (four-KPI strip)
+ *   ── 14-day run-volume sparkline strip ──
+ *
+ * The aurora/grid background is pure CSS (no canvas, no image request), so it
+ * costs nothing on the critical path and animates on the compositor thread.
+ * Every number is real payload data — no synthetic decoration.
  */
-import { motion } from 'framer-motion'
-import { Activity, ArrowUpRight, Bot, CheckCircle2, Compass, Gauge, RefreshCw, ShieldCheck, Timer, Workflow } from 'lucide-react'
+import { CheckCircle2, Clock, Compass, Gauge, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp, Bot, BadgeDollarSign } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
-import { Sparkline } from '../charts/primitives'
+import { DeltaChip, Sparkline } from '../charts/primitives'
+import { useAuth } from '../../context/AuthProvider'
 import { useRealtimeStatus } from '../../hooks/ui'
-import { compactNumber, hoursSaved, percent, relative } from '../../lib/format'
-import { Badge, Button, Skeleton, cn } from '../ui'
+import { compactNumber, relative } from '../../lib/format'
+import { rateDelta, seriesDelta } from '../../lib/stats'
+import { Badge, Button, CountUpStat, Skeleton, cn } from '../ui'
 
-function HeroStat({ icon: Icon, label, value, tone = 'brand', loading, hint }) {
-  const tones = {
-    brand: 'bg-brand-soft text-brand',
-    info: 'bg-info-soft text-info',
-    success: 'bg-success-soft text-success',
-    warning: 'bg-warning-soft text-warning',
-    accent: 'bg-accent-soft text-accent-strong',
-  }
+const TONE_VARS = {
+  brand: 'var(--brand)',
+  info: 'var(--info)',
+  success: 'var(--success)',
+  warning: 'var(--warning)',
+  danger: 'var(--danger)',
+  accent: 'var(--accent)',
+}
+
+/** KPI block inside the hero strip. */
+function HeroKpi({ icon: Icon, label, value, tone = 'brand', delta, hint, live, flashKey, glow }) {
   return (
-    <div className="command-hero__stat">
-      <span className={cn('grid h-8.5 w-8.5 shrink-0 place-items-center rounded-xl', tones[tone])}>
-        <Icon className="h-4 w-4" aria-hidden />
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate text-[10px] font-medium tracking-wide text-muted uppercase">{label}</span>
-        <span className="mt-0.5 block truncate text-base font-semibold stat-number text-text">
-          {loading ? <Skeleton className="h-5 w-14" /> : value}
+    <div className={cn('command-hero__kpi', glow && 'glow-brand')}>
+      <div className="command-hero__kpi-head">
+        <span key={flashKey} className="command-hero__kpi-icon stat-flash" style={{ '--tone': TONE_VARS[tone] || TONE_VARS.brand }}>
+          <Icon className="h-4 w-4" aria-hidden />
         </span>
-      </span>
-      {hint ? <span className="ms-auto hidden text-[10px] text-muted sm:block">{hint}</span> : null}
+        {live ? (
+          <span className="relative flex h-2 w-2" title="live">
+            <span className="h-2 w-2 rounded-full" style={{ background: 'var(--info)' }} />
+            <span className="live-dot absolute inset-0" style={{ color: 'var(--info)' }} aria-hidden />
+          </span>
+        ) : delta !== null && delta !== undefined ? (
+          <DeltaChip value={delta} />
+        ) : null}
+      </div>
+      <span className="command-hero__kpi-label">{label}</span>
+      <span className="command-hero__kpi-value">{value}</span>
+      {hint ? <span className="command-hero__kpi-hint">{hint}</span> : null}
     </div>
   )
 }
@@ -51,14 +66,28 @@ export default function CommandCenterHero({
   onOpenTour,
   actions,
   spark = [],
+  savings = [],
+  slaRisk = 0,
   scope,
 }) {
   const { t } = useTranslation()
   const { status } = useRealtimeStatus()
+  const { user } = useAuth()
+
   const running = Number(kpis?.runningNow || 0)
   const isRunning = running > 0
   const liveLabel = status === 'open' ? t('app.live') : t('app.offline')
-  const attention = Number(kpis?.stopsToday || 0) + Number(kpis?.slaBreaches || 0)
+  const riskCount = Number(slaRisk) + Number(kpis?.stopsToday || 0)
+  const attention = riskCount
+
+  const name = user?.full_name || user?.username || t('dashboard.hero.operator')
+  const hour = new Date().getHours()
+  const greetingKey =
+    hour < 12 ? 'dashboard.hero.greetingMorning' : hour < 18 ? 'dashboard.hero.greetingAfternoon' : 'dashboard.hero.greetingEvening'
+
+  const rate = successRate ?? kpis?.successRate ?? 0
+  const successTrend = rateDelta(spark)
+  const savingsTrend = seriesDelta(savings, 'bar')
 
   return (
     <section className="command-hero" aria-label={t('dashboard.commandCenter')}>
@@ -66,14 +95,19 @@ export default function CommandCenterHero({
       <span aria-hidden className="command-hero__grid" />
 
       <div className="command-hero__content">
-        <div className="command-hero__copy">
+        {/* ── identity row: live eyebrow + shift actions ─────────────────── */}
+        <div className="command-hero__head">
           <div className="flex flex-wrap items-center gap-2">
             <span className="command-hero__eyebrow">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                 {status === 'open' ? <span className="live-dot absolute inset-0" style={{ color: 'var(--accent)' }} aria-hidden /> : null}
               </span>
-              {t('dashboard.hero.liveRail')} · {liveLabel}
+              {t('app.name')} · {t('dashboard.hero.kicker')}
+            </span>
+            <span className="chip" data-live={status === 'open' ? 'open' : 'closed'}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: status === 'open' ? 'var(--success)' : 'var(--text-muted)' }} aria-hidden />
+              {liveLabel}
             </span>
             <span className="chip">
               <ShieldCheck className="h-3 w-3 text-success" aria-hidden />
@@ -86,102 +120,106 @@ export default function CommandCenterHero({
             ) : null}
           </div>
 
-          <h2 className="command-hero__title display-tight">
-            {t('dashboard.commandCenter')}
-          </h2>
-          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">
-            {t('dashboard.commandCenterSubtitle')}
-          </p>
-
-          <div className="command-hero__stats">
-            <HeroStat
-              icon={Bot}
-              label={t('dashboard.hero.running')}
-              value={compactNumber(running)}
-              tone={isRunning ? 'info' : 'success'}
-              loading={loading}
-            />
-            <HeroStat
-              icon={Workflow}
-              label={t('dashboard.hero.processes')}
-              value={compactNumber(kpis?.totalProcedures ?? 0)}
-              tone="brand"
-              loading={loading}
-              hint={kpis?.totalProcedures ? t('dashboard.widgets') : undefined}
-            />
-            <HeroStat
-              icon={CheckCircle2}
-              label={t('dashboard.hero.successRate')}
-              value={percent(successRate ?? kpis?.successRate ?? 0)}
-              tone="success"
-              loading={loading}
-            />
-            <HeroStat
-              icon={Timer}
-              label={t('dashboard.timeSaved')}
-              value={hoursSaved(kpis?.timeSaved ?? 0)}
-              tone="warning"
-              loading={loading}
-            />
-            {spark.length > 1 ? (
-              <div className="command-hero__stat min-w-[10.5rem] flex-col items-start gap-1">
-                <span className="flex w-full items-center justify-between text-[10px] font-medium tracking-wide text-muted uppercase">
-                  {t('dashboard.runVolume')}
-                  <ArrowUpRight className="h-3 w-3" aria-hidden />
-                </span>
-                <span className="h-8 w-full">
-                  <Sparkline data={spark} dataKey="volume" color="var(--chart-1)" height={32} ariaLabel={t('dashboard.runVolume')} />
-                </span>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="command-hero__actions">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" size="sm" icon={RefreshCw} loading={refreshing} onClick={onRefresh}>
               {refreshing ? t('app.syncNow') : t('actions.refreshNow')}
             </Button>
-            <Button variant="secondary" size="sm" icon={Compass} onClick={onOpenTour}>
+            <div className="flex items-center gap-2">{actions}</div>
+          </div>
+        </div>
+
+        {/* ── greeting ───────────────────────────────────────────────────── */}
+        <div>
+          <h2 className="command-hero__title text-display">
+            {t(greetingKey, { name })}
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-muted sm:text-sm text-pretty">
+            {t('dashboard.commandCenterSubtitle')}
+          </p>
+        </div>
+
+        <span className="divider" aria-hidden />
+
+        {/* ── four-KPI command strip ─────────────────────────────────────── */}
+        <div className="command-hero__kpis">
+          <HeroKpi
+            icon={TrendingUp}
+            label={t('dashboard.hero.successRate')}
+            tone="success"
+            value={loading && !kpis ? <Skeleton className="h-7 w-16" /> : <CountUpStat value={rate} format="percent" />}
+            delta={successTrend}
+            hint={successTrend !== null ? undefined : t('dashboard.runVolume')}
+            flashKey={rate}
+          />
+          <HeroKpi
+            icon={Bot}
+            label={t('dashboard.hero.running')}
+            tone={isRunning ? 'info' : 'success'}
+            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={running} format="number" />}
+            live={isRunning}
+            glow={isRunning}
+            hint={isRunning ? kpis?.activeProcess || undefined : t('dashboard.hero.standby')}
+            flashKey={running}
+          />
+          <HeroKpi
+            icon={BadgeDollarSign}
+            label={t('dashboard.costSaved')}
+            tone="accent"
+            value={loading && !kpis ? <Skeleton className="h-7 w-24" /> : <CountUpStat value={Number(kpis?.costSaved) || 0} format="currency" />}
+            delta={savingsTrend}
+            hint={t('dashboard.filters.days', { count: 14 })}
+            flashKey={kpis?.costSaved}
+          />
+          <HeroKpi
+            icon={Number(slaRisk) > 0 ? ShieldAlert : Clock}
+            label={t('dashboard.slaBreaches')}
+            tone={Number(slaRisk) > 0 ? 'danger' : 'success'}
+            value={loading && !kpis ? <Skeleton className="h-7 w-10" /> : <CountUpStat value={Number(slaRisk) || 0} format="number" />}
+            hint={Number(slaRisk) > 0 ? t('dashboard.hero.attention') : t('dashboard.hero.allClear')}
+            flashKey={slaRisk}
+          />
+        </div>
+
+        {/* ── full-width 14-day sparkline strip ──────────────────────────── */}
+        {spark.length > 1 ? (
+          <div className="command-hero__strip">
+            <div className="command-hero__strip-head">
+              <span className="flex items-center gap-1.5 text-2xs font-semibold tracking-[0.1em] text-muted uppercase">
+                {t('dashboard.runVolume')}
+              </span>
+              <DeltaChip value={seriesDelta(spark, 'volume')} />
+            </div>
+            <div className="h-11 w-full">
+              <Sparkline data={spark} dataKey="volume" color="var(--chart-1)" height={44} strokeWidth={2} ariaLabel={t('dashboard.runVolume')} />
+            </div>
+            <div className="command-hero__strip-axis mt-1">
+              <span dir="auto">{spark[0]?.date}</span>
+              <span dir="auto">{spark[spark.length - 1]?.date}</span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* ── shift footer: freshness + attention + navigation ───────────── */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-muted">
+          <span>{generatedAt ? t('app.lastUpdated', { time: relative(generatedAt) }) : t('app.loading')}</span>
+          <span className="hidden h-1 w-1 rounded-full bg-border-strong sm:block" aria-hidden />
+          <span className={cn('inline-flex items-center gap-1', attention > 0 ? 'text-warning' : 'text-success')}>
+            <CheckCircle2 className="h-3 w-3" aria-hidden />
+            {attention > 0 ? `${t('dashboard.hero.attention')}: ${compactNumber(attention)}` : t('dashboard.hero.allClear')}
+          </span>
+
+          <span className="ms-auto flex items-center gap-1">
+            <Button variant="ghost" size="sm" icon={Compass} onClick={onOpenTour} className="h-7 text-[11px]">
               {t('dashboard.startTour')}
             </Button>
             <Link
               to="/capacity"
-              className="focus-ring inline-flex h-8 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              className="focus-ring inline-flex h-7 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
             >
               <Gauge className="h-3.5 w-3.5" aria-hidden />
               {t('dashboard.hero.viewCapacity')}
             </Link>
-            <div className="ms-auto flex items-center gap-2">{actions}</div>
-          </div>
-
-          <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-            <span>{generatedAt ? t('app.lastUpdated', { time: relative(generatedAt) }) : t('app.loading')}</span>
-            <span className="hidden h-1 w-1 rounded-full bg-border-strong sm:block" aria-hidden />
-            <span className={cn('inline-flex items-center gap-1', attention > 0 ? 'text-warning' : 'text-success')}>
-              <Activity className="h-3 w-3" aria-hidden />
-              {attention > 0 ? `${t('dashboard.hero.attention')}: ${compactNumber(attention)}` : t('dashboard.hero.allClear')}
-            </span>
-          </p>
-        </div>
-
-        <div className="command-hero__visual">
-          <span aria-hidden className="command-orbit command-orbit--outer" />
-          <span aria-hidden className="command-orbit command-orbit--inner" />
-          <span aria-hidden className="command-orbit__node command-orbit__node--one" />
-          <span aria-hidden className="command-orbit__node command-orbit__node--two" />
-          <span aria-hidden className="command-orbit__node command-orbit__node--three" />
-          <motion.div
-            className="command-core"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <span aria-hidden className="command-core__halo" />
-            <span className="command-core__icon">
-              <Bot className="h-8 w-8" strokeWidth={1.6} aria-hidden />
-            </span>
-            <span aria-hidden className={cn('command-core__signal', !isRunning && 'opacity-40')} />
-          </motion.div>
-          <span className="command-hero__visual-label">{liveLabel}</span>
+          </span>
         </div>
       </div>
 

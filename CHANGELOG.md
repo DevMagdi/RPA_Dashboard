@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased — Premium command-center UI overhaul (plan implementation)
+
+Implements the Premium/Wow command-center plan end-to-end; the palette now
+matches the one this Unreleased section always described.
+
+- **Design tokens (P0)**: light canvas `#F8FAFC`, Deep Indigo brand
+  `#4F46E5`/hover `#3730A3`, Electric Teal accent `#0D9488`, slate text
+  `#0F172A`/`#334155`/`#64748B`, translucent slate borders, plan shadow scale
+  (`soft` / `elevated` / `pop`); dark mode `#020617` → `#0B1120` with
+  `#0F172A` surfaces, brand `#818CF8`, accent `#2DD4BF`. Synced across
+  `index.css`, `tokens.js`, `tailwind.config.js`, `index.html` (theme-color +
+  first-paint canvas) and the default organization branding (backend seeds +
+  `BrandingProvider` fallback). Semantic trio keeps AA-safe depths of the plan
+  hues (`#059669`/`#D97706`/`#E11D48` fail 4.5:1 as text on `#F8FAFC`); their
+  `*-soft` backgrounds carry the plan hexes. WCAG contract re-verified (all
+  light/dark foreground×surface pairs ≥ 4.5).
+- **New utilities (P0)**: `.glass-premium`, `.card-elevated` +
+  `--shadow-elevated`, `.glow-brand`, `.text-display` (RTL-safe display face),
+  `.stat-flash` (soft brand flash when a live value ticks).
+- **CommandCenterHero restructure (P0)**: identity eyebrow
+  ("Control Room · Private Operations" + live/on-prem/scope chips) → personalized
+  time-of-day greeting (`dashboard.hero.greeting*` en+ar with `{{name}}`) and
+  Refresh/Export actions → divider → four-KPI command strip (Success %, Active
+  with live pulse, Savings, SLA risk from real `sla-workload` rows) → full-width
+  14-day run-volume sparkline strip with series date axis → shift footer
+  (freshness, attention count, tour/capacity). Orbit visual removed per
+  wireframe; Refresh moved into the hero.
+- **KPI rail (P0)**: display-size numbers (`text-2xl` + tabular), always-on
+  hover elevation (2 px lift + brand border + elevated shadow), live glow on the
+  Active card, real 7v7 trend chips (`lib/stats.js` `seriesDelta`/`rateDelta`)
+  for run volume and value saved, compact currency (`currencyCompact`, exact on
+  hover) so figures never truncate.
+- **Shell (P1)**: shorter top bar with `section › page` breadcrumb, single
+  elegant control cluster (live · language · theme · bell · account) and
+  rounded search trigger; stronger frosted topbar glass; sidebar active pill
+  gains soft glow + leading indicator; command palette gets a spring-sliding
+  keyboard highlight, icon-badge empty state and a stronger shared dialog
+  backdrop (6 px blur).
+- **Login (P1)**: form sits in a `glass-premium` card over an aurora/grid canvas
+  with the logo + product name lockup.
+- **Micro-interactions (P2)**: widget-grid staggered entrance (50 ms/item,
+  capped), KPI/hero count-ups, stat-flash, reduced-motion honoured throughout.
+- **Fixes**: `TopBar` user menu referenced an undefined `navigate` (Settings /
+  Audit clicks crashed) — now wired via `useNavigate`.
+- **Tests**: new `commandCenterHero.test.jsx` (greeting en+ar, KPI strip,
+  sparkline axis + deltas, refresh action, always-hover rail) — frontend suite
+  61 passed / 4 skipped; `design-system.test.jsx` expectations updated to the
+  new palette (tokens + CSS sync + AA all green).
+
 ## Unreleased — Design System v5 "Premium" (UI rebuild on 4.1.0 backend)
 
 - **Formal Design System** (`rpa-dashboard/src/design-system/`): machine-readable

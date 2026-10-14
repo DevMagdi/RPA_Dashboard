@@ -9,19 +9,19 @@ const BrandingContext = createContext(null)
 const FALLBACK = {
   name: 'RPA CoE Control Room',
   company_name: '',
-  primary_color: '#6254E8',
-  accent_color: '#0F9F91',
+  primary_color: '#4F46E5',
+  accent_color: '#0D9488',
   locale: 'en',
   logo_url: null,
   api_version: '4.1.0',
   features: {},
 }
 
-/** Convert '#6254e8' into an 'r, g, b' triple so CSS can build translucent variants. */
+/** Convert '#4f46e5' into an 'r, g, b' triple so CSS can build translucent variants. */
 function rgbTriple(hex) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '6254e8', 16)
+  const int = Number.parseInt(full || '4f46e5', 16)
   /* eslint-disable no-bitwise */
   return `${(int >> 16) & 255}, ${(int >> 8) & 255}, ${int & 255}`
   /* eslint-enable no-bitwise */
@@ -30,7 +30,7 @@ function rgbTriple(hex) {
 function shade(hex, amount) {
   const value = String(hex || '').replace('#', '')
   const full = value.length === 3 ? value.split('').map((char) => char + char).join('') : value
-  const int = Number.parseInt(full || '6254e8', 16)
+  const int = Number.parseInt(full || '4f46e5', 16)
   /* eslint-disable no-bitwise */
   const clamp = (channel) => Math.max(0, Math.min(255, Math.round(channel * (1 + amount))))
   const r = clamp((int >> 16) & 255)

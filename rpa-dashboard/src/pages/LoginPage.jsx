@@ -138,8 +138,11 @@ export default function LoginPage() {
         </p>
       </aside>
 
-      <main className="relative flex items-center justify-center px-5 py-10">
-        <div className="absolute end-4 top-4 flex items-center gap-1">
+      <main className="relative flex items-center justify-center overflow-hidden px-5 py-10">
+        {/* strong gradient canvas behind the glass card (plan: login = one frosted panel) */}
+        <span aria-hidden className="command-hero__aurora" />
+        <span aria-hidden className="command-hero__grid" />
+        <div className="absolute end-4 top-4 z-[2] flex items-center gap-1">
           <div className="flex items-center rounded-xl border border-border/70 bg-surface/70 p-0.5 backdrop-blur">
             {LANGUAGES.map((language) => (
               <button
@@ -165,19 +168,25 @@ export default function LoginPage() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-sm"
+          className="relative z-[2] w-full max-w-sm"
         >
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-gradient text-brand-fg">
-              <Bot className="h-5 w-5" aria-hidden />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-text">{companyName}</span>
-              <span className="block truncate text-[11px] text-muted">{t('app.tagline')}</span>
-            </span>
-          </div>
+          <div className="glass-premium relative overflow-hidden rounded-3xl p-6 sm:p-7">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/50 to-transparent"
+            />
 
-          {mfaChallenge ? (
+            <div className="mb-5 flex items-center gap-3 lg:hidden">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-gradient text-brand-fg">
+                <Bot className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-text">{companyName}</span>
+                <span className="block truncate text-[11px] text-muted">{t('app.tagline')}</span>
+              </span>
+            </div>
+
+            {mfaChallenge ? (
             <form onSubmit={onVerify} className="space-y-4" noValidate>
               <header>
                 <h1 className="text-xl font-semibold text-text">{t('auth.mfaTitle')}</h1>
@@ -281,6 +290,7 @@ export default function LoginPage() {
               </p>
             </form>
           )}
+          </div>
         </motion.div>
       </main>
     </div>
